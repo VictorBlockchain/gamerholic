@@ -51,6 +51,7 @@ export default function RootLayout({
 
   return (
     <html lang="en" suppressHydrationWarning className="dark">
+      <link rel="icon" href="/favicon.ico" />
       <body className={`${exo2.className} pb-16 sm:pb-0`}>
         <DarkThemeProvider>
           <WalletProviderComponent>
