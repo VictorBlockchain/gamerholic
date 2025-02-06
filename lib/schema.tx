@@ -1,0 +1,516 @@
+-- auth.users table (managed by Supabase Auth)
+CREATE TABLE auth.users (
+  id uuid DEFAULT gen_random_uuid() NOT NULL,
+  created_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  updated_at timestamp with time zone DEFAULT timezone('utc'::text, now()) NOT NULL,
+  -- ... other auth-related columns
+);
+
+-- public.users table
+CREATE TABLE public.users (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  wallet TEXT UNIQUE NOT NULL,
+  username TEXT,
+  avatar_url TEXT,
+  credits INTEGER DEFAULT 0,
+  total_earnings DECIMAL(10, 2) DEFAULT 0,
+  tester_earnings DECIMAL(10, 2) DEFAULT 0 -- Added for tracking tester earnings
+);
+
+-- public.user_deposit_addresses table
+CREATE TABLE public.user_deposit_addresses (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id TEXT REFERENCES public.users(wallet),
+  deposit_address TEXT UNIQUE NOT NULL,
+  encrypted_private_key TEXT NOT NULL, -- Added for storing encrypted private key
+  iv TEXT NOT NULL,                     -- Added for storing initialization vector
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.games table
+CREATE TABLE public.games (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  creator_wallet TEXT REFERENCES public.users(wallet),
+  title TEXT NOT NULL,
+  description TEXT NOT NULL,
+  thumbnail_image TEXT, -- Renamed from image_url for clarity
+  play_fee DECIMAL(10, 2) NOT NULL,
+  top_payout INTEGER NOT NULL DEFAULT 1,
+  category TEXT NOT NULL,
+  rules TEXT,
+  game_code TEXT NOT NULL,
+  game_css TEXT,
+  status TEXT NOT NULL DEFAULT 'pending_test', -- Added for game testing status
+  current_tester_id UUID,                      -- Added for game testing
+  last_test_date TIMESTAMP WITH TIME ZONE,      -- Added for game testing
+  test_feedback TEXT,                          -- Added for game testing
+  tester_earnings DECIMAL(10, 2) DEFAULT 0,    -- Added for tracking tester earnings per game
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.game_sessions table
+CREATE TABLE public.game_sessions (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  user_id TEXT REFERENCES public.users(wallet),
+  start_time TIMESTAMP WITH TIME ZONE NOT NULL,
+  end_time TIMESTAMP WITH TIME ZONE,
+  score INTEGER,
+  play_time INTEGER  -- Added to store playtime in milliseconds
+);
+
+-- public.leaderboard table
+CREATE TABLE public.leaderboard (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  user_id TEXT REFERENCES public.users(wallet),
+  score INTEGER NOT NULL,
+  earnings DECIMAL(10, 2) DEFAULT 0 -- Added for tracking leaderboard earnings
+);
+
+-- public.comments table
+CREATE TABLE public.comments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  user_id TEXT REFERENCES public.users(wallet),
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.votes table
+CREATE TABLE public.votes (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  user_id TEXT REFERENCES public.users(wallet),
+  vote_type TEXT CHECK (vote_type IN ('up', 'down')) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.platform_settings table
+CREATE TABLE public.platform_settings (
+  id SERIAL PRIMARY KEY,
+  platform_wallet_address TEXT UNIQUE NOT NULL,
+  boost_fee INTEGER NOT NULL DEFAULT 10,
+  dev_fee_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.10,
+  platform_fee_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.05,
+  top_player_percentage DECIMAL(5,2) NOT NULL DEFAULT 0.85,
+  initial_super_admin_address TEXT, -- Added for initial super admin setup
+  encrypted_private_key TEXT NOT NULL, -- Added for storing encrypted private key
+  iv TEXT NOT NULL,                     -- Added for storing initialization vector
+  is_paused BOOLEAN NOT NULL DEFAULT false -- Added for platform pause functionality
+);
+
+-- public.game_creation_payments table
+CREATE TABLE public.game_creation_payments (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  total_amount DECIMAL(10, 2) NOT NULL,
+  admin_amount DECIMAL(10, 2) NOT NULL,
+  platform_amount DECIMAL(10, 2) NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.game_test_history table
+CREATE TABLE public.game_test_history (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  tester_id UUID REFERENCES auth.users(id),
+  test_result TEXT NOT NULL,
+  feedback TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- public.user_testing_games
+CREATE TABLE public.user_testing_games (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id),
+  game_id UUID REFERENCES public.games(id),
+  assigned_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  status TEXT NOT NULL DEFAULT 'in_progress',
+  UNIQUE(user_id, game_id)
+);
+
+-- public.game_metrics table (for score verification)
+CREATE TABLE public.game_metrics (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id) UNIQUE, -- One entry per game
+  max_possible_score INTEGER,
+  average_score_per_minute DECIMAL(10, 2),
+  scoring_type TEXT CHECK (scoring_type IN ('linear', 'exponential', 'achievement-based')),
+  typical_score_range JSONB, -- Stores min and max as a JSON object
+  score_distribution JSONB   -- Stores percentile and score as a JSON array
+);
+
+-- public.flagged_scores table (for suspicious scores)
+CREATE TABLE public.flagged_scores (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game_id UUID REFERENCES public.games(id),
+  user_id TEXT REFERENCES public.users(wallet),
+  score INTEGER,
+  play_time INTEGER,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create admin_users table
+CREATE TABLE public.admin_users (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  user_id UUID REFERENCES auth.users(id) ON DELETE CASCADE,
+  role TEXT NOT NULL CHECK (role IN ('super_admin', 'admin')),
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create index for faster lookups
+CREATE INDEX idx_admin_users_user_id ON public.admin_users(user_id);
+
+-- Add RLS policies
+ALTER TABLE public.admin_users ENABLE ROW LEVEL SECURITY;
+
+-- Policy to allow admins to view all admin users
+CREATE POLICY "Admins can view all admin users"
+ON public.admin_users FOR SELECT
+USING (auth.uid() IN (SELECT user_id FROM public.admin_users));
+
+-- Policy to allow super admins to insert new admin users
+CREATE POLICY "Super admins can insert new admin users"
+ON public.admin_users FOR INSERT
+WITH CHECK (auth.uid() IN (SELECT user_id FROM public.admin_users WHERE role = 'super_admin'));
+
+-- Policy to prevent updates on admin users
+CREATE POLICY "Prevent updates on admin users"
+ON public.admin_users FOR UPDATE
+USING (false);
+
+-- Policy to allow super admins to delete admin users
+CREATE POLICY "Super admins can delete admin users"
+ON public.admin_users FOR DELETE
+USING (auth.uid() IN (SELECT user_id FROM public.admin_users WHERE role = 'super_admin'));
+
+-- Function to ensure only one super admin exists
+CREATE OR REPLACE FUNCTION ensure_single_super_admin()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF NEW.role = 'super_admin' AND EXISTS (SELECT 1 FROM public.admin_users WHERE role = 'super_admin') THEN
+    RAISE EXCEPTION 'Only one super admin is allowed';
+  END IF;
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Trigger to enforce single super admin
+CREATE TRIGGER enforce_single_super_admin
+BEFORE INSERT OR UPDATE ON public.admin_users
+FOR EACH ROW
+EXECUTE FUNCTION ensure_single_super_admin();
+
+-- Add foreign key constraint to admin_users table
+ALTER TABLE public.admin_users
+ADD CONSTRAINT fk_user_id
+FOREIGN KEY (user_id)
+REFERENCES auth.users(id);
+
+
+CREATE TABLE esports (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  game TEXT NOT NULL,
+  console TEXT NOT NULL,
+  amount FLOAT NOT NULL,
+  rules TEXT,
+  player1 TEXT NOT NULL,
+  player2 TEXT NOT NULL,
+  player1score INTEGER,
+  player2score INTEGER,
+  status INTEGER NOT NULL,
+  scoredby TEXT,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+  scoredate TIMESTAMP WITH TIME ZONE
+  indisupte BOOLEAN,
+  referee TEXT,
+  txid TEXT
+);
+
+
+CREATE TABLE public.chat_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  sender_id UUID REFERENCES auth.users(id),
+  receiver_id UUID,
+  chatroom_id UUID,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT receiver_or_chatroom CHECK (
+    (receiver_id IS NOT NULL AND chatroom_id IS NULL) OR
+    (receiver_id IS NULL AND chatroom_id IS NOT NULL)
+  )
+);
+
+CREATE TABLE public.chat_rooms (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  name TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Create the chat_messages table
+CREATE TABLE public.chat_messages (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  sender_id UUID REFERENCES auth.users(id),
+  receiver_id UUID REFERENCES auth.users(id),
+  chatroom_id UUID,
+  content TEXT NOT NULL,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  CONSTRAINT receiver_or_chatroom CHECK (
+    (receiver_id IS NOT NULL AND chatroom_id IS NULL) OR
+    (receiver_id IS NULL AND chatroom_id IS NOT NULL)
+  )
+);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_chat_messages_sender_id ON public.chat_messages(sender_id);
+CREATE INDEX idx_chat_messages_receiver_id ON public.chat_messages(receiver_id);
+CREATE INDEX idx_chat_messages_chatroom_id ON public.chat_messages(chatroom_id);
+
+-- Set up Row Level Security (RLS)
+ALTER TABLE public.chat_messages ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Users can insert their own messages"
+ON public.chat_messages FOR INSERT
+TO authenticated
+WITH CHECK (auth.uid() = sender_id);
+
+CREATE POLICY "Users can view messages they've sent or received"
+ON public.chat_messages FOR SELECT
+TO authenticated
+USING (
+  auth.uid() = sender_id OR
+  auth.uid() = receiver_id OR
+  chatroom_id IN (
+    SELECT chatroom_id
+    FROM public.chatroom_members
+    WHERE user_id = auth.uid()
+  )
+);
+
+-- Create a function to get chat messages
+CREATE OR REPLACE FUNCTION get_chat_messages(p_user_id UUID, p_other_user_id UUID)
+RETURNS TABLE (
+  id UUID,
+  sender_id UUID,
+  receiver_id UUID,
+  content TEXT,
+  created_at TIMESTAMP WITH TIME ZONE
+) AS $$
+BEGIN
+  RETURN QUERY
+  SELECT cm.id, cm.sender_id, cm.receiver_id, cm.content, cm.created_at
+  FROM public.chat_messages cm
+  WHERE (cm.sender_id = p_user_id AND cm.receiver_id = p_other_user_id)
+     OR (cm.sender_id = p_other_user_id AND cm.receiver_id = p_user_id)
+  ORDER BY cm.created_at ASC;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Grant necessary permissions
+GRANT USAGE ON SCHEMA public TO authenticated;
+GRANT ALL ON public.chat_messages TO authenticated;
+GRANT EXECUTE ON FUNCTION get_chat_messages TO authenticated;
+-- Create the grabbit table
+CREATE TABLE public.grabbit (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    game_id SERIAL UNIQUE,
+    title TEXT NOT NULL,
+    image TEXT,
+    prize_amount NUMERIC(20, 8) NOT NULL,
+    prize_token TEXT NOT NULL,
+    details TEXT,
+    created_by TEXT NOT NULL, -- This will store the wallet address
+    create_date TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+    players_max INTEGER NOT NULL,
+    players_min INTEGER NOT NULL,
+    players_ready INTEGER DEFAULT 0,
+    status TEXT NOT NULL,
+    last_grab TIMESTAMP WITH TIME ZONE,
+    slapper TEXT, -- This will store the wallet address
+    winner TEXT, -- This will store the wallet address
+    end_time TIMESTAMP WITH TIME ZONE,
+    start_time TIMESTAMP WITH TIME ZONE,
+    free_grabs INTEGER DEFAULT 0,
+    free_slaps INTEGER DEFAULT 0,
+    free_sneaks INTEGER DEFAULT 0
+);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_grabbit_created_by ON public.grabbit(created_by);
+CREATE INDEX idx_grabbit_status ON public.grabbit(status);
+CREATE INDEX idx_grabbit_start_time ON public.grabbit(start_time);
+CREATE INDEX idx_grabbit_end_time ON public.grabbit(end_time);
+CREATE INDEX idx_grabbit_game_id ON public.grabbit(game_id);
+
+-- Add a check constraint to ensure players_min <= players_max
+ALTER TABLE public.grabbit
+ADD CONSTRAINT check_players_min_max
+CHECK (players_min <= players_max);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.grabbit ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Allow read access to all users"
+ON public.grabbit FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Allow insert for all users"
+ON public.grabbit FOR INSERT
+TO public
+WITH CHECK (true);
+
+CREATE POLICY "Allow update for all users"
+ON public.grabbit FOR UPDATE
+TO public
+USING (true);
+
+-- Grant necessary permissions
+GRANT SELECT, INSERT, UPDATE ON public.grabbit TO public;
+GRANT USAGE, SELECT ON SEQUENCE grabbit_game_id_seq TO public;
+
+
+-- Create the grabbit_players table
+CREATE TABLE public.grabbit_players (
+    id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+    game_id INTEGER REFERENCES public.grabbit(game_id) ON DELETE CASCADE,
+    player TEXT NOT NULL, -- This will store the wallet address
+    status TEXT NOT NULL,
+    grabs INTEGER DEFAULT 0,
+    slaps INTEGER DEFAULT 0,
+    sneaks INTEGER DEFAULT 0,
+    sneak_open BOOLEAN DEFAULT false,
+    seat_expire TIMESTAMP WITH TIME ZONE,
+    grabs_used INTEGER DEFAULT 0,
+    slaps_used INTEGER DEFAULT 0,
+    sneaks_used INTEGER DEFAULT 0
+);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_grabbit_players_game_id ON public.grabbit_players(game_id);
+CREATE INDEX idx_grabbit_players_player ON public.grabbit_players(player);
+CREATE INDEX idx_grabbit_players_status ON public.grabbit_players(status);
+
+-- Add a unique constraint to prevent duplicate entries for a player in a game
+ALTER TABLE public.grabbit_players
+ADD CONSTRAINT unique_player_per_game UNIQUE (game_id, player);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.grabbit_players ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+CREATE POLICY "Allow read access to all users"
+ON public.grabbit_players FOR SELECT
+TO public
+USING (true);
+
+CREATE POLICY "Allow insert for all users"
+ON public.grabbit_players FOR INSERT
+TO public
+WITH CHECK (true);
+
+CREATE POLICY "Allow update for all users"
+ON public.grabbit_players FOR UPDATE
+TO public
+USING (true);
+
+-- Grant necessary permissions
+GRANT SELECT, INSERT, UPDATE ON public.grabbit_players TO public;
+
+-- Create a function to update players_ready in the grabbit table
+CREATE OR REPLACE FUNCTION update_players_ready()
+RETURNS TRIGGER AS $$
+BEGIN
+    IF (TG_OP = 'INSERT' AND NEW.status = 'ready') OR
+       (TG_OP = 'UPDATE' AND NEW.status = 'ready' AND OLD.status != 'ready') THEN
+        UPDATE public.grabbit
+        SET players_ready = players_ready + 1
+        WHERE game_id = NEW.game_id;
+    ELSIF (TG_OP = 'DELETE' AND OLD.status = 'ready') OR
+          (TG_OP = 'UPDATE' AND NEW.status != 'ready' AND OLD.status = 'ready') THEN
+        UPDATE public.grabbit
+        SET players_ready = players_ready - 1
+        WHERE game_id = OLD.game_id;
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+
+-- Create a trigger to automatically update players_ready
+CREATE TRIGGER update_players_ready_trigger
+AFTER INSERT OR UPDATE OR DELETE ON public.grabbit_players
+FOR EACH ROW EXECUTE FUNCTION update_players_ready();
+
+-- Create the grabbit_profile table
+CREATE TABLE public.grabbit_profile (
+  id UUID DEFAULT uuid_generate_v4() PRIMARY KEY,
+  public_key TEXT NOT NULL UNIQUE,
+  grabs INTEGER DEFAULT 0,
+  slaps INTEGER DEFAULT 0,
+  sneaks INTEGER DEFAULT 0,
+  games_played INTEGER DEFAULT 0,
+  games_won INTEGER DEFAULT 0,
+  in_game INTEGER DEFAULT 0,
+  created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
+  updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
+);
+
+-- Add indexes for better query performance
+CREATE INDEX idx_grabbit_profile_public_key ON public.grabbit_profile(public_key);
+
+-- Enable Row Level Security (RLS)
+ALTER TABLE public.grabbit_profile ENABLE ROW LEVEL SECURITY;
+
+-- Create policies
+-- Note: In a Web3 app, we typically don't restrict read access to profiles
+CREATE POLICY "Anyone can view grabbit profiles"
+ON public.grabbit_profile FOR SELECT
+TO public
+USING (true);
+
+-- For updates, we'll rely on application-level authentication
+CREATE POLICY "Application can update grabbit profiles"
+ON public.grabbit_profile FOR UPDATE
+TO public
+USING (true);
+
+-- Create a function to update the profile after each game
+CREATE OR REPLACE FUNCTION update_grabbit_profile()
+RETURNS TRIGGER AS $$
+BEGIN
+  -- Ensure the profile exists
+  INSERT INTO public.grabbit_profile (public_key)
+  VALUES (NEW.player)
+  ON CONFLICT (public_key) DO NOTHING;
+
+  -- Update the profile
+  UPDATE public.grabbit_profile
+  SET
+    grabs = grabs + NEW.grabs_used,
+    slaps = slaps + NEW.slaps_used,
+    sneaks = sneaks + NEW.sneaks_used,
+    games_played = games_played + 1,
+    games_won = games_won + CASE WHEN NEW.player = (SELECT winner FROM public.grabbit WHERE game_id = NEW.game_id) THEN 1 ELSE 0 END,
+    updated_at = NOW()
+  WHERE public_key = NEW.player;
+
+  RETURN NEW;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER;
+
+-- Create a trigger to call the update function after each game
+CREATE TRIGGER update_grabbit_profile_trigger
+AFTER INSERT ON public.grabbit_players
+FOR EACH ROW
+EXECUTE FUNCTION update_grabbit_profile();
+
+-- Grant necessary permissions
+GRANT USAGE ON SCHEMA public TO public;
+GRANT ALL ON public.grabbit_profile TO public;
+GRANT EXECUTE ON FUNCTION update_grabbit_profile TO public;
+
