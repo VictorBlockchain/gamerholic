@@ -6,11 +6,12 @@ import Link from "next/link"
 import { usePathname } from "next/navigation"
 import { PopupMenu } from "@/components/popup-menu"
 import { cn } from "@/lib/utils"
-import { Solitreo } from "next/font/google"
+import { useWallet } from "@solana/wallet-adapter-react"
 
 export function BottomNav() {
   const pathname = usePathname()
   const [activePopup, setActivePopup] = useState<string | null>(null)
+  const { publicKey } = useWallet()
   
   const createItems = [
     { label: "Arcade Game", href: "/create-game", icon: <Gamepad className="h-6 w-6" /> },
@@ -73,15 +74,18 @@ export function BottomNav() {
             <span className="text-xs mt-1">Games</span>
           </button>
         </li>
-        <li>
-          <Link
-            href="/profile"
-            className={`flex flex-col items-center ${pathname === "/profile" ? "text-primary" : "text-muted-foreground"}`}
-          >
-            <User size={24} className="text-primary" />
-            <span className="text-xs mt-1">Profile</span>
-          </Link>
-        </li>
+        {publicKey && (
+                <li>
+                <Link
+                  href="/profile"
+                  className={`flex flex-col items-center ${pathname === "/profile" ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  <User size={24} className="text-primary" />
+                  <span className="text-xs mt-1">Profile</span>
+                </Link>
+              </li>
+        )}
+      
       </ul>
       <PopupMenu items={createItems} isOpen={activePopup === "create"} onClose={() => setActivePopup(null)} />
       <PopupMenu items={discoverItems} isOpen={activePopup === "discover"} onClose={() => setActivePopup(null)} />
