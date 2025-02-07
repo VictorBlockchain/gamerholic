@@ -84,6 +84,7 @@ export default function ProfilePage() {
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
   const [avatarFile, setAvatarFile]:any = useState('')
+  const [balance, setBalance] = useState({ sol: 0, game: 0 })
   
   useEffect(() => {
     if (publicKey) {
@@ -448,7 +449,7 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Credits</CardTitle>
+              <CardTitle>Balance <small>SOL</small></CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{credits}</p>
@@ -480,7 +481,7 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Earnings</CardTitle>
+              <CardTitle>Earnings <small>SOL</small></CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{testerEarnings.toFixed(2)}</p>
@@ -695,7 +696,7 @@ export default function ProfilePage() {
           isOpen={isWithdrawModalOpen}
           onClose={() => setIsWithdrawModalOpen(false)}
           onWithdraw={handleWithdraw}
-          maxAmount={totalEarnings}
+          balance={balance}
         />
         <DepositModal
           isOpen={isDepositModalOpen}
