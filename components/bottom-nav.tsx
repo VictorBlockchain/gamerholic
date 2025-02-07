@@ -76,15 +76,17 @@ export function BottomNav() {
             <span className="text-xs mt-1">Games</span>
           </button>
         </li>
-        <li>
-          <Link
-            href={`/profile/${publicKey}`}
-            className={`flex flex-col items-center ${pathname === "/profile" ? "text-primary" : "text-muted-foreground"}`}
-          >
-            <User size={24} className="text-primary" />
-            <span className="text-xs mt-1">Profile</span>
-          </Link>
-        </li>
+        {publicKey && (
+                <li>
+                <Link
+                  href={`/profile/${publicKey}`}
+                  className={`flex flex-col items-center ${pathname === "/profile" ? "text-primary" : "text-muted-foreground"}`}
+                >
+                  <User size={24} className="text-primary" />
+                  <span className="text-xs mt-1">Profile</span>
+                </Link>
+              </li>
+        )}
       </ul>
       <PopupMenu
         items={createItems}
