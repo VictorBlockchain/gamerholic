@@ -148,11 +148,16 @@ export default function GrabbitDiscovery() {
               <span>Crypto Rewards</span>
             </div>
           </div>
-          {showCreatePractice  && (
+          {showCreatePractice && publicKey  && (
                     <div className="text-center mt-8">
                     <Button className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-2 px-4 rounded-full" onClick={handleCreatePractice} >
                         Create Practice Game
                     </Button>
+                </div>
+          )}
+          {!publicKey  && (
+                    <div className="text-center mt-8">
+                    <h3 className="text-center">connect wallet to create game</h3>
                 </div>
           )}
         

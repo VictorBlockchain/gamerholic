@@ -42,7 +42,7 @@ export function Header() {
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
         <DropdownMenuItem asChild>
-          <Link href="/profile">Profile</Link>
+          <Link href={`/profile/${publicKey}`}>Profile</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
           <Link href="/my-support-tickets">Support Tickets</Link>
