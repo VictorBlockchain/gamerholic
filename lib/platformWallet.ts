@@ -244,7 +244,7 @@ export async function getPlatformWallet(): Promise<{ success:boolean, wallet_pla
   .from('platform_settings')
   .select('platform_wallet_address, payment_wallet')
   .limit(1)
-  .single();
+  .maybeSingle();
   if (existingEntry) {
     console.log('Address already exists:', existingEntry.platform_wallet_address);
     return { success:true, wallet_platform: existingEntry.platform_wallet_address, wallet_payment:existingEntry.payment_wallet };
@@ -320,7 +320,7 @@ export async function generatePlatformWallet(): Promise<{ success:boolean, messa
       .from('platform_settings')
       .select('platform_wallet_address, encrypted_private_key, iv')
       .limit(1)
-      .single();
+      .maybeSingle();
 
     if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "No rows found" error
       console.error('Error checking existing wallet:', fetchError);

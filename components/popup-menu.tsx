@@ -13,14 +13,16 @@ interface PopupMenuProps {
   items: PopupMenuItem[]
   isOpen: boolean
   onClose: () => void
+  setActivePopup: React.Dispatch<React.SetStateAction<string | null>>
 }
 
-export function PopupMenu({ items, isOpen, onClose }: PopupMenuProps) {
+export function PopupMenu({ items, isOpen, onClose, setActivePopup }: PopupMenuProps) {
   return (
-    <AnimatePresence>
+    <AnimatePresence mode="wait">
       {isOpen && (
         <>
           <motion.div
+            key="overlay"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
@@ -28,6 +30,7 @@ export function PopupMenu({ items, isOpen, onClose }: PopupMenuProps) {
             onClick={onClose}
           />
           <motion.div
+            key="popup"
             initial={{ opacity: 0, y: 50 }}
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: 50 }}
@@ -35,7 +38,14 @@ export function PopupMenu({ items, isOpen, onClose }: PopupMenuProps) {
           >
             <div className="grid grid-cols-3 gap-4">
               {items.map((item, index) => (
-                <Link key={index} href={item.href} onClick={onClose}>
+                <Link
+                  key={index}
+                  href={item.href}
+                  onClick={() => {
+                    onClose()
+                    setActivePopup(null)
+                  }}
+                >
                   <Button
                     variant="ghost"
                     className="w-full h-full flex flex-col items-center justify-center text-primary hover:text-primary-foreground hover:bg-primary/20 transition-colors"

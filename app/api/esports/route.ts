@@ -146,7 +146,7 @@ export async function POST(req: Request) {
             const winner = gameData.player1score > gameData.player2score ? gameData.player1 : gameData.player2;
             const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1;
             const amount = 0.1; // Example amount to transfer in SOL
-
+            
             await transferToken(
                 winner === gameData.player1 ? player1PrivateKey : player2PrivateKey,
                 [winner, loser],

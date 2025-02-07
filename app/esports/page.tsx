@@ -21,7 +21,7 @@ import {
 import {
     // getDepositWalletBalance,
     searchUsers,
-    generateDepositWallet,
+    // generateDepositWallet,
   } from "@/lib/platformWallet"
 import { Upload } from "lucide-react"
 import { Label } from "@/components/ui/label"

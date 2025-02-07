@@ -27,14 +27,15 @@ export default function DiscoverPage() {
   const [boostedGames, setBoostedGames] = useState<Game[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [games, setGames] = useState<Game[]>([])
+  const [isClient, setIsClient] = useState(false)
 
   useEffect(() => {
     fetchBoostedGames()
     fetchGames()
   }, [])
-
+  
   const fetchBoostedGames = async () => {
-    const { data, error } = await supabase
+    const { data, error }:any = await supabase
       .from("games")
       .select("id, title, thumbnail_image, play_fee, top_payout, high_score, top_scorer, boosts")
       .gt("boosts", 0)
@@ -47,9 +48,9 @@ export default function DiscoverPage() {
       setBoostedGames(data)
     }
   }
-
+  
   const fetchGames = async () => {
-    const { data, error } = await supabase
+    const { data, error }:any = await supabase
       .from("games")
       .select("id, title, thumbnail_image, play_fee, top_payout, high_score, top_scorer")
       .order("created_at", { ascending: false })
@@ -60,6 +61,10 @@ export default function DiscoverPage() {
       setGames(data)
     }
   }
+  
+  useEffect(() => {
+    setIsClient(true)
+  }, [])
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -132,13 +137,14 @@ export default function DiscoverPage() {
             <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 text-muted-foreground" />
           </div>
         </motion.section>
-
-        <motion.section initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.6, duration: 0.5 }}>
+        
+      {games && games.length>0 && (
+        <section>
           <h2 className="text-2xl font-semibold mb-4 text-secondary">All Games</h2>
           <GameTable games={games} searchTerm={searchTerm} />
-        </motion.section>
+        </section>
+      )}
       </main>
     </div>
   )
 }
-

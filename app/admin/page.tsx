@@ -59,9 +59,9 @@ export default function AdminPage() {
   
   useEffect(() => {
     if (publicKey) {
-      fetchData()
-      fetchSupportTickets()
-      checkSuperAdminStatus()
+      // fetchData()
+      // fetchSupportTickets()
+      // checkSuperAdminStatus()
     }
   }, [publicKey])
   

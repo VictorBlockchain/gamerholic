@@ -27,7 +27,7 @@ interface Game {
 }
 
 interface GameTableProps {
-  games: Game[]
+  games: any
   searchTerm: string
 }
 

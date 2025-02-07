@@ -16,7 +16,7 @@ class CryptoManager {
       this.ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex");
     }
   }
-
+  
   encrypt(text: string): { iv: string; encrypted: string } {
     const iv = crypto.randomBytes(IV_LENGTH);
     const cipher = crypto.createCipheriv("aes-256-cbc", this.ENCRYPTION_KEY, iv);

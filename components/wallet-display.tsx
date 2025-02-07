@@ -26,12 +26,18 @@ export function WalletDisplay() {
 
   const fetchCredits = async () => {
     if (publicKey) {
-      const { data, error } = await supabase.from("users").select("credits").eq("publicKey", publicKey.toBase58()).single()
+      const { data, error }:any = await supabase.from("users").select("credits").eq("publicKey", publicKey.toBase58()).maybeSingle()
 
       if (error) {
         console.error("Error fetching user credits:", error)
       } else {
-        setCredits(data.credits || 0)
+        if(data){
+          setCredits(data.credits)
+
+        }else{
+          setCredits(0)
+
+        }
       }
     }
   }

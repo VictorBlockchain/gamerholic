@@ -67,8 +67,8 @@ async function checkTableExists(tableName: string): Promise<boolean> {
       .from("information_schema.tables")
       .select()
       .eq("table_name", tableName)
-      .single()
-
+      .maybeSingle()
+    
     if (error) throw error
     return data !== null
   } catch (error) {

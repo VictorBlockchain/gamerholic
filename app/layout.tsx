@@ -8,7 +8,7 @@ import { BottomNav } from "@/components/bottom-nav"
 import dynamic from "next/dynamic"
 import type React from "react" // Import React
 import { useEffect } from "react"
-import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
+// import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
 import { supabase } from "@/lib/supabase"
 
 const WalletProviderComponent = dynamic(
@@ -30,7 +30,7 @@ export default function RootLayout({
   children: React.ReactNode
 }) {
   useEffect(() => {
-    initializePlatformWalletOnLoad().catch(console.error)
+    // initializePlatformWalletOnLoad().catch(console.error)
   }, [])
 
   useEffect(() => {
