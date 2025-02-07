@@ -903,8 +903,8 @@ const fetchEsportsRecords = async () => {
         <Tabs defaultValue="chat" className="w-full">
           <TabsList className="grid w-full grid-cols-3 mb-8">
             <TabsTrigger value="chat" className="text-lg">Chat</TabsTrigger>
-            <TabsTrigger value="pending" className="text-lg" onClick={fetchPendingChallenges}>Pending Challenges</TabsTrigger>
-            <TabsTrigger value="history" className="text-lg">Game History</TabsTrigger>
+            <TabsTrigger value="pending" className="text-lg" onClick={fetchPendingChallenges}>Pending</TabsTrigger>
+            <TabsTrigger value="history" className="text-lg">History</TabsTrigger>
           </TabsList>
           <TabsContent value="chat">
             <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
