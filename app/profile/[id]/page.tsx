@@ -19,6 +19,20 @@ import { toast } from "@/components/ui/use-toast"
 import { GamesBeingTested } from "@/components/games-being-tested"
 import { WithdrawEarningsModal } from "@/components/withdraw-earnings-modal"
 import { DepositModal } from "@/components/deposit-modal"
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import {
+  // getDepositWalletBalance,
+  searchUsers,
+  generateDepositWallet,
+} from "@/lib/platformWallet"
 
 interface GameHistory {
   id: any
@@ -53,7 +67,6 @@ export default function ProfilePage() {
   const [testerEarnings, setTesterEarnings] = useState(0)
   const [depositAddress, setDepositAddress] = useState("")
   const [isUploading, setIsUploading] = useState(false)
-  const [errorMessage, setErrorMessage] = useState<string | null>(null)
   const [isGeneratingAddress, setIsGeneratingAddress] = useState(false)
   const [gamesBeingTested, setGamesBeingTested] = useState<TestingGame[]>([])
   const [achievements, setAchievements] = useState([
@@ -63,7 +76,15 @@ export default function ProfilePage() {
   ])
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false)
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
-
+  
+  const [userData, setUserData]:any = useState<Partial<User>>({})
+  const [showUserNameModal, setShowUserNameModal] = useState(false)
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
+  const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
+  const [avatarFile, setAvatarFile]:any = useState('')
+  
   useEffect(() => {
     if (publicKey) {
       fetchUserData()
@@ -96,6 +117,12 @@ export default function ProfilePage() {
       setCredits(data.credits || 0)
       setTotalEarnings(data.total_earnings || 0)
       setTesterEarnings(data.tester_earnings || 0)
+      setUserData({
+        userid: data.id,
+        username: data.username,
+        deposit_wallet: data.deposit_wallet,
+        avatar: data.avatar,
+      });
     }
   }
 
@@ -330,6 +357,57 @@ export default function ProfilePage() {
     return <div>Please connect your wallet to view your profile.</div>
   }
 
+  const updateUserAvatar = async (publicKey:any, avatarUrl:any) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ avatar_url: avatarUrl })
+      .eq('publicKey', publicKey);
+      setAvatarFile(avatarUrl)
+    if (error) {
+      console.error("Error updating avatar:", error);
+    } else {
+      console.log("Avatar updated successfully!");
+    }
+  };
+  
+    const handleSetUserName = async () =>{
+    
+      let name = userData.name
+      
+      let data_wallet:any = await generateDepositWallet(publicKey)
+      if(data_wallet.success){
+      
+          const { data, error } = await supabase
+          .from("users")
+          .update({ username: name }) // Updating the username
+          .eq("publicKey", publicKey);       // Condition to match the publicKey
+          
+          if (error) {
+              // console.error("Update Error:", error);
+              handleErrorNotification("theres an error " + error)
+          } else {
+              // console.log("Username updated successfully:", data);
+              setShowUserNameModal(false)
+              handleSuccessNotification("user name updated")
+          }
+      
+      }else{
+          handleErrorNotification("theres an error " + data_wallet.message)
+      
+      }
+    
+    }
+  
+    const handleSuccessNotification = (message: string) => {
+      setSuccessMessage(message)
+      setShowSuccessModal(true)
+    }
+    
+    const handleErrorNotification = (message:string) => {
+      setErrorMessage(message)
+      setShowErrorModal(true)
+    }
+
   return (
     <div className="min-h-screen bg-background text-foreground">
       <Header />
@@ -378,7 +456,7 @@ export default function ProfilePage() {
                 onClick={() => setIsDepositModalOpen(true)}
                 className="w-full mt-4 bg-gradient-to-r from-red-400 to-blue-500 hover:from-red-500 hover:to-blue-600"
               >
-                <Coins className="mr-2 h-4 w-4" /> Withdraw SOL
+                <Coins className="mr-2 h-4 w-4" /> Deposit
               </Button>
               {/* <Button onClick={() => setIsDepositModalOpen(true)}>
                       <Coins className="mr-2 h-4 w-4" />
@@ -396,7 +474,7 @@ export default function ProfilePage() {
                 onClick={() => setIsWithdrawModalOpen(true)}
                 className="w-full mt-4 bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600"
               >
-                <Coins className="mr-2 h-4 w-4" /> Withdraw Earnings
+                <Coins className="mr-2 h-4 w-4" /> Withdraw
               </Button>
             </CardContent>
           </Card>
@@ -624,6 +702,82 @@ export default function ProfilePage() {
           onClose={() => setIsDepositModalOpen(false)}
           depositAddress={depositAddress}
         />
+                <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
+      <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
+        <DialogHeader>
+          <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
+          <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-6 py-4">
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
+              <div className="flex items-center space-x-4">
+                <Avatar className="w-24 h-24">
+                  <AvatarImage src={avatarFile} />
+                  <AvatarFallback className="bg-primary/20 text-primary text-2xl">
+                    {userData.name ? userData.name[0].toUpperCase() : "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <Label htmlFor="avatar-upload" className="cursor-pointer">
+                    <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                      <Upload size={16} />
+                      <span>Upload Avatar</span>
+                    </div>
+                  </Label>
+                  <Input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
+              <div className="grid gap-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  value={userData.name || ""}
+                  onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                  placeholder="e.g. CyberNinja"
+                  className="bg-background/50 border-primary/20"
+                />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                Click 'Update Profile' to generate your unique deposit address.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setShowUserNameModal(false)} variant="outline">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSetUserName}
+            type="submit"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            Update Profile
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
         <motion.div
           className="fixed bottom-8 right-8"
           initial={{ scale: 0 }}
