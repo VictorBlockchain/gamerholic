@@ -111,6 +111,7 @@ export default function GrabbitDiscovery() {
         })
     })
     const data = await response.json();
+    console.log(data)
     if(data.success){
         setShowSuccessModal(true)
         setSuccessMessage('practice game created')
@@ -174,7 +175,10 @@ export default function GrabbitDiscovery() {
             </div>
             
             <div className="flex justify-center mt-8">
-                <Pagination currentPage={currentPage} totalPages={totalPages} onPageChange={setCurrentPage} />
+                <Pagination currentpage={currentPage} totalpages={totalPages} />
+                {/*original, removed due to brower error */}
+                {/* <Pagination currentpage={currentPage} totalpages={totalPages} onPageChange={setCurrentPage} /> */}
+
             </div>
             
             <div className="text-center mt-8">

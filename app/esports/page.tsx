@@ -21,7 +21,7 @@ import {
 import {
     // getDepositWalletBalance,
     searchUsers,
-    // generateDepositWallet,
+    generateDepositWallet,
   } from "@/lib/platformWallet"
 import { Upload } from "lucide-react"
 import { Label } from "@/components/ui/label"
@@ -246,6 +246,7 @@ const EsportsPage: React.FC = () => {
   }
 
   const handleAvatarUpload = async (event:any) => {
+    console.log("uploading")
     const file = event.target.files?.[0];
     if (file) {
       const fileName = `${Date.now()}_${file.name}`; // Unique filename
@@ -257,7 +258,7 @@ const EsportsPage: React.FC = () => {
         console.error("Upload Error:", error);
       } else {
         console.log("File uploaded successfully:", data);
-        let url = 'https://eixihegqhsgpxgoavnzw.supabase.co/storage/v1/object/public/'+data.fullPath
+        let url = 'https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/'+data.fullPath
         await updateUserAvatar(publicKey, url);
       }
     }

@@ -54,7 +54,7 @@ export async function POST(req: Request) {
     
     const body = await req.json();
     const { userId } = body;
-    
+    console.log("working")
     const { data, error }: any = await supabase
       .from('grabbit')
       .select('*')

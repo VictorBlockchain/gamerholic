@@ -7,12 +7,14 @@ const connection = new Connection("https://api.mainnet-beta.solana.com")
 let platformWallet: PublicKey | null = null
 
 async function initializePlatformWallet(retries = 3): Promise<void> {
-  for (let i = 0; i < retries; i++) {
+  // for (let i = 0; i < retries; i++) {
     try {
-      const { data, error } = await supabase.from("platform_settings").select("platform_wallet_address").single()
+      const { data, error } = await supabase.from("platform_settings")
+      .select("platform_wallet_address")
+      .maybeSingle()
 
-      if (error) throw error
-
+      // if (error) throw error
+      
       if (data && data.platform_wallet_address) {
         platformWallet = new PublicKey(data.platform_wallet_address)
         console.log("Platform wallet initialized successfully")
@@ -21,19 +23,19 @@ async function initializePlatformWallet(retries = 3): Promise<void> {
         throw new Error("Platform wallet address not found in database")
       }
     } catch (error) {
-      console.error(`Attempt ${i + 1} failed to initialize platform wallet:`, error)
-      if (i === retries - 1) {
-        throw new Error("Failed to initialize platform wallet after multiple attempts")
-      }
-      await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1))) // Exponential backoff
+      // console.error(`Attempt ${i + 1} failed to initialize platform wallet:`, error)
+      // if (i === retries - 1) {
+      //   throw new Error("Failed to initialize platform wallet after multiple attempts")
+      // }
+      // await new Promise((resolve) => setTimeout(resolve, 1000 * (i + 1))) // Exponential backoff
     }
-  }
+  // }
 }
 
 // Call this function when your application starts
-initializePlatformWallet().catch((error) => {
-  console.error("Failed to initialize platform wallet on startup:", error)
-})
+// initializePlatformWallet().catch((error) => {
+//   console.error("Failed to initialize platform wallet on startup:", error)
+// })
 
 // Use environment variables for encryption key and IV
 const ENCRYPTION_KEY = process.env.ENCRYPTION_KEY!
@@ -131,99 +133,99 @@ export async function createDepositAddress(userId: string): Promise<string> {
   }
 }
 
-export async function monitorAndSweepDeposits() {
-  if (!platformWallet) {
-    console.warn("Platform wallet not initialized. Attempting to initialize...")
-    try {
-      await initializePlatformWallet()
-    } catch (error) {
-      console.error("Failed to initialize platform wallet. Skipping sweep.", error)
-      return
-    }
-  }
+// export async function monitorAndSweepDeposits() {
+//   if (!platformWallet) {
+//     console.warn("Platform wallet not initialized. Attempting to initialize...")
+//     try {
+//       await initializePlatformWallet()
+//     } catch (error) {
+//       console.error("Failed to initialize platform wallet. Skipping sweep.", error)
+//       return
+//     }
+//   }
+  
+//   if (!platformWallet) {
+//     console.error("Platform wallet still not initialized after attempt. Skipping sweep.")
+//     return
+//   }
 
-  if (!platformWallet) {
-    console.error("Platform wallet still not initialized after attempt. Skipping sweep.")
-    return
-  }
+//   const { data: depositAddresses, error } = await supabase
+//     .from("user_deposit_addresses")
+//     .select("user_id, deposit_address, encrypted_private_key, iv")
 
-  const { data: depositAddresses, error } = await supabase
-    .from("user_deposit_addresses")
-    .select("user_id, deposit_address, encrypted_private_key, iv")
+//   if (error) throw error
 
-  if (error) throw error
+//   for (const address of depositAddresses) {
+//     try {
+//       const publicKey = new PublicKey(address.deposit_address)
+//       const balance = await connection.getBalance(publicKey)
 
-  for (const address of depositAddresses) {
-    try {
-      const publicKey = new PublicKey(address.deposit_address)
-      const balance = await connection.getBalance(publicKey)
+//       if (balance > 0) {
+//         await sweepFunds(address.user_id, address.deposit_address, address.encrypted_private_key, address.iv, balance)
+//       }
+//     } catch (error) {
+//       console.error(`Error processing deposit address for user ${address.user_id}: ${address.deposit_address}`, error)
+//     }
+//   }
+// }
 
-      if (balance > 0) {
-        await sweepFunds(address.user_id, address.deposit_address, address.encrypted_private_key, address.iv, balance)
-      }
-    } catch (error) {
-      console.error(`Error processing deposit address for user ${address.user_id}: ${address.deposit_address}`, error)
-    }
-  }
-}
+// async function sweepFunds(
+//   userId: string,
+//   depositAddress: string,
+//   encryptedPrivateKey: string,
+//   iv: string,
+//   amount: number,
+// ) {
+//   if (!platformWallet) {
+//     throw new Error("Platform wallet not initialized")
+//   }
+  
+//   let fromPublicKey: PublicKey
+//   try {
+//     fromPublicKey = new PublicKey(depositAddress)
+//   } catch (error) {
+//     throw new Error(`Invalid deposit address: ${depositAddress}`)
+//   }
+  
+//   const response = await fetch("/api/decrypt", {
+//     method: "POST",
+//     headers: {
+//       "Content-Type": "application/json",
+//     },
+//     body: JSON.stringify({ encrypted: encryptedPrivateKey, iv }),
+//   })
+  
+//   if (!response.ok) {
+//     throw new Error("Failed to decrypt private key")
+//   }
+  
+//   const { decrypted: privateKeyHex } = await response.json()
+//   const privateKey = Buffer.from(privateKeyHex, "hex")
+//   const fromAccount = Keypair.fromSecretKey(privateKey)
+  
+//   const accountCreationFee = await connection.getMinimumBalanceForRentExemption(0)
+//   const amountToSweep = amount - accountCreationFee
 
-async function sweepFunds(
-  userId: string,
-  depositAddress: string,
-  encryptedPrivateKey: string,
-  iv: string,
-  amount: number,
-) {
-  if (!platformWallet) {
-    throw new Error("Platform wallet not initialized")
-  }
+//   if (amountToSweep <= 0) return // Not enough balance to sweep
 
-  let fromPublicKey: PublicKey
-  try {
-    fromPublicKey = new PublicKey(depositAddress)
-  } catch (error) {
-    throw new Error(`Invalid deposit address: ${depositAddress}`)
-  }
+//   const transaction = new Transaction().add(
+//     SystemProgram.transfer({
+//       fromPubkey: fromPublicKey,
+//       toPubkey: platformWallet,
+//       lamports: amountToSweep,
+//     }),
+//   )
 
-  const response = await fetch("/api/decrypt", {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-    },
-    body: JSON.stringify({ encrypted: encryptedPrivateKey, iv }),
-  })
+//   const signature = await connection.sendTransaction(transaction, [fromAccount])
+//   await connection.confirmTransaction(signature)
 
-  if (!response.ok) {
-    throw new Error("Failed to decrypt private key")
-  }
-
-  const { decrypted: privateKeyHex } = await response.json()
-  const privateKey = Buffer.from(privateKeyHex, "hex")
-  const fromAccount = Keypair.fromSecretKey(privateKey)
-
-  const accountCreationFee = await connection.getMinimumBalanceForRentExemption(0)
-  const amountToSweep = amount - accountCreationFee
-
-  if (amountToSweep <= 0) return // Not enough balance to sweep
-
-  const transaction = new Transaction().add(
-    SystemProgram.transfer({
-      fromPubkey: fromPublicKey,
-      toPubkey: platformWallet,
-      lamports: amountToSweep,
-    }),
-  )
-
-  const signature = await connection.sendTransaction(transaction, [fromAccount])
-  await connection.confirmTransaction(signature)
-
-  // Credit the user
-  const credits = (amountToSweep / LAMPORTS_PER_SOL) * 1000 // Convert lamports to SOL, then to credits
-  await supabase.rpc("add_user_credits", {
-    p_user_id: userId,
-    p_credits: Math.floor(credits),
-  })
-}
+//   // Credit the user
+//   const credits = (amountToSweep / LAMPORTS_PER_SOL) * 1000 // Convert lamports to SOL, then to credits
+//   await supabase.rpc("add_user_credits", {
+//     p_user_id: userId,
+//     p_credits: Math.floor(credits),
+//   })
+// }
 
 export async function encryptPlatformWallet(privateKey: string): Promise<string> {
   return await encrypt(privateKey)
@@ -234,5 +236,5 @@ export async function decryptPlatformWallet(encryptedPrivateKey: string): Promis
 }
 
 // Run this function periodically
-setInterval(monitorAndSweepDeposits, 60000) // Check every minute
+// setInterval(monitorAndSweepDeposits, 60000) // Check every minute
 
