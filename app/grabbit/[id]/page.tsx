@@ -260,7 +260,7 @@ useEffect(() => {
     const { data, error } = await supabase
       .from("poll_leader")
       .select("*")
-      .single();
+      .maybeSingle();
   
     if (error && error.message !== "No rows found") {
       console.error("Error fetching leader:", error.message);
@@ -536,7 +536,7 @@ useEffect(() => {
       .eq("game_id", gameId) // Match game_id
       .eq("player", publicKey) // Match player
       .eq("status", 1) // Match status
-      .single(); // Ensure only one record is returned
+      .maybeSingle(); // Ensure only one record is returned
 
       if(data){
         setErrorMessage('you are already in this game')
