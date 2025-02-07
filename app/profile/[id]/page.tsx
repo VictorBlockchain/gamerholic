@@ -18,12 +18,13 @@ import { motion } from "framer-motion"
 import { toast } from "@/components/ui/use-toast"
 import { GamesBeingTested } from "@/components/games-being-tested"
 import { WithdrawEarningsModal } from "@/components/withdraw-earnings-modal"
+import { DepositModal } from "@/components/deposit-modal"
 
 interface GameHistory {
-  id: string
-  title: string
-  score: number
-  played_at: string
+  id: any
+  title: any
+  score: any
+  play_date: any
 }
 
 interface CreatedGame {
@@ -61,6 +62,7 @@ export default function ProfilePage() {
     { id: 3, name: "Game Creator", description: "Create your first game", completed: false },
   ])
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false)
+  const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
 
   useEffect(() => {
     if (publicKey) {
@@ -75,12 +77,12 @@ export default function ProfilePage() {
   const fetchUserData = async () => {
     if (!publicKey) return
 
-    const { data, error } = await supabase
+    const { data, error }:any = await supabase
       .from("users")
       .select("username, avatar_url, credits, total_earnings, tester_earnings")
-      .eq("wallet", publicKey.toBase58())
-      .single()
-
+      .eq("publicKey", publicKey.toBase58())
+      .maybeSingle()
+    
     if (error) {
       console.error("Error fetching user data:", error)
       toast({
@@ -100,28 +102,29 @@ export default function ProfilePage() {
   const fetchGameHistory = async () => {
     const { data, error } = await supabase
       .from("game_history")
-      .select("id, games(title), score, played_at")
-      .eq("wallet", publicKey!.toBase58())
-      .order("played_at", { ascending: false })
-
+      .select("url_game_id, score, title, play_date")
+      .eq("player", publicKey)
+      .order("play_date", { ascending: false })
+    
     if (error) {
       console.error("Error fetching game history:", error)
     } else {
+      
       setGameHistory(
-        data.map((item) => ({
-          id: item.id,
-          title: item.games.title,
+        data.map((item:any) => ({
+          id: item.url_game_id,
+          title: item.title,
           score: item.score,
-          played_at: new Date(item.played_at).toLocaleString(),
+          play_date: new Date(item.play_at).toLocaleString(),
         })),
       )
     }
   }
 
   const fetchCreatedGames = async () => {
-    const { data, error } = await supabase
+    const { data, error }:any = await supabase
       .from("games")
-      .select("id, title, earnings")
+      .select("id, title, creator_earnings")
       .eq("creator_wallet", publicKey!.toBase58())
 
     if (error) {
@@ -290,20 +293,20 @@ export default function ProfilePage() {
       }
 
       const { data, error } = await supabase
-        .from("user_deposit_addresses")
-        .select("deposit_address")
-        .eq("user_id", userId)
+        .from("users")
+        .select("deposit_wallet")
+        .eq("publicKey", userId)
         .single()
-
+      
       if (error) {
-        if (error.code === "PGRST116") {
-          const newAddress = await createDepositAddress(userId)
-          setDepositAddress(newAddress)
-        } else {
-          throw error
-        }
+        // if (error.code === "PGRST116") {
+        //   const newAddress = await createDepositAddress(userId)
+        //   setDepositAddress(newAddress)
+        // } else {
+        //   throw error
+        // }
       } else {
-        setDepositAddress(data.deposit_address)
+        setDepositAddress(data.deposit_wallet)
       }
 
       toast({
@@ -371,6 +374,16 @@ export default function ProfilePage() {
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{credits}</p>
+              <Button
+                onClick={() => setIsDepositModalOpen(true)}
+                className="w-full mt-4 bg-gradient-to-r from-red-400 to-blue-500 hover:from-red-500 hover:to-blue-600"
+              >
+                <Coins className="mr-2 h-4 w-4" /> Withdraw SOL
+              </Button>
+              {/* <Button onClick={() => setIsDepositModalOpen(true)}>
+                      <Coins className="mr-2 h-4 w-4" />
+                      Deposit SOL
+                    </Button> */}
             </CardContent>
           </Card>
           <Card>
@@ -606,7 +619,11 @@ export default function ProfilePage() {
           onWithdraw={handleWithdraw}
           maxAmount={totalEarnings}
         />
-
+        <DepositModal
+          isOpen={isDepositModalOpen}
+          onClose={() => setIsDepositModalOpen(false)}
+          depositAddress={depositAddress}
+        />
         <motion.div
           className="fixed bottom-8 right-8"
           initial={{ scale: 0 }}

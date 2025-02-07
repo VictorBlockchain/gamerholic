@@ -276,12 +276,14 @@ export async function generateDepositWallet(publicKey:any): Promise<{ success:bo
     const resp:any = await response.json()
     const address = resp.address
     const encryptedPrivateKey = resp.key
+    const iv = resp.iv
     
     const { data, error } = await supabase
     .from("users")
     .update({ 
       deposit_wallet: address, 
-      deposit_wallet_encryptedKey: encryptedPrivateKey 
+      deposit_wallet_encryptedKey: encryptedPrivateKey,
+      iv:iv 
     })
     .eq("publicKey", publicKey); // Condition to match the publicKey
   

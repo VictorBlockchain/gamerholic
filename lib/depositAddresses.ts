@@ -125,7 +125,7 @@ export async function createDepositAddress(userId: string): Promise<string> {
     })
     
     if (error) throw error
-
+    
     return publicKey
   } catch (error) {
     console.error("Error creating deposit address:", error)
