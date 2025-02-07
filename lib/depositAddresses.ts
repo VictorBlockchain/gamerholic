@@ -113,7 +113,7 @@ export async function createDepositAddress(userId: string): Promise<string> {
       throw new Error("Failed to generate deposit address")
     }
     
-    const { iv, key: encryptedPrivateKey } = await response.json()
+    const { iv: iv, key: encryptedPrivateKey } = await response.json()
     const keypair = Keypair.fromSecretKey(Buffer.from(encryptedPrivateKey, "hex"))
     const publicKey = keypair.publicKey.toBase58()
     
