@@ -469,7 +469,7 @@ export default function ProfilePage() {
               <CardTitle>GAME</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{totalEarnings.toFixed(2)} GAME</p>
+              <p className="text-4xl font-bold text-center">{totalEarnings.toFixed(2)}</p>
               <Button
                 onClick={() => setIsWithdrawModalOpen(true)}
                 className="w-full mt-4 bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600"
@@ -483,7 +483,7 @@ export default function ProfilePage() {
               <CardTitle>Earnings</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{testerEarnings.toFixed(2)} SOL</p>
+              <p className="text-4xl font-bold text-center">{testerEarnings.toFixed(2)}</p>
             </CardContent>
           </Card>
         </div>
