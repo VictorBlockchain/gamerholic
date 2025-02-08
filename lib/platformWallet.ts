@@ -94,7 +94,7 @@ export async function createDepositAddress(userId: string): Promise<string> {
   try {
     // Validate the userId as a valid Solana public key
     new PublicKey(userId)
-
+    
     const { data, error } = await supabase.rpc("create_deposit_address", {
       p_user_id: userId,
     })
@@ -259,7 +259,7 @@ export async function generateDepositWallet(publicKey:any): Promise<{ success:bo
 
   try{
   
-    console.log('user public key is' + publicKey)
+    // console.log('user public key is' + publicKey)
     const response = await fetch("/api/address", {
       method: "POST",
       headers: {
@@ -272,8 +272,9 @@ export async function generateDepositWallet(publicKey:any): Promise<{ success:bo
       return {success:false, message: response.statusText}
       // throw new Error(`Failed to generate deposit wallet: ${response.statusText}`)
     }
-  
     const resp:any = await response.json()
+    console.log(resp)
+
     const address = resp.address
     const encryptedPrivateKey = resp.key
     const iv = resp.iv

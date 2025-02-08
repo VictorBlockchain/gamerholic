@@ -86,46 +86,74 @@ export default function ProfilePage() {
   const [avatarFile, setAvatarFile]:any = useState('')
   const [balance, setBalance] = useState({ sol: 0, game: 0 })
   
+  const [user_id, setUserId]:any = useState('')
+  const [user_name, setUserName]:any = useState('')
+  const [user_avater, setUserAvatar]:any = useState('')
+
+  
   useEffect(() => {
     if (publicKey) {
-      fetchUserData()
+      fetchUser()
       fetchGameHistory()
       fetchCreatedGames()
       fetchOrCreateDepositAddress()
       fetchGamesBeingTested()
     }
   }, [publicKey])
+  let isFetching = false;
 
-  const fetchUserData = async () => {
-    if (!publicKey) return
-
-    const { data, error }:any = await supabase
-      .from("users")
-      .select("username, avatar_url, credits, total_earnings, tester_earnings")
-      .eq("publicKey", publicKey.toBase58())
-      .maybeSingle()
+  const fetchUser = async () => {
+    if (isFetching) return; // Skip if a fetch is already in progress
+    isFetching = true;
     
-    if (error) {
-      console.error("Error fetching user data:", error)
-      toast({
-        title: "Error",
-        description: "Failed to fetch user data. Please try again.",
-        variant: "destructive",
-      })
-    } else {
-      setUsername(data.username || "")
-      setAvatarUrl(data.avatar_url || "")
-      setCredits(data.credits || 0)
-      setTotalEarnings(data.total_earnings || 0)
-      setTesterEarnings(data.tester_earnings || 0)
-      setUserData({
-        userid: data.id,
-        username: data.username,
-        deposit_wallet: data.deposit_wallet,
-        avatar: data.avatar,
-      });
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("publicKey", publicKey)
+        .maybeSingle();
+      
+      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
+        console.error("Select Error:", error);
+        return;
+      }
+      
+      if (!data) {
+        const { error: insertError } = await supabase
+          .from("users")
+          .insert([{ publicKey }]);
+        
+        if (insertError) {
+          console.error("Insert Error:", insertError);
+        } else {
+          setShowUserNameModal(true)
+          console.log("New publicKey inserted into the database.");
+        }
+      } else {
+          setUserId(data.id)
+          if(!data.username){
+              setShowUserNameModal(true)
+          }else{
+              setCredits(data.credits || 0)
+              setTotalEarnings(data.total_earnings || 0)
+              setTesterEarnings(data.tester_earnings || 0)
+      
+              setUserName(data.username)
+              setAvatarUrl(data.avatar_url || "")
+              setUserData({
+                  userid: data.id,
+                  username: data.username,
+                  deposit_wallet: data.deposit_wallet,
+                  avatar: data.avatar,
+                });
+          }
+      //   console.log("publicKey already exists:", data);
+      }
+    } finally {
+      isFetching = false;
     }
-  }
+  };
+
 
   const fetchGameHistory = async () => {
     const { data, error } = await supabase
@@ -209,7 +237,7 @@ export default function ProfilePage() {
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0]
-
+      
       if (file.size > 5 * 1024 * 1024) {
         toast({
           title: "Error",
@@ -218,7 +246,7 @@ export default function ProfilePage() {
         })
         return
       }
-
+      
       if (!file.type.startsWith("image/")) {
         toast({
           title: "Error",
