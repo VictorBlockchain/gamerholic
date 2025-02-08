@@ -294,32 +294,36 @@ const fetchUser = async () => {
     }
     
     if (!data) {
-      const { error: insertError } = await supabase
+      if(publicKey){
+      
+        const { error: insertError } = await supabase
         .from("users")
         .insert([{ publicKey }]);
       
-      if (insertError) {
-        console.error("Insert Error:", insertError);
-      } else {
-        setShowUserNameModal(true)
-        console.log("New publicKey inserted into the database.");
+            if (insertError) {
+              console.error("Insert Error:", insertError);
+            } else {
+              setShowUserNameModal(true)
+              console.log("New publicKey inserted into the database.");
+            }
+          } else {
+              setUserId(data.id)
+              if(!data.username){
+                  setShowUserNameModal(true)
+              }else{
+                  setUserName(data.username)
+                  setUserAvatar(data.avatar_url)
+                  setUserData({
+                      userid: data.id,
+                      username: data.username,
+                      deposit_wallet: data.deposit_wallet,
+                      avatar: data.avatar,
+                    });
+              }
+          //   console.log("publicKey already exists:", data);
+          }
       }
-    } else {
-        setUserId(data.id)
-        if(!data.username){
-            setShowUserNameModal(true)
-        }else{
-            setUserName(data.username)
-            setUserAvatar(data.avatar_url)
-            setUserData({
-                userid: data.id,
-                username: data.username,
-                deposit_wallet: data.deposit_wallet,
-                avatar: data.avatar,
-              });
-        }
-    //   console.log("publicKey already exists:", data);
-    }
+  
   } finally {
     isFetching = false;
   }

@@ -119,7 +119,8 @@ export default function ProfilePage() {
       }
       
       if (!data) {
-        const { error: insertError } = await supabase
+        if(publicKey){
+          const { error: insertError } = await supabase
           .from("users")
           .insert([{ publicKey }]);
         
@@ -149,6 +150,7 @@ export default function ProfilePage() {
           }
       //   console.log("publicKey already exists:", data);
       }
+        }
     } finally {
       isFetching = false;
     }

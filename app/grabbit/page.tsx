@@ -130,7 +130,8 @@ const fetchUser = async () => {
     }
     
     if (!data) {
-      const { error: insertError } = await supabase
+      if(publicKey){
+        const { error: insertError } = await supabase
         .from("users")
         .insert([{ publicKey }]);
       
@@ -156,6 +157,7 @@ const fetchUser = async () => {
         }
     //   console.log("publicKey already exists:", data);
     }
+      }
   } finally {
     isFetchingUser = false;
   }
