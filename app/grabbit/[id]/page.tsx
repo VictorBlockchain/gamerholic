@@ -650,7 +650,7 @@ useEffect(() => {
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
     <Header />
     <main className="container mx-auto px-4 py-8">
-    <h1 className="text-4xl font-bold text-center text-primary mb-2">Grabbit</h1>
+    <h1 className="text-4xl font-bold text-center text-primary mb-2"><a href="/grabbit">Grabbit</a></h1>
         <h2 className="text-2xl font-semibold text-center text-secondary mb-8 animate-pulse">
           <Sparkles className="inline-block mr-2" />
           Win Crypto Prizes!
