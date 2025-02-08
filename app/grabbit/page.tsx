@@ -122,7 +122,7 @@ const fetchUser = async () => {
       .from("users")
       .select("*")
       .eq("publicKey", publicKey)
-      .maybeSingle();
+      .single();
     
     if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
       console.error("Select Error:", error);

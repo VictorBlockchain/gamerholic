@@ -234,7 +234,7 @@ const EsportsPage: React.FC = () => {
     return () => clearTimeout(delayDebounceFn);
   }, [query]);
   
-
+  
   const handleSuccessNotification = (message: string) => {
     setSuccessMessage(message)
     setShowSuccessModal(true)
@@ -350,7 +350,7 @@ const fetchEsportsRecords = async () => {
         .from("users")
         .update({ username: name }) // Updating the username
         .eq("publicKey", publicKey);       // Condition to match the publicKey
-
+        
         if (error) {
             // console.error("Update Error:", error);
             handleErrorNotification("theres an error " + error)
@@ -359,7 +359,7 @@ const fetchEsportsRecords = async () => {
             setShowUserNameModal(false)
             handleSuccessNotification("user name updated")
         }
-
+    
     }else{
         handleErrorNotification("theres an error " + data_wallet.message)
     
