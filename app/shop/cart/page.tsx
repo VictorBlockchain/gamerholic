@@ -202,7 +202,7 @@ export default function CartPage() {
                       </TableCell>
                       <TableCell className="text-primary">${item.shop_items.price.toFixed(2)}</TableCell>
                       <TableCell className="text-primary">
-                        ${(item.quantity * item.shop_items.price).toFixed(2)}
+                        {(item.quantity * item.shop_items.price).toFixed(2)} GAME
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="sm" onClick={() => handleRemoveItem(item.id)}>
