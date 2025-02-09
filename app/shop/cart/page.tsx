@@ -202,7 +202,7 @@ export default function CartPage() {
                       </TableCell>
                       <TableCell className="text-primary">${item.shop_items.price.toFixed(2)}</TableCell>
                       <TableCell className="text-primary">
-                        {(item.quantity * item.shop_items.price).toFixed(2)} GAME
+                        {(item.quantity * item.shop_items.price).toFixed(2)} GAMEr
                       </TableCell>
                       <TableCell>
                         <Button variant="ghost" size="sm" onClick={() => handleRemoveItem(item.id)}>
@@ -216,7 +216,7 @@ export default function CartPage() {
             )}
           </CardContent>
           <CardFooter className="flex justify-between">
-            <div className="text-2xl font-bold text-primary">Total: ${calculateTotal().toFixed(2)}</div>
+            <div className="text-2xl font-bold text-primary">Total: {calculateTotal().toFixed(2)} GAMEr</div>
             <Button
               onClick={handleCheckout}
               disabled={cartItems.length === 0}

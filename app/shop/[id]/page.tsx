@@ -253,7 +253,7 @@ export default function ProductDetailPage() {
               ) : null}
             </div>
             <div className="space-y-6">
-              <p className="text-3xl font-bold text-primary">{item.price.toFixed(2)} GAME</p>
+              <p className="text-3xl font-bold text-primary">{item.price.toFixed(2)} GAMEr</p>
               <p className="text-gray-400">{item.description}</p>
               <div className="space-y-4">
                 <div>
