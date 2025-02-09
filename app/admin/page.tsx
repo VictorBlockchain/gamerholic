@@ -23,12 +23,39 @@ import {
   generatePlatformWallet,
   processPlatformWithdrawal,
   addAdmin,
+  updateGameFees,
 } from "@/lib/platformWallet"
 import { useConnection } from "@solana/wallet-adapter-react"
 import { motion } from "framer-motion"
-import { Wallet, Settings, Users, GamepadIcon, Plus, RefreshCw, Search, AlertTriangle, Pause, Play } from "lucide-react"
+import {
+  Wallet,
+  Settings,
+  Users,
+  GamepadIcon,
+  RefreshCw,
+  Search,
+  AlertTriangle,
+  Pause,
+  Play,
+  Trash2,
+  Edit,
+  Package,
+  Plus,
+  Link,
+} from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
-
+import { AddProductModal } from "@/components/add-product-modal"
+// import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
 
 export default function AdminPage() {
   const { publicKey } = useWallet()
@@ -53,33 +80,41 @@ export default function AdminPage() {
   const [isPlatformPaused, setIsPlatformPaused] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [newPlatformWallet, setNewPlatformWallet] = useState("")
-  const [newAdminAddress, setNewAdminAddress]:any = useState("")
+  const [newAdminAddress, setNewAdminAddress]: any = useState("")
   const [newAdminRole, setNewAdminRole] = useState("admin")
-  const [payWallet, setPaywallet] = useState('')
-  
+  const [payWallet, setPaywallet] = useState("")
+  const [showAddProductModal, setShowAddProductModal] = useState(false)
+  const [products, setProducts] = useState([])
+  const [editingProduct, setEditingProduct] = useState(null)
+  const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
+  const [productToDelete, setProductToDelete] = useState(null)
+
+  // const supabase = createClientComponentClient()
+
   useEffect(() => {
     if (publicKey) {
-      // fetchData()
-      // fetchSupportTickets()
-      // checkSuperAdminStatus()
+      fetchData()
+      fetchSupportTickets()
+      checkSuperAdminStatus()
+      fetchProducts()
     }
   }, [publicKey])
-  
+
   const fetchData = async () => {
     try {
-      const data:any = await getPlatformWallet()
+      const data: any = await getPlatformWallet()
       setNewPlatformWallet(data.wallet_platform)
       setPaywallet(data.wallet_payment)
-      let balance:any;
-      if(data.success){
+      let balance: any
+      if (data.success) {
         balance = await getPlatformWalletBalance(data.wallet_platform)
         setPlatformBalance(balance || 0)
       }
-      
+
       const credits = await getTotalUserCredits()
       setTotalUserCredits(credits)
 
-      const stats:any = await getGameStatistics()
+      const stats: any = await getGameStatistics()
       setGameStats(stats)
 
       const financial = await getFinancialStatistics()
@@ -128,20 +163,20 @@ export default function AdminPage() {
 
   const handleGeneratePlatformWallet = async () => {
     try {
-      const data:any = await generatePlatformWallet()
-      if(data.success){
+      const data: any = await generatePlatformWallet()
+      if (data.success) {
         setNewPlatformWallet(data.message)
         toast({
           title: "Success",
           description: `New platform wallet generated. Public Key: ${data.message}`,
         })
-      }else{
+      } else {
         toast({
           title: "error",
           description: `error: ${data.message}`,
         })
       }
-     console.log(data)
+      console.log(data)
     } catch (error) {
       console.error("Error generating platform wallet:", error)
       toast({
@@ -151,7 +186,7 @@ export default function AdminPage() {
       })
     }
   }
-  
+
   const handleUpdatePayWallet = async () => {
     try {
       await updatePayWallet(payWallet)
@@ -282,6 +317,178 @@ export default function AdminPage() {
     }
   }
 
+  const fetchProducts = async () => {
+    try {
+      const { data, error } = await supabase.from("shop_items").select("*").order("created_at", { ascending: false })
+      if (error) throw error
+      setProducts(data || [])
+    } catch (error) {
+      console.error("Error fetching products:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch products. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleAddProduct = async (formData: FormData) => {
+    try {
+      // Convert FormData to a plain object
+      const productData = Object.fromEntries(formData.entries())
+
+      // Parse JSON strings back to arrays
+      if (typeof productData.sizes === "string") {
+        productData.sizes = JSON.parse(productData.sizes)
+      }
+      if (typeof productData.colors === "string") {
+        productData.colors = JSON.parse(productData.colors)
+      }
+
+      // Handle file uploads
+      const imageFiles = formData.getAll("images") as File[]
+      const imageUrls = await Promise.all(
+        imageFiles.map(async (file) => {
+          const { data, error } = await supabase.storage
+            .from("product-images")
+            .upload(`${Date.now()}-${file.name}`, file)
+
+          if (error) throw error
+
+          const {
+            data: { publicUrl },
+          } = supabase.storage.from("product-images").getPublicUrl(data.path)
+
+          return publicUrl
+        }),
+      )
+
+      productData.images = imageUrls
+
+      let result
+      if (editingProduct) {
+        result = await supabase.from("shop_items").update(productData).eq("id", editingProduct.id)
+      } else {
+        result = await supabase.from("shop_items").insert(productData)
+      }
+
+      if (result.error) throw result.error
+
+      toast({
+        title: "Success",
+        description: editingProduct ? "Product updated successfully" : "Product added successfully",
+      })
+      fetchProducts()
+      setShowAddProductModal(false)
+      setEditingProduct(null)
+    } catch (error) {
+      console.error("Error adding/updating product:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add/update product. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleEditProduct = (product) => {
+    setEditingProduct(product)
+    setShowAddProductModal(true)
+  }
+
+  const handleDeleteProduct = async () => {
+    if (!productToDelete) return
+
+    try {
+      const { error } = await supabase.from("shop_items").delete().eq("id", productToDelete.id)
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Product deleted successfully",
+      })
+      fetchProducts()
+    } catch (error) {
+      console.error("Error deleting product:", error)
+      toast({
+        title: "Error",
+        description: "Failed to delete product. Please try again.",
+        variant: "destructive",
+      })
+    } finally {
+      setShowDeleteConfirmation(false)
+      setProductToDelete(null)
+    }
+  }
+
+  const handleToggleGamePause = async (gameId) => {
+    try {
+      const { data, error } = await supabase
+        .from("games")
+        .update({ is_paused: !gameStats.find((game) => game.id === gameId).is_paused })
+        .eq("id", gameId)
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Game status updated successfully",
+      })
+      fetchData()
+    } catch (error) {
+      console.error("Error updating game status:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update game status. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUpdateGameFees = async (gameId) => {
+    try {
+      await updateGameFees(gameId)
+      toast({
+        title: "Success",
+        description: "Game fees updated successfully",
+      })
+      fetchData()
+    } catch (error) {
+      console.error("Error updating game fees:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update game fees. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleResponseSubmit = async (ticketId) => {
+    try {
+      const { error } = await supabase
+        .from("support_tickets")
+        .update({ status: "closed", admin_response: responseMessage })
+        .eq("id", ticketId)
+
+      if (error) throw error
+
+      toast({
+        title: "Success",
+        description: "Ticket response submitted and closed successfully",
+      })
+      setResponseMessage("")
+      fetchSupportTickets()
+      setSelectedTicket(null)
+    } catch (error) {
+      console.error("Error submitting ticket response:", error)
+      toast({
+        title: "Error",
+        description: "Failed to submit ticket response. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   if (!publicKey) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -312,25 +519,30 @@ export default function AdminPage() {
         </motion.h1>
 
         <Tabs defaultValue="platform" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-1 md:grid-cols-4 gap-4">
+          <TabsList className="grid w-full grid-cols-1 md:grid-cols-5 gap-4">
             <TabsTrigger value="platform" className="text-lg">
               <Wallet className="mr-2 h-5 w-5" />
-              Platform Management
+              Platform 
             </TabsTrigger>
             <TabsTrigger value="games" className="text-lg">
               <GamepadIcon className="mr-2 h-5 w-5" />
-              Game Management
+              Game 
             </TabsTrigger>
             <TabsTrigger value="users" className="text-lg">
               <Users className="mr-2 h-5 w-5" />
-              User Management
+              User 
             </TabsTrigger>
             <TabsTrigger value="support" className="text-lg">
               <AlertTriangle className="mr-2 h-5 w-5" />
               Support Tickets
             </TabsTrigger>
+            <TabsTrigger value="shop" className="text-lg">
+              <Package className="mr-2 h-5 w-5" />
+              Shop 
+            </TabsTrigger>
           </TabsList>
 
+          {/* Platform Management Tab Content */}
           <TabsContent value="platform">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <Card className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-primary/20">
@@ -349,31 +561,36 @@ export default function AdminPage() {
                   </p>
                   {newPlatformWallet && (
                     <p className="text-lg">
-                      Wallet: <span className="font-bold text-primary"><small>{newPlatformWallet}</small></span>
+                      Wallet:{" "}
+                      <span className="font-bold text-primary">
+                        <small>{newPlatformWallet}</small>
+                      </span>
                     </p>
                   )}
                   <Button onClick={handleGeneratePlatformWallet} className="w-full">
                     <Plus className="mr-2 h-4 w-4" />
                     Generate New Platform Wallet
                   </Button>
-                    <div className="space-y-2">
+                  <div className="space-y-2">
                     <p className="text-lg">
-                        Pay wallet: <span className="font-bold text-primary"><small>{payWallet}</small></span>
-                      </p>
-                      <div className="space-y-2 pb-2">
-                        <Input
-                          id="dev-fee"
-                          type="text"
-                          value={payWallet}
-                          onChange={(e:any) => setPaywallet(e.target.value)}
-                        />
-                      </div>
-                      <Button onClick={handleUpdatePayWallet} className="w-full">
-                        <RefreshCw className="mr-2 h-4 w-4" />
-                        Update Pay Wallet
-                      </Button>
+                      Pay wallet:{" "}
+                      <span className="font-bold text-primary">
+                        <small>{payWallet}</small>
+                      </span>
+                    </p>
+                    <div className="space-y-2 pb-2">
+                      <Input
+                        id="dev-fee"
+                        type="text"
+                        value={payWallet}
+                        onChange={(e: any) => setPaywallet(e.target.value)}
+                      />
                     </div>
-
+                    <Button onClick={handleUpdatePayWallet} className="w-full">
+                      <RefreshCw className="mr-2 h-4 w-4" />
+                      Update Pay Wallet
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
 
@@ -479,6 +696,7 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
+          {/* Game Management Tab Content */}
           <TabsContent value="games">
             <Card className="bg-gradient-to-br from-purple-900/30 to-pink-900/30 border-primary/20">
               <CardHeader>
@@ -501,7 +719,7 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {gameStats.map((game) => (
+                    {gameStats.map((game:any) => (
                       <TableRow key={game.id}>
                         <TableCell>{game.title}</TableCell>
                         <TableCell>{game.play_count}</TableCell>
@@ -530,6 +748,7 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
+          {/* User Management Tab Content */}
           <TabsContent value="users">
             <Card className="bg-gradient-to-br from-indigo-900/30 to-blue-900/30 border-primary/20">
               <CardHeader>
@@ -561,7 +780,7 @@ export default function AdminPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {searchResults.map((user) => (
+                      {searchResults.map((user:any) => (
                         <TableRow key={user.wallet}>
                           <TableCell>{user.wallet}</TableCell>
                           <TableCell>{user.username}</TableCell>
@@ -575,6 +794,7 @@ export default function AdminPage() {
             </Card>
           </TabsContent>
 
+          {/* Support Tickets Tab Content */}
           <TabsContent value="support">
             <Card className="bg-gradient-to-br from-yellow-900/30 to-red-900/30 border-primary/20">
               <CardHeader>
@@ -664,8 +884,121 @@ export default function AdminPage() {
               </CardContent>
             </Card>
           </TabsContent>
+
+          {/* Shop Management Tab Content */}
+          <TabsContent value="shop">
+            <Card className="bg-gradient-to-br from-teal-900/30 to-emerald-900/30 border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center justify-between">
+                  <div className="flex items-center">
+                    <Package className="mr-2 h-6 w-6 text-primary" />
+                    Shop Management
+                  </div>
+                  <Button onClick={() => setShowAddProductModal(true)}>
+                    <Plus className="mr-2 h-4 w-4" />
+                    Add Product
+                  </Button>
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Image</TableHead>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Price</TableHead>
+                      <TableHead>Category</TableHead>
+                      <TableHead>Stock</TableHead>
+                      <TableHead>URL ID</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {products.map((product:any) => (
+                      <TableRow key={product.id}>
+                        <TableCell>
+                          <img
+                            src={product.images[0] || "/placeholder.svg"}
+                            alt={product.name}
+                            className="w-12 h-12 object-cover rounded-md"
+                          />
+                        </TableCell>
+                        <TableCell>{product.name}</TableCell>
+                        <TableCell>${product.price.toFixed(2)}</TableCell>
+                        <TableCell>{product.category}</TableCell>
+                        <TableCell>{product.stock_quantity}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span>{product.url_friendly_id}</span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(`/shop/${product.url_friendly_id}`)
+                                toast({
+                                  title: "Copied",
+                                  description: "URL ID copied to clipboard",
+                                })
+                              }}
+                            >
+                              <Link className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            className="mr-2"
+                            onClick={() => handleEditProduct(product)}
+                          >
+                            <Edit className="w-4 h-4 mr-1" />
+                            Edit
+                          </Button>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setProductToDelete(product)
+                              setShowDeleteConfirmation(true)
+                            }}
+                          >
+                            <Trash2 className="w-4 h-4 mr-1" />
+                            Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
         </Tabs>
       </main>
+      <AddProductModal
+        isOpen={showAddProductModal}
+        onClose={() => {
+          setShowAddProductModal(false)
+          setEditingProduct(null)
+        }}
+        onSubmit={handleAddProduct}
+        editingProduct={editingProduct}
+      />
+      <AlertDialog open={showDeleteConfirmation} onOpenChange={setShowDeleteConfirmation}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Are you sure you want to delete this product?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This action cannot be undone. This will permanently delete the product from the shop.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction onClick={handleDeleteProduct}>Delete</AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   )
 }
