@@ -28,6 +28,7 @@ import {
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
 import Image from "next/image"
+import { useParams, useRouter } from "next/navigation"
 
 interface Game {
   id: string
@@ -49,7 +50,8 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
   const [games, setGames] = useState<Game[]>([])
   const [testableGames, setTestableGames] = useState<Game[]>([])
   const { publicKey } = useWallet()
-
+  const router = useRouter()
+  
   useEffect(() => {
     fetchGames()
     fetchTestableGames()
@@ -123,7 +125,7 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
         }, 1000)
       }
     }
-
+    
     document.addEventListener("touchstart", handleTouchStart)
     document.addEventListener("touchmove", handleTouchMove)
     document.addEventListener("touchend", handleTouchEnd)
@@ -133,7 +135,12 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
       document.removeEventListener("touchmove", handleTouchMove)
       document.removeEventListener("touchend", handleTouchEnd)
     }
-  }, [isRefreshing, fetchGames, fetchTestableGames])
+  }, [isRefreshing])
+  
+  const handleViewShop = () => {
+    router.push("/shop")
+  }
+
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -256,12 +263,12 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
               </Link>
             </div>
           </section>
-
+          
                     {/* Gamerholic Merch Section */}
                     <section className="my-16 bg-gradient-to-r from-purple-900/50 to-pink-900/50 rounded-lg p-8 shadow-2xl overflow-hidden relative">
             <div className="absolute inset-0 bg-grid-white/[0.02] bg-[size:30px_30px]" />
             <div className="flex flex-col lg:flex-row items-center justify-between relative z-10 gap-8">
-              <div className="lg:w-1/2">
+              <div className="lg:w-1/2 w-full">
                 <h2 className="text-4xl font-bold mb-6 text-primary bg-clip-text text-transparent bg-gradient-to-r from-yellow-400 to-orange-500">
                   <Sparkles className="inline-block mr-2 h-10 w-10 text-yellow-400" />
                   Gamerholic Merch
@@ -285,16 +292,16 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
                     <span>Limited edition drops for collectors</span>
                   </li>
                 </ul>
-                <Button className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
+                <Button onClick={handleViewShop} className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white font-bold py-3 px-6 rounded-full text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                   <ShoppingCart className="mr-2 h-6 w-6" />
                   Shop Now
                 </Button>
               </div>
-              <div className="lg:w-1/2 max-w-md mx-auto">
+              <div className="lg:w-1/2 w-full max-w-md mx-auto mt-8 lg:mt-0">
                 <div className="relative group">
                   <div className="absolute -inset-0.5 bg-gradient-to-r from-pink-600 to-purple-600 rounded-lg blur opacity-75 group-hover:opacity-100 transition duration-1000 group-hover:duration-200 animate-tilt"></div>
                   <div className="relative">
-                    <div className="w-full pt-[100%] relative overflow-hidden rounded-lg">
+                    <div className="w-full aspect-square relative overflow-hidden rounded-lg">
                       <Image
                         src={randomMerchImage || "/placeholder.svg"}
                         alt="Gamerholic Merchandise"

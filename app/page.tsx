@@ -37,7 +37,7 @@ async function getServerSideData() {
 
 export default async function Home() {
   const { randomMerchImage } = await getServerSideData()
-
+  console.log(randomMerchImage)
   return <HomeContent randomMerchImage={randomMerchImage} />
 }
 
