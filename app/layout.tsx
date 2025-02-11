@@ -8,8 +8,8 @@ import { BottomNav } from "@/components/bottom-nav"
 import dynamic from "next/dynamic"
 import type React from "react" // Import React
 import { useEffect } from "react"
+import {Toaster} from "@/components/ui/toaster"
 // import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
-import { supabase } from "@/lib/supabase"
 
 const WalletProviderComponent = dynamic(
   () => import("../components/WalletProvider").then((mod) => mod.WalletProvider),
@@ -33,21 +33,6 @@ export default function RootLayout({
     // initializePlatformWalletOnLoad().catch(console.error)
   }, [])
 
-  useEffect(() => {
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((event, session) => {
-      if (event === "SIGNED_IN") {
-        // handle sign in event
-      } else if (event === "SIGNED_OUT") {
-        // handle sign out event
-      }
-    })
-
-    return () => {
-      subscription.unsubscribe()
-    }
-  }, [])
 
   return (
     <html lang="en" suppressHydrationWarning className="dark">
@@ -56,6 +41,7 @@ export default function RootLayout({
         <DarkThemeProvider>
           <WalletProviderComponent>
             {children}
+            <Toaster />
             <Footer />
             <BottomNav />
           </WalletProviderComponent>

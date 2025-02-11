@@ -1,12 +1,16 @@
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
+import Image from "next/image"
 import Link from "next/link"
 
 interface TestingGame {
-  id: string
+  arcade_id: number
   title: string
   assigned_at: string
   status: string
+  thumbnail: string
+  category: string
+  reward: number
 }
 
 interface GamesBeingTestedProps {
@@ -16,34 +20,35 @@ interface GamesBeingTestedProps {
 export function GamesBeingTested({ games }: GamesBeingTestedProps) {
   return (
     <div className="space-y-4">
-      {games.length === 0 ? (
-        <p>You are not currently testing any games.</p>
-      ) : (
-        <Table>
-          <TableHeader>
-            <TableRow>
-              <TableHead>Game Title</TableHead>
-              <TableHead>Assigned At</TableHead>
-              <TableHead>Status</TableHead>
-            </TableRow>
-          </TableHeader>
-          <TableBody>
-            {games.map((game) => (
-              <TableRow key={game.id}>
-                <TableCell>
-                  <Link href={`/play/${game.id}`} className="text-primary hover:underline">
-                    {game.title}
-                  </Link>
-                </TableCell>
-                <TableCell>{game.assigned_at}</TableCell>
-                <TableCell>
-                  <Badge variant={game.status === "completed" ? "success" : "default"}>{game.status}</Badge>
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      )}
+      {games.map((game) => (
+      <Link href={`/play/${game.arcade_id}`} className="text-primary hover:underline">
+        
+        <Card key={game.arcade_id}>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <CardTitle>{game.title}</CardTitle>
+              <Badge variant={game.status === "pending" ? "secondary" : "success"}>{game.status}</Badge>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="flex items-center space-x-4">
+              <Image
+                src={game.thumbnail || "/placeholder.svg"}
+                alt={game.title}
+                width={80}
+                height={80}
+                className="rounded-md object-cover"
+              />
+              <div className="flex-1">
+                <p className="text-sm text-muted-foreground mb-1">Category: {game.category}</p>
+                <p className="text-sm text-muted-foreground mb-1">Assigned: {game.assigned_at}</p>
+                <p className="text-sm font-semibold">Reward: {game.reward} SOL</p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+        </Link>
+      ))}
     </div>
   )
 }

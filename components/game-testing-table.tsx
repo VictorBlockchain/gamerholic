@@ -10,7 +10,7 @@ interface Game {
   thumbnail_image: string
   category: string
   created_at: string
-  status: string
+  status: number
   tester: string | null
 }
 
@@ -93,7 +93,7 @@ export function GameTestingTable({ games, onGameSelect }: GameTestingTableProps)
                 <TableCell>{game.status}</TableCell>
                 <TableCell>{game.tester || "Open"}</TableCell>
                 <TableCell>
-                  <Button onClick={() => onGameSelect(game)} disabled={game.status !== "pending_test"}>
+                  <Button onClick={() => onGameSelect(game)} disabled={game.status !== 1}>
                     Select for Testing
                   </Button>
                 </TableCell>

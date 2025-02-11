@@ -2,6 +2,7 @@
 
 import { useState, useEffect } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
+import { useParams } from "next/navigation"
 import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -11,7 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { withdrawUserCredits, createDepositAddress, isValidPublicKey } from "@/lib/platformWallet"
+import { withdrawUserCredits, isValidPublicKey } from "@/lib/platformWallet"
 import { DepositForm } from "@/components/deposit-form"
 import { Loader2, Upload, Gamepad, Trophy, Coins, Zap, Star } from "lucide-react"
 import { motion } from "framer-motion"
@@ -26,19 +27,14 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
-import {
-  // getDepositWalletBalance,
-  searchUsers,
-  generateDepositWallet,
-} from "@/lib/platformWallet"
+import { generateDepositWallet } from "@/lib/platformWallet"
 
 interface GameHistory {
-  id: any
-  title: any
-  score: any
-  play_date: any
+  id: string
+  title: string
+  score: number
+  play_date: string
 }
 
 interface CreatedGame {
@@ -48,10 +44,20 @@ interface CreatedGame {
 }
 
 interface TestingGame {
-  id: string
+  arcade_id: number
   title: string
   assigned_at: string
   status: string
+  thumbnail: string
+  category: string
+  reward: number
+}
+
+interface User {
+  id: string
+  username: string
+  avatar_url: string
+  deposit_wallet: string
 }
 
 export default function ProfilePage() {
@@ -76,21 +82,19 @@ export default function ProfilePage() {
   ])
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false)
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
-  
-  const [userData, setUserData]:any = useState<Partial<User>>({})
+
+  const [userData, setUserData] = useState<Partial<User>>({})
   const [showUserNameModal, setShowUserNameModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
-  const [avatarFile, setAvatarFile]:any = useState('')
+  const [avatarFile, setAvatarFile] = useState("")
   const [balance, setBalance] = useState({ sol: 0, game: 0 })
-  
-  const [user_id, setUserId]:any = useState('')
-  const [user_name, setUserName]:any = useState('')
-  const [user_avater, setUserAvatar]:any = useState('')
 
-  
+  const params = useParams()
+  const profileId = params.id as string
+
   useEffect(() => {
     if (publicKey) {
       fetchUser()
@@ -100,90 +104,78 @@ export default function ProfilePage() {
       fetchGamesBeingTested()
     }
   }, [publicKey])
-  let isFetching = false;
 
   const fetchUser = async () => {
-    if (isFetching) return; // Skip if a fetch is already in progress
-    isFetching = true;
-    
+    if (!publicKey) return
+
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("publicKey", publicKey)
-        .single();
-      
-      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
-        console.error("Select Error:", error);
-        return;
+      const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
+
+      if (error && error.code !== "PGRST116") {
+        console.error("Select Error:", error)
+        return
       }
-      
+
       if (!data) {
-        if(publicKey){
-          const { error: insertError } = await supabase
-          .from("users")
-          .insert([{ publicKey }]);
-        
+        const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
+
         if (insertError) {
-          console.error("Insert Error:", insertError);
+          console.error("Insert Error:", insertError)
         } else {
           setShowUserNameModal(true)
-          console.log("New publicKey inserted into the database.");
+          console.log("New publicKey inserted into the database.")
         }
       } else {
-          setUserId(data.id)
-          if(!data.username){
-              setShowUserNameModal(true)
-          }else{
-              setCredits(data.credits || 0)
-              setTotalEarnings(data.total_earnings || 0)
-              setTesterEarnings(data.tester_earnings || 0)
-      
-              setUserName(data.username)
-              setAvatarUrl(data.avatar_url || "")
-              setUserData({
-                  userid: data.id,
-                  username: data.username,
-                  deposit_wallet: data.deposit_wallet,
-                  avatar: data.avatar,
-                });
-          }
-      //   console.log("publicKey already exists:", data);
-      }
+        setUserData({
+          id: data.id,
+          username: data.username,
+          deposit_wallet: data.deposit_wallet,
+          avatar_url: data.avatar_url,
+        })
+        setCredits(data.credits || 0)
+        setTotalEarnings(data.total_earnings || 0)
+        setTesterEarnings(data.tester_earnings || 0)
+        setUsername(data.username || "")
+        setAvatarUrl(data.avatar_url || "")
+        if (!data.username) {
+          setShowUserNameModal(true)
         }
-    } finally {
-      isFetching = false;
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error)
     }
-  };
-
+  }
 
   const fetchGameHistory = async () => {
+    if (!publicKey) return
+
     const { data, error } = await supabase
-      .from("game_history")
-      .select("url_game_id, score, title, play_date")
-      .eq("player", publicKey)
+      .from("arcade_history")
+      .select("game_id, score, title, play_date")
+      .eq("player", publicKey.toBase58())
       .order("play_date", { ascending: false })
-    
+
     if (error) {
       console.error("Error fetching game history:", error)
     } else {
-      
       setGameHistory(
-        data.map((item:any) => ({
-          id: item.url_game_id,
+        data.map((item) => ({
+          id: item.game_id,
           title: item.title,
           score: item.score,
-          play_date: new Date(item.play_at).toLocaleString(),
+          play_date: new Date(item.play_date).toLocaleString(),
         })),
       )
     }
   }
 
   const fetchCreatedGames = async () => {
+    if (!publicKey) return
+
     const { data, error }:any = await supabase
-      .from("games")
+      .from("arcade")
       .select("id, title, creator_earnings")
-      .eq("creator_wallet", publicKey!.toBase58())
+      .eq("creator_wallet", publicKey.toBase58())
 
     if (error) {
       console.error("Error fetching created games:", error)
@@ -193,21 +185,26 @@ export default function ProfilePage() {
   }
 
   const fetchGamesBeingTested = async () => {
+    if (!publicKey) return
+
     const { data, error } = await supabase
-      .from("user_testing_games")
-      .select("id, games(id, title), assigned_at, status")
-      .eq("user_id", publicKey!.toBase58())
-      .order("assigned_at", { ascending: false })
+      .from("arcade")
+      .select("*")
+      .eq("tester", publicKey.toBase58())
+      .order("test_date", { ascending: false })
 
     if (error) {
       console.error("Error fetching games being tested:", error)
     } else {
       setGamesBeingTested(
         data.map((item) => ({
-          id: item.games.id,
-          title: item.games.title,
-          assigned_at: new Date(item.assigned_at).toLocaleString(),
+          arcade_id: item.arcade_id,
+          title: item.title,
+          assigned_at: new Date(item.test_date).toLocaleString(),
           status: item.status,
+          thumbnail: item.thumbnail_image,
+          category: item.category,
+          reward: item.reward,
         })),
       )
     }
@@ -217,7 +214,7 @@ export default function ProfilePage() {
     if (!publicKey) return
 
     try {
-      const { error } = await supabase.from("users").update({ username }).eq("wallet", publicKey.toBase58())
+      const { error } = await supabase.from("users").update({ username }).eq("publicKey", publicKey.toBase58())
 
       if (error) throw error
 
@@ -225,7 +222,7 @@ export default function ProfilePage() {
         title: "Success",
         description: "Username updated successfully!",
       })
-      await fetchUserData()
+      await fetchUser()
     } catch (error) {
       console.error("Error updating username:", error)
       toast({
@@ -239,7 +236,7 @@ export default function ProfilePage() {
   const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     if (event.target.files && event.target.files[0]) {
       const file = event.target.files[0]
-      
+
       if (file.size > 5 * 1024 * 1024) {
         toast({
           title: "Error",
@@ -248,7 +245,7 @@ export default function ProfilePage() {
         })
         return
       }
-      
+
       if (!file.type.startsWith("image/")) {
         toast({
           title: "Error",
@@ -260,7 +257,7 @@ export default function ProfilePage() {
 
       setAvatar(file)
       setAvatarPreview(URL.createObjectURL(file))
-      setErrorMessage(null)
+      setErrorMessage("")
     }
   }
 
@@ -287,7 +284,7 @@ export default function ProfilePage() {
       const { error: updateError } = await supabase
         .from("users")
         .update({ avatar_url: publicUrl })
-        .eq("wallet", publicKey.toBase58())
+        .eq("publicKey", publicKey.toBase58())
 
       if (updateError) throw updateError
 
@@ -297,7 +294,7 @@ export default function ProfilePage() {
         title: "Success",
         description: "Profile updated successfully!",
       })
-      await fetchUserData()
+      await fetchUser()
     } catch (error) {
       console.error("Error updating profile:", error)
       toast({
@@ -320,7 +317,7 @@ export default function ProfilePage() {
           title: "Success",
           description: `Successfully withdrawn ${amount} SOL`,
         })
-        await fetchUserData()
+        await fetchUser()
       } else {
         toast({
           title: "Error",
@@ -342,7 +339,7 @@ export default function ProfilePage() {
     if (!publicKey) return
 
     setIsGeneratingAddress(true)
-    setErrorMessage(null)
+    setErrorMessage("")
 
     try {
       const userId = publicKey.toBase58()
@@ -350,19 +347,10 @@ export default function ProfilePage() {
         throw new Error("Invalid public key")
       }
 
-      const { data, error } = await supabase
-        .from("users")
-        .select("deposit_wallet")
-        .eq("publicKey", userId)
-        .single()
-      
+      const { data, error } = await supabase.from("users").select("deposit_wallet").eq("publicKey", userId).single()
+
       if (error) {
-        // if (error.code === "PGRST116") {
-        //   const newAddress = await createDepositAddress(userId)
-        //   setDepositAddress(newAddress)
-        // } else {
-        //   throw error
-        // }
+        throw error
       } else {
         setDepositAddress(data.deposit_wallet)
       }
@@ -384,60 +372,52 @@ export default function ProfilePage() {
     }
   }
 
+  const updateUserAvatar = async (publicKey: string, avatarUrl: string) => {
+    const { error } = await supabase.from("users").update({ avatar_url: avatarUrl }).eq("publicKey", publicKey)
+    setAvatarFile(avatarUrl)
+    if (error) {
+      console.error("Error updating avatar:", error)
+    } else {
+      console.log("Avatar updated successfully!")
+    }
+  }
+
+  const handleSetUserName = async () => {
+    if (!publicKey) return
+
+    const name = userData.username
+
+    const data_wallet = await generateDepositWallet(publicKey.toBase58())
+    if (data_wallet.success) {
+      const { data, error } = await supabase
+        .from("users")
+        .update({ username: name })
+        .eq("publicKey", publicKey.toBase58())
+
+      if (error) {
+        handleErrorNotification("There's an error: " + error.message)
+      } else {
+        setShowUserNameModal(false)
+        handleSuccessNotification("Username updated")
+      }
+    } else {
+      handleErrorNotification("There's an error: " + data_wallet.message)
+    }
+  }
+
+  const handleSuccessNotification = (message: string) => {
+    setSuccessMessage(message)
+    setShowSuccessModal(true)
+  }
+
+  const handleErrorNotification = (message: string) => {
+    setErrorMessage(message)
+    setShowErrorModal(true)
+  }
+
   if (!publicKey) {
     return <div>Please connect your wallet to view your profile.</div>
   }
-
-  const updateUserAvatar = async (publicKey:any, avatarUrl:any) => {
-    const { error } = await supabase
-      .from('users')
-      .update({ avatar_url: avatarUrl })
-      .eq('publicKey', publicKey);
-      setAvatarFile(avatarUrl)
-    if (error) {
-      console.error("Error updating avatar:", error);
-    } else {
-      console.log("Avatar updated successfully!");
-    }
-  };
-  
-    const handleSetUserName = async () =>{
-    
-      let name = userData.name
-      
-      let data_wallet:any = await generateDepositWallet(publicKey)
-      if(data_wallet.success){
-      
-          const { data, error } = await supabase
-          .from("users")
-          .update({ username: name }) // Updating the username
-          .eq("publicKey", publicKey);       // Condition to match the publicKey
-          
-          if (error) {
-              // console.error("Update Error:", error);
-              handleErrorNotification("theres an error " + error)
-          } else {
-              // console.log("Username updated successfully:", data);
-              setShowUserNameModal(false)
-              handleSuccessNotification("user name updated")
-          }
-      
-      }else{
-          handleErrorNotification("theres an error " + data_wallet.message)
-      
-      }
-    
-    }
-  
-    const handleSuccessNotification = (message: string) => {
-      setSuccessMessage(message)
-      setShowSuccessModal(true)
-    }
-    
-    const handleErrorNotification = (message:string) => {
-      setErrorMessage(message)
-      setShowErrorModal(true)
-    }
 
   return (
     <div className="min-h-screen bg-background text-foreground">
@@ -479,7 +459,9 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Balance <small>SOL</small></CardTitle>
+              <CardTitle>
+                Balance <small>SOL</small>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{credits}</p>
@@ -489,10 +471,6 @@ export default function ProfilePage() {
               >
                 <Coins className="mr-2 h-4 w-4" /> Deposit
               </Button>
-              {/* <Button onClick={() => setIsDepositModalOpen(true)}>
-                      <Coins className="mr-2 h-4 w-4" />
-                      Deposit SOL
-                    </Button> */}
             </CardContent>
           </Card>
           <Card>
@@ -511,7 +489,9 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>Earnings <small>SOL</small></CardTitle>
+              <CardTitle>
+                Earnings <small>SOL</small>
+              </CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{testerEarnings.toFixed(2)}</p>
@@ -606,7 +586,7 @@ export default function ProfilePage() {
                             <Link href={`/play/${game.id}`} className="text-primary hover:underline font-semibold">
                               {game.title}
                             </Link>
-                            <p className="text-sm text-muted-foreground">{game.played_at}</p>
+                            <p className="text-sm text-muted-foreground">{game.play_date}</p>
                           </div>
                           <div className="flex items-center">
                             <Trophy className="w-4 h-4 mr-1 text-yellow-500" />
@@ -733,81 +713,81 @@ export default function ProfilePage() {
           onClose={() => setIsDepositModalOpen(false)}
           depositAddress={depositAddress}
         />
-                <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
-      <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
-        <DialogHeader>
-          <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
-          <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-6 py-4">
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
-              <div className="flex items-center space-x-4">
-                <Avatar className="w-24 h-24">
-                  <AvatarImage src={avatarFile} />
-                  <AvatarFallback className="bg-primary/20 text-primary text-2xl">
-                    {userData.name ? userData.name[0].toUpperCase() : "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <Label htmlFor="avatar-upload" className="cursor-pointer">
-                    <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
-                      <Upload size={16} />
-                      <span>Upload Avatar</span>
+        <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
+          <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
+            <DialogHeader>
+              <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
+              <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="w-24 h-24">
+                      <AvatarImage src={avatarFile} />
+                      <AvatarFallback className="bg-primary/20 text-primary text-2xl">
+                        {userData.username ? userData.username[0].toUpperCase() : "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <Label htmlFor="avatar-upload" className="cursor-pointer">
+                        <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                          <Upload size={16} />
+                          <span>Upload Avatar</span>
+                        </div>
+                      </Label>
+                      <Input
+                        id="avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
+                      />
                     </div>
-                  </Label>
-                  <Input
-                    id="avatar-upload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleAvatarUpload}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
-              <div className="grid gap-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  value={userData.name || ""}
-                  onChange={(e) => setUserData({ ...userData, name: e.target.value })}
-                  placeholder="e.g. CyberNinja"
-                  className="bg-background/50 border-primary/20"
-                />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
-              <p className="text-sm text-muted-foreground mb-2">
-                Click 'Update Profile' to generate your unique deposit address.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowUserNameModal(false)} variant="outline">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSetUserName}
-            type="submit"
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            Update Profile
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
+                  <div className="grid gap-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      value={userData.username || ""}
+                      onChange={(e) => setUserData({ ...userData, username: e.target.value })}
+                      placeholder="e.g. CyberNinja"
+                      className="bg-background/50 border-primary/20"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Click 'Update Profile' to generate your unique deposit address.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setShowUserNameModal(false)} variant="outline">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSetUserName}
+                type="submit"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Update Profile
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         <motion.div
           className="fixed bottom-8 right-8"

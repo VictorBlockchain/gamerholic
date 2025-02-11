@@ -10,6 +10,8 @@ import { useToast } from "@/components/ui/use-toast"
 import { GameTestingTable } from "@/components/game-testing-table"
 import { Button } from "@/components/ui/button"
 import { motion } from "framer-motion"
+import { SuccessModal } from '@/components/success-modal'
+import { ErrorModal } from '@/components/error-modal'
 
 interface Game {
   id: string
@@ -25,19 +27,26 @@ export default function GameTestingPage() {
   const { publicKey } = useWallet()
   const [games, setGames] = useState<Game[]>([])
   const [searchTerm, setSearchTerm] = useState("")
+
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
+  const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
+
   const { toast } = useToast()
 
   useEffect(() => {
     fetchGamesNeedingTest()
   }, [])
-
+  
   const fetchGamesNeedingTest = async () => {
     const { data, error }:any = await supabase
-      .from("games")
-      .select("id, title, thumbnail_image, category, created_at, status, tester:current_tester_id(username)")
-      .eq("status", "pending_test")
+      .from("arcade")
+      .select("*")
+      .eq("status", 1)
       .order("created_at", { ascending: false })
-
+    
+      console.log(data)
     if (error) {
       console.error("Error fetching games needing test:", error)
       toast({
@@ -61,28 +70,29 @@ export default function GameTestingPage() {
     }
 
     try {
+
       const response = await fetch("/api/games/test/assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: game.id }),
+        body: JSON.stringify({ gameId: game.id, user:publicKey }),
       })
+      
+      const result = await response.json()
 
-      if (!response.ok) {
-        throw new Error("Failed to assign game for testing")
+      if (!result.success) {
+        setShowErrorModal(false)
+        setErrorMessage('error assigning tester')
       }
-
-      toast({
-        title: "Game Assigned",
-        description: "You have been assigned to test this game. Good luck!",
-      })
+      
+        setShowSuccessModal(true)
+        setSuccessMessage('you are assigned as the tester')
       fetchGamesNeedingTest() // Refresh the list
+
     } catch (error) {
       console.error("Error assigning game for testing:", error)
-      toast({
-        title: "Error",
-        description: "Failed to assign game for testing. Please try again.",
-        variant: "destructive",
-      })
+      setShowErrorModal(false)
+      setErrorMessage('error assigning tester')
+
     }
   }
 
@@ -115,7 +125,14 @@ export default function GameTestingPage() {
             <GameTestingTable games={filteredGames} onGameSelect={handleGameSelect} />
           </CardContent>
         </Card>
+        {showSuccessModal && (
+        <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
+      )}
+      {showErrorModal && (
+        <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
+      )}
       </main>
+
     </div>
   )
 }

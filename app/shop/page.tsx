@@ -134,7 +134,7 @@ export default function ShopPage() {
                 <Badge variant="secondary" className="mb-2">
                   {item.category}
                 </Badge>
-                <p className="text-lg font-bold text-primary">{item.price.toFixed(2)} GAME</p>
+                <p className="text-lg font-bold text-primary">{item.price.toFixed(2)} GAMEr</p>
               </CardContent>
               <CardFooter className="flex justify-between">
                 <Button
