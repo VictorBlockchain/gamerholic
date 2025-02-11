@@ -58,8 +58,18 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
   }, [])
 
   const fetchGames = async () => {
-    const { data, error } = await supabase.from("games").select("*").order("created_at", { ascending: false })
-
+    // const { data, error } = await supabase.from("arcade").select("*").order("created_at", { ascending: false })
+    const { data, error } = await supabase
+    .from("arcade")
+    .select(`
+      *,
+      users!inner (
+        avatar_url,
+        username
+      )
+    `)
+    .eq('users.publicKey', 'top_scorer') // Match the publicKey with top_scorer
+    .order("created_at", { ascending: false });
     if (error) {
       console.error("Error fetching games:", error)
     } else {
@@ -69,9 +79,9 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
 
   const fetchTestableGames = async () => {
     const { data, error } = await supabase
-      .from("games")
+      .from("arcade")
       .select("*")
-      .eq("status", "pending_test")
+      .eq("status",1)
       .order("created_at", { ascending: false })
       .limit(4)
 

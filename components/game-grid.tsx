@@ -10,13 +10,15 @@ import type React from "react"
 
 interface Game {
   id: number
+  arcade_id: number
   title: string
-  image: string
-  playFee: number
-  highScore: number
-  highScorePlayer: {
-    name: string
-    avatar: string
+  thumbnail_image: string
+  play_fee: number
+  top_score: number
+  top_scorer: string,
+  users: {
+    username: string
+    avatar_url: string
   }
   boost: number
   category: string
@@ -47,23 +49,16 @@ export function GameGrid({ games, title, icon, className, showNoGamesMessage = f
               }`}
             >
               <div className="game-card-image relative overflow-hidden rounded-t-lg">
+              <Link href={`/play/${game.arcade_id}`} className="text-primary hover:underline font-semibold">
+
                 <Image
-                  src={
-                    game.image
-                      ? supabase.storage.from("game-images").getPublicUrl(game.image, {
-                          transform: {
-                            width: 350,
-                            height: 200,
-                            resize: "cover",
-                          },
-                        }).data.publicUrl
-                      : "/placeholder.svg"
-                  }
+                  src={game.thumbnail_image || "/placeholder.svg"}
                   alt={game.title}
                   width={350}
                   height={200}
                   className="object-cover w-full h-48 transition-transform duration-300 transform group-hover:scale-110"
                 />
+                </Link>
               </div>
               <CardContent className="game-card-content p-4">
                 <h3 className="game-card-title text-lg font-semibold mb-2 group-hover:text-secondary transition-colors duration-300">
@@ -71,29 +66,31 @@ export function GameGrid({ games, title, icon, className, showNoGamesMessage = f
                 </h3>
                 <div className="flex items-center justify-between mb-2">
                   <Badge variant="secondary" className="bg-secondary text-secondary-foreground">
-                    {game.playFee} SOL
+                    0.10 SOL
                   </Badge>
                   <div className="game-card-info text-accent flex items-center">
                     <Trophy className="w-4 h-4 mr-1" />
-                    {game.highScore.toLocaleString()}
+                    {game.top_score}
                   </div>
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center">
-                    <Image
-                      src={game.highScorePlayer.avatar || "/placeholder.svg"}
-                      alt={game.highScorePlayer.name}
-                      width={24}
-                      height={24}
-                      className="rounded-full mr-2"
-                    />
-                    <span className="text-xs text-muted-foreground">{game.highScorePlayer.name}</span>
-                  </div>
-                  <div className="game-card-info text-primary flex items-center">
-                    <Zap className="w-4 h-4 mr-1" />
-                    {game.boost}% Boost
-                  </div>
-                </div>
+                {game.users && (
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Image
+                          src={game.users.avatar_url || "/placeholder.svg"}
+                          alt={game.users.username}
+                          width={24}
+                          height={24}
+                          className="rounded-full mr-2"
+                        />
+                        <span className="text-xs text-muted-foreground">{game.users.username}</span>
+                      </div>
+                      <div className="game-card-info text-primary flex items-center">
+                        <Zap className="w-4 h-4 mr-1" />
+                        {game.boost}% Boost
+                      </div>
+                    </div>
+                )}
               </CardContent>
             </Card>
           ))}

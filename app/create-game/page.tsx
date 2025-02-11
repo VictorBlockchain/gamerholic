@@ -263,16 +263,17 @@ export default function CreateGamePage() {
       })
 
       const result = await response.json()
-
-      if (!response.ok) {
+      
+      if (!result.success) {
         setShowErrorModal(true)
         setErrorMessage("error creating game")
         // throw new Error(result.error || "Failed to create game")
+      }else{
+        setSuccessMessage("game created")
+        setShowSuccessModal(true)
+  
       }
-
-      setSuccessMessage("game created")
-      setShowSuccessModal(true)
-
+      
       // router.push("/my-games")
     } catch (error: any) {
       console.error("Error creating game:", error)
