@@ -15,7 +15,26 @@ import { supabase } from "@/lib/supabase"
 import { PauseModal } from "@/components/pause-modal"
 import { GamePreview } from "@/components/game-preview"
 import React from "react"
+import { SuccessModal } from '@/components/success-modal'
+import { ErrorModal } from '@/components/error-modal'
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+import { balanceManager } from '@/lib/balance'
+const solana = new balanceManager();
 
+interface User {
+  userid:string
+  username: string
+  deposit_wallet:string
+  avatar:string
+}
 interface LeaderboardEntry {
   user_id: string
   username: string
@@ -23,6 +42,7 @@ interface LeaderboardEntry {
   score: number
   earnings: number
 }
+const GAME:any = process.env.NEXT_PUBLIC_GAMER
 
 export default function PlayPage() {
   const { id } = useParams()
@@ -45,6 +65,17 @@ export default function PlayPage() {
   const [score, setScore] = useState(0)
   const [timer, setTimer] = useState(0)
   
+  const [showSuccessModal, setShowSuccessModal] = useState(false)
+  const [showErrorModal, setShowErrorModal] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
+  const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
+  const [showUserNameModal, setShowUserNameModal] = useState(false)
+  const [user_id, setUserId]:any = useState('')
+  const [user_name, setUserName]:any = useState('')
+  const [user_avater, setUserAvatar]:any = useState('')
+  const [avatarFile, setAvatarFile]:any = useState('')
+  const [userData, setUserData]:any = useState<Partial<User>>({})
+  
   useEffect(() => {
     if (id) {
       fetchGameData()
@@ -59,6 +90,91 @@ export default function PlayPage() {
       fetchUserVote()
     }
   }, [id, publicKey])
+  
+  let isFetching =false
+  const fetchUser = async () => {
+    if (isFetching) return; // Skip if a fetch is already in progress
+    isFetching = true;
+    
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("publicKey", publicKey)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
+        console.error("Select Error:", error);
+        return;
+      }
+      
+      if (!data) {
+        if(publicKey){
+        
+          const { error: insertError } = await supabase
+          .from("users")
+          .insert([{ publicKey }]);
+        
+              if (insertError) {
+                console.error("Insert Error:", insertError);
+              } else {
+                setShowUserNameModal(true)
+                console.log("New publicKey inserted into the database.");
+              }
+            } else {
+                setUserId(data.id)
+                if(!data.username){
+                    setShowUserNameModal(true)
+                }else{
+                    setUserName(data.username)
+                    setUserAvatar(data.avatar_url)
+                    setUserData({
+                        userid: data.id,
+                        username: data.username,
+                        deposit_wallet: data.deposit_wallet,
+                        avatar: data.avatar,
+                      });
+                }
+            //   console.log("publicKey already exists:", data);
+            }
+        }
+    
+    } finally {
+      isFetching = false;
+    }
+  };
+  
+  const handleAvatarUpload = async (event:any) => {
+    console.log("uploading")
+    const file = event.target.files?.[0];
+    if (file) {
+      const fileName = `${Date.now()}_${file.name}`; // Unique filename
+      const { data, error } = await supabase.storage
+        .from('images') // Your bucket name
+        .upload(fileName, file);
+  
+      if (error) {
+        console.error("Upload Error:", error);
+      } else {
+        console.log("File uploaded successfully:", data);
+        let url = 'https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/'+data.fullPath
+        await updateUserAvatar(publicKey, url);
+      }
+    }
+  };
+  
+  const updateUserAvatar = async (publicKey:any, avatarUrl:any) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ avatar_url: avatarUrl })
+      .eq('publicKey', publicKey);
+      setAvatarFile(avatarUrl)
+    if (error) {
+      console.error("Error updating avatar:", error);
+    } else {
+      console.log("Avatar updated successfully!");
+    }
+  };
 
   const fetchGameData = async () => {
     const { data, error } = await supabase.from("arcade").select("*").eq("arcade_id", id).single()
@@ -138,10 +254,19 @@ export default function PlayPage() {
       alert("Please connect your wallet to play")
       return
     }
-    if (!isFree && userCredits < game.play_fee) {
-      alert("Insufficient credits to play")
-      return
-    }
+    // if (!isFree && userCredits < game.play_fee) {
+    //   alert("Insufficient credits to play")
+    //   return
+    // }
+
+    //check user game balance
+    let GAMErBalance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
+    //check user sol balance
+    let solBalance = await solana.getBalance(userData.deposit_wallet)
+    let createFee:any = process.env.NEXT_PUBLIC_ARCADE_CREATE_FEE
+        solBalance = solBalance  / 10 ** 9
+        createFee = createFee  / 10 ** 9
+
     if (!isFree) {
       const response = await fetch("/api/game/start", {
         method: "POST",

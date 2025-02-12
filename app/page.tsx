@@ -17,8 +17,8 @@ async function getServerSideData() {
     console.error("Error fetching shop items:", error);
     return { randomMerchImage: "/placeholder.svg" };
   }
-
-  console.log("Raw Data:", JSON.stringify(data, null, 2)); // Debugging: Log raw data
+  
+  // console.log("Raw Data:", JSON.stringify(data, null, 2)); // Debugging: Log raw data
 
   // Filter out items with empty image arrays or invalid images
   const itemsWithValidImages = data
@@ -32,7 +32,7 @@ async function getServerSideData() {
       )
     ) || [];
 
-  console.log("Filtered Items:", JSON.stringify(itemsWithValidImages, null, 2)); // Debugging: Log filtered items
+  // console.log("Filtered Items:", JSON.stringify(itemsWithValidImages, null, 2)); // Debugging: Log filtered items
 
   // Flatten all valid images into a single array
   const allValidImages = itemsWithValidImages.flatMap((item) =>
@@ -43,20 +43,20 @@ async function getServerSideData() {
     )
   );
 
-  console.log("All Valid Images:", allValidImages); // Debugging: Log all valid images
+  // console.log("All Valid Images:", allValidImages); // Debugging: Log all valid images
 
   // Select a random image if available, otherwise fallback to placeholder
   const randomMerchImage = allValidImages.length > 0
     ? allValidImages[Math.floor(Math.random() * allValidImages.length)]
     : "/placeholder.svg";
 
-  console.log("Random Merch Image:", randomMerchImage); // Debugging: Log the selected image
+  // console.log("Random Merch Image:", randomMerchImage); // Debugging: Log the selected image
 
   return { randomMerchImage };
 }
 
 export default async function Home() {
   const { randomMerchImage } = await getServerSideData();
-  console.log(randomMerchImage);
+  // console.log(randomMerchImage);
   return <HomeContent randomMerchImage={randomMerchImage} />;
 }

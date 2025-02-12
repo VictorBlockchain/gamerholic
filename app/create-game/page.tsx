@@ -43,7 +43,7 @@ interface User {
   deposit_wallet:string
   avatar:string
 }
-const GAME:any = process.env.GAMEr
+const GAME:any = process.env.NEXT_PUBLIC_GAMER
 
 const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
 

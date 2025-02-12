@@ -25,11 +25,11 @@ export async function POST(request: Request) {
 
     // Fetch game details and check if the game is paused
     const { data: game, error: gameError } = await supabase
-      .from("games")
+      .from("arcade")
       .select("play_fee, is_paused")
-      .eq("id", gameId)
+      .eq("arcade_id", gameId)
       .single()
-
+    
     if (gameError) throw gameError
 
     if (game.is_paused) {
@@ -44,8 +44,8 @@ export async function POST(request: Request) {
 
     // Create game session
     const { data, error } = await supabase
-      .from("game_sessions")
-      .insert({ game_id: gameId, user_id: userId, start_time: new Date().toISOString() })
+      .from("arcade_sessions")
+      .insert({ arcade_id: gameId, user_id: userId, start_time: new Date().toISOString() })
       .select()
 
     if (error) throw error

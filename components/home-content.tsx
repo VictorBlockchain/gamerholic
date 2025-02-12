@@ -94,7 +94,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
         });
         setGames(result || [])
 
-        console.log("Result:", result);
+        // console.log("Result:", result);
       }
     }
 
