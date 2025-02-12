@@ -42,6 +42,7 @@ const cryptoManager = new CryptoManager();
 
 export async function POST(request: Request) {
   try {
+
     const formData = await request.formData()
     const title = formData.get("title") as string
     const description = formData.get("description") as string
@@ -54,7 +55,8 @@ export async function POST(request: Request) {
     const creatorWallet = formData.get("creatorWallet") as string
     const thumbnailImage = formData.get("image") as File
     const fullSizeImage = formData.get("fullSizeImage") as File
-    
+      
+
     // Validate the game code
     const validationResult = validateGameCode(gameCode)
     if (!validationResult.isValid) {
@@ -84,8 +86,7 @@ export async function POST(request: Request) {
     
     // // Encrypt the private key using the unified encryption function
     const { iv, encrypted } = cryptoManager.encrypt(privateKeyHex);
-
-
+    
     // // Insert game data into the database
     const { data, error } = await supabase
       .from("arcade")
@@ -109,8 +110,9 @@ export async function POST(request: Request) {
       .select()
         
     if (error) throw error
-
+    
     return NextResponse.json({ success: true })
+
   } catch (error) {
     console.error("Error creating game:", error)
     return NextResponse.json({ error: "Failed to create game" }, { status: 500 })

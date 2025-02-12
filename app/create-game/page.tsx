@@ -14,6 +14,34 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle, Gamepad2, Eye, Code, Upload, X, DollarSign } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { GamePreview } from "@/components/game-preview"
+import { balanceManager } from '@/lib/balance'
+import { supabase } from '@/lib/supabase'
+import { SuccessModal } from '@/components/success-modal'
+import { ErrorModal } from '@/components/error-modal'
+import {
+  // getDepositWalletBalance,
+  searchUsers,
+  generateDepositWallet,
+} from "@/lib/platformWallet"
+
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog"
+
+const solana = new balanceManager();
+interface User {
+  userid:string
+  username: string
+  deposit_wallet:string
+  avatar:string
+}
+const GAME:any = process.env.GAMEr
 
 const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
 
@@ -186,9 +214,76 @@ export default function CreateGamePage() {
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
+  const [showUserNameModal, setShowUserNameModal] = useState(false)
+  const [user_id, setUserId]:any = useState('')
+  const [user_name, setUserName]:any = useState('')
+  const [user_avater, setUserAvatar]:any = useState('')
+  const [avatarFile, setAvatarFile]:any = useState('')
 
   const [score, setScore] = useState(0)
   const [timer, setTimer] = useState(0)
+  
+  const [userData, setUserData]:any = useState<Partial<User>>({})
+
+  useEffect(() => {
+    if (publicKey) {
+      fetchUser()
+    }
+  }, [publicKey])
+  let isFetching = false; 
+  
+  
+  const fetchUser = async () => {
+    if (isFetching) return; // Skip if a fetch is already in progress
+    isFetching = true;
+    
+    try {
+      const { data, error } = await supabase
+        .from("users")
+        .select("*")
+        .eq("publicKey", publicKey)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
+        console.error("Select Error:", error);
+        return;
+      }
+      
+      if (!data) {
+        if(publicKey){
+        
+          const { error: insertError } = await supabase
+          .from("users")
+          .insert([{ publicKey }]);
+        
+              if (insertError) {
+                console.error("Insert Error:", insertError);
+              } else {
+                setShowUserNameModal(true)
+                console.log("New publicKey inserted into the database.");
+              }
+            } else {
+                setUserId(data.id)
+                if(!data.username){
+                    setShowUserNameModal(true)
+                }else{
+                    setUserName(data.username)
+                    setUserAvatar(data.avatar_url)
+                    setUserData({
+                        userid: data.id,
+                        username: data.username,
+                        deposit_wallet: data.deposit_wallet,
+                        avatar: data.avatar,
+                      });
+                }
+            //   console.log("publicKey already exists:", data);
+            }
+        }
+    
+    } finally {
+      isFetching = false;
+    }
+  };
 
   const handleGameCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setGameCode(e.target.value)
@@ -256,6 +351,10 @@ export default function CreateGamePage() {
       formDataToSend.append("gameCss", gameCss)
       formDataToSend.append("creatorWallet", publicKey.toBase58())
       formDataToSend.append("fullSizeImage", formData.fullSizeImage)
+      
+      //check user sol balance
+      let balance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
+      
 
       const response = await fetch("/api/create-game", {
         method: "POST",
@@ -296,7 +395,7 @@ Can you help me identify the issue and suggest how to fix it?`)
       })
     }
   }
-
+  
   const startGame = () => {
     // Force a re-render of the GamePreview component
     setGameCode((prevCode) => prevCode.trim())
@@ -323,6 +422,76 @@ Can you help me identify the issue and suggest how to fix it?`)
       window.removeEventListener("keydown", handleKeyDown)
     }
   }, [])
+    
+  const handleAvatarUpload = async (event:any) => {
+    console.log("uploading")
+    const file = event.target.files?.[0];
+    if (file) {
+      const fileName = `${Date.now()}_${file.name}`; // Unique filename
+      const { data, error } = await supabase.storage
+        .from('images') // Your bucket name
+        .upload(fileName, file);
+  
+      if (error) {
+        console.error("Upload Error:", error);
+      } else {
+        console.log("File uploaded successfully:", data);
+        let url = 'https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/'+data.fullPath
+        await updateUserAvatar(publicKey, url);
+      }
+    }
+  };
+  
+  const updateUserAvatar = async (publicKey:any, avatarUrl:any) => {
+    const { error } = await supabase
+      .from('users')
+      .update({ avatar_url: avatarUrl })
+      .eq('publicKey', publicKey);
+      setAvatarFile(avatarUrl)
+    if (error) {
+      console.error("Error updating avatar:", error);
+    } else {
+      console.log("Avatar updated successfully!");
+    }
+  };
+
+    const handleSetUserName = async () =>{
+    
+      let name = userData.name
+      
+      let data_wallet:any = await generateDepositWallet(publicKey)
+      if(data_wallet.success){
+      
+          const { data, error } = await supabase
+          .from("users")
+          .update({ username: name }) // Updating the username
+          .eq("publicKey", publicKey);       // Condition to match the publicKey
+          
+          if (error) {
+              // console.error("Update Error:", error);
+              handleErrorNotification("theres an error " + error)
+          } else {
+              // console.log("Username updated successfully:", data);
+              setShowUserNameModal(false)
+              handleSuccessNotification("user name updated")
+          }
+      
+      }else{
+          handleErrorNotification("theres an error " + data_wallet.message)
+      
+      }
+    
+    }
+  
+    const handleSuccessNotification = (message: string) => {
+      setSuccessMessage(message)
+      setShowSuccessModal(true)
+    }
+    
+    const handleErrorNotification = (message:string) => {
+      setErrorMessage(message)
+      setShowErrorModal(true)
+    }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -706,6 +875,89 @@ Can you help me identify the issue and suggest how to fix it?`)
             </Button>
           </CardContent>
         </Card>
+
+        <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
+      <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
+        <DialogHeader>
+          <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
+          <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
+        </DialogHeader>
+        <div className="grid gap-6 py-4">
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
+              <div className="flex items-center space-x-4">
+                <Avatar className="w-24 h-24">
+                  <AvatarImage src={avatarFile} />
+                  <AvatarFallback className="bg-primary/20 text-primary text-2xl">
+                    {userData.name ? userData.name[0].toUpperCase() : "?"}
+                  </AvatarFallback>
+                </Avatar>
+                <div>
+                  <Label htmlFor="avatar-upload" className="cursor-pointer">
+                    <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                      <Upload size={16} />
+                      <span>Upload Avatar</span>
+                    </div>
+                  </Label>
+                  <Input
+                    id="avatar-upload"
+                    type="file"
+                    accept="image/*"
+                    className="hidden"
+                    onChange={handleAvatarUpload}
+                  />
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
+              <div className="grid gap-2">
+                <Label htmlFor="username">Username</Label>
+                <Input
+                  id="username"
+                  value={userData.name || ""}
+                  onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                  placeholder="e.g. CyberNinja"
+                  className="bg-background/50 border-primary/20"
+                />
+              </div>
+            </CardContent>
+          </Card>
+          
+          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+            <CardContent className="p-4">
+              <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
+              <p className="text-sm text-muted-foreground mb-2">
+                Click 'Update Profile' to generate your unique deposit address.
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+        <DialogFooter>
+          <Button onClick={() => setShowUserNameModal(false)} variant="outline">
+            Cancel
+          </Button>
+          <Button
+            onClick={handleSetUserName}
+            type="submit"
+            className="bg-primary text-primary-foreground hover:bg-primary/90"
+          >
+            Update Profile
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+
+        {showSuccessModal && (
+          <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
+        )}
+        {showErrorModal && (
+          <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
+        )}
       </main>
     </div>
   )

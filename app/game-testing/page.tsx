@@ -84,8 +84,8 @@ export default function GameTestingPage() {
         setErrorMessage('error assigning tester')
       }
       
-        setShowSuccessModal(true)
-        setSuccessMessage('you are assigned as the tester')
+      setShowSuccessModal(true)
+      setSuccessMessage('you are assigned as the tester')
       fetchGamesNeedingTest() // Refresh the list
 
     } catch (error) {

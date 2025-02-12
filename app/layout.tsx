@@ -33,7 +33,7 @@ export default function RootLayout({
     // initializePlatformWalletOnLoad().catch(console.error)
   }, [])
 
-
+  
   return (
     <html lang="en" suppressHydrationWarning className="dark">
       <link rel="icon" href="/favicon.ico" />
