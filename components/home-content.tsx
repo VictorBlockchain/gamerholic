@@ -59,22 +59,45 @@ export function HomeContent({ randomMerchImage }: HomeContentProps) {
 
   const fetchGames = async () => {
     // const { data, error } = await supabase.from("arcade").select("*").order("created_at", { ascending: false })
-    const { data, error } = await supabase
-    .from("arcade")
-    .select(`
-      *,
-      users!inner (
-        avatar_url,
-        username
-      )
-    `)
-    .eq('users.publicKey', 'top_scorer') // Match the publicKey with top_scorer
-    .order("created_at", { ascending: false });
-    if (error) {
-      console.error("Error fetching games:", error)
+// Step 1: Fetch all arcade data
+const { data: arcadeData, error: arcadeError } = await supabase
+  .from("arcade")
+  .select("*")
+  .eq('status', 3)
+  .order("created_at", { ascending: false });
+
+    if (arcadeError) {
+      console.error("Error fetching arcade data:", arcadeError);
     } else {
-      setGames(data || [])
+      // Extract unique top_scorer values from arcade data
+      const topScorers = [...new Set(arcadeData.map(item => item.top_scorer))];
+      
+      // Step 2: Fetch users whose publicKey matches any of the top_scorer values
+      const { data: usersData, error: usersError } = await supabase
+        .from("users")
+        .select("publicKey, avatar_url, username")
+        .in('publicKey', topScorers); // Match publicKey against the list of top_scorers
+
+      if (usersError) {
+        console.error("Error fetching user data:", usersError);
+      } else {
+        // Create a map of users for quick lookup
+        const usersMap = new Map(usersData.map(user => [user.publicKey, user]));
+
+        // Step 3: Combine arcade data with corresponding user data
+        const result = arcadeData.map(arcadeItem => {
+          const user = usersMap.get(arcadeItem.top_scorer); // Find the user by top_scorer
+          return {
+            ...arcadeItem,
+            user: user || null // Attach user data or null if no match is found
+          };
+        });
+        setGames(result || [])
+
+        console.log("Result:", result);
+      }
     }
+
   }
 
   const fetchTestableGames = async () => {

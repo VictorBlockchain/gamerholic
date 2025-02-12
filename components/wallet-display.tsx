@@ -45,7 +45,7 @@ export function WalletDisplay() {
   return (
     <Button variant="outline" className="bg-background/50 backdrop-blur-sm">
       <Wallet className="mr-2 h-4 w-4" />
-      {credits.toFixed(4)} GAME
+      {credits.toFixed(4)} GAMEr
     </Button>
   )
 }

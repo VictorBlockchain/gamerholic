@@ -343,6 +343,7 @@ export default function CreateGamePage() {
     }
 
     try {
+
       const formDataToSend = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
         if (value !== null) {
@@ -354,47 +355,60 @@ export default function CreateGamePage() {
       formDataToSend.append("creatorWallet", publicKey.toBase58())
       formDataToSend.append("fullSizeImage", formData.fullSizeImage)
       
+      //check user game balance
+      let GAMErBalance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
       //check user sol balance
-      let balance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
-      
+      let solBalance = await solana.getBalance(userData.deposit_wallet)
+      let createFee:any = process.env.NEXT_PUBLIC_ARCADE_CREATE_FEE
+          solBalance = solBalance  / 10 ** 9
+          createFee = createFee  / 10 ** 9
 
-      const response = await fetch("/api/create-game", {
-        method: "POST",
-        body: formDataToSend,
-      })
-
-      const result = await response.json()
-      
-      if (!result.success) {
+      if(solBalance < createFee){
+        
         setShowErrorModal(true)
-        setErrorMessage("error creating game")
-        // throw new Error(result.error || "Failed to create game")
+        setErrorMessage("Go to your profile and deposit the game creation fee to your wallet")
+
       }else{
-        setSuccessMessage("game created")
-        setShowSuccessModal(true)
-  
-      }
       
+        const response = await fetch("/api/create-game", {
+          method: "POST",
+          body: formDataToSend,
+        })
+        
+        const result = await response.json()
+        
+        if (!result.success) {
+          setShowErrorModal(true)
+          setErrorMessage("error creating game")
+          // throw new Error(result.error || "Failed to create game")
+        }else{
+          setSuccessMessage("game created")
+          setShowSuccessModal(true)
+    
+        }
+
+      }
+    
       // router.push("/my-games")
     } catch (error: any) {
       console.error("Error creating game:", error)
       setError(error.message || "An error occurred while creating the game.")
       setAiPrompt(`I'm trying to create a game on the Gamerholic platform, but I'm encountering the following error:
+        
+        ${error.message}
 
-${error.message}
+        Here's my current game code:
 
-Here's my current game code:
+        \`\`\`javascript
+        ${gameCode}
+        \`\`\`
 
-\`\`\`javascript
-${gameCode}
-\`\`\`
-
-Can you help me identify the issue and suggest how to fix it?`)
-      toast({
-        variant: "destructive",
-        title: "Error",
-        description: "Error creating game. Please check the error message and AI prompt for assistance.",
-      })
+        Can you help me identify the issue and suggest how to fix it?`)
+              toast({
+                variant: "destructive",
+                title: "Error",
+                description: "Error creating game. Please check the error message and AI prompt for assistance.",
+              })
     }
   }
   
