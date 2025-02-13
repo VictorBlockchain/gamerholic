@@ -14,19 +14,19 @@ export function BottomNav() {
   const { publicKey }:any = useWallet()
 
   const createItems = [
-    { label: "Arcade Game", href: "/create-game", icon: <Gamepad className="h-6 w-6" /> },
+    { label: "Arcade Game", href: "/arcade-create", icon: <Gamepad className="h-6 w-6" /> },
     { label: "Esports", href: "/esports", icon: <Trophy className="h-6 w-6" /> },
     { label: "Grabbit Game", href: "/grabbit", icon: <Zap className="h-6 w-6" /> },
   ]
 
   const discoverItems = [
-    { label: "Arcade Games", href: "/discover", icon: <Gamepad className="h-6 w-6" /> },
+    { label: "Arcade Games", href: "/arcade-discover", icon: <Gamepad className="h-6 w-6" /> },
     { label: "Esports", href: "/esports", icon: <Trophy className="h-6 w-6" /> },
     { label: "Grabbit Games", href: "/grabbit", icon: <Zap className="h-6 w-6" /> },
   ]
 
   const gamesItems = [
-    { label: "Arcade Games", href: "/discover", icon: <Gamepad className="h-6 w-6" /> },
+    { label: "Arcade Games", href: "/arcade-discover", icon: <Gamepad className="h-6 w-6" /> },
     { label: "Esports", href: "/esports", icon: <Trophy className="h-6 w-6" /> },
     { label: "Grabbit", href: "/grabbit", icon: <Zap className="h-6 w-6" /> },
   ]
