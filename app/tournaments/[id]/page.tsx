@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Gamepad, Calendar, Users, Trophy, DollarSign } from "lucide-react"
+import { Gamepad, Calendar, Users, Trophy, DollarSign, CheckCircle, XCircle, Loader, RefreshCw } from "lucide-react"
 import { ReportScoreModal } from "@/components/report-score-modal"
 import { Header } from "@/components/header"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -30,7 +30,7 @@ interface Tournament {
   prize_type: string
   max_players: number
   image_url: string
-  status: "upcoming" | "in-progress" | "completed"
+  status: "upcoming" | "in-progress" | "completed" | "paid"
   host_id: string
 }
 
@@ -64,6 +64,14 @@ interface TournamentResult {
   prize_amount: number
 }
 
+interface Payment {
+  id: string
+  user_id: string
+  amount: number
+  status: "pending" | "completed" | "failed"
+  transaction_hash: string | null
+}
+
 export default function TournamentPage() {
   const params = useParams()
   const { publicKey } = useWallet()
@@ -71,6 +79,7 @@ export default function TournamentPage() {
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [results, setResults] = useState<TournamentResult[]>([])
+  const [payments, setPayments] = useState<Payment[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [selectedMatch, setSelectedMatch] = useState<Match | null>(null)
@@ -82,6 +91,7 @@ export default function TournamentPage() {
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
   const [isUpdating, setIsUpdating] = useState(false)
+  const [canReprocessPayouts, setCanReprocessPayouts] = useState(false)
 
   useEffect(() => {
     fetchTournamentData()
@@ -94,7 +104,7 @@ export default function TournamentPage() {
       // Fetch tournament details
       const { data: tournamentData, error: tournamentError } = await supabase
         .from("tournaments")
-        .select("*")
+        .select("*, status")
         .eq("game_id", params.id)
         .single()
 
@@ -127,8 +137,8 @@ export default function TournamentPage() {
 
       if (playerDetailsError) throw playerDetailsError
 
-      // Fetch tournament results if the tournament is completed
-      if (tournamentData.status === "completed") {
+      // Fetch tournament results if the tournament is completed or paid
+      if (tournamentData.status === "completed" || tournamentData.status === "paid") {
         const { data: resultsData, error: resultsError } = await supabase
           .from("tournament_results")
           .select("*")
@@ -137,14 +147,24 @@ export default function TournamentPage() {
 
         if (resultsError) throw resultsError
         setResults(resultsData)
-      }
 
+        // Fetch payment information
+        const { data: paymentsData, error: paymentsError } = await supabase
+          .from("payments")
+          .select("*")
+          .eq("payment_type", "tournament")
+          .eq("game_id", params.id)
+
+        if (paymentsError) throw paymentsError
+        setPayments(paymentsData)
+      }
+      
       if (publicKey) {
         // Check if the user is an admin
         // const { data: adminData, error: adminError } = await supabase
         //   .from("admins")
         //   .select("role")
-        //   .eq("user_id", publicKey.toBase58())
+        //   .eq("wallet", publicKey.toBase58())
         //   .single()
         
         // if (adminError && adminError.code !== "PGRST116") throw adminError
@@ -152,6 +172,16 @@ export default function TournamentPage() {
 
         // Check if the user is the tournament creator
         setIsCreator(tournamentData.host_id === publicKey.toBase58())
+
+        // Check if the user is a winner
+        const isWinner = results.some((result) => result.player_id === publicKey.toBase58())
+
+        // Set canReprocessPayouts based on user role and tournament status
+        setCanReprocessPayouts(
+          (isAdmin || isCreator || isWinner) &&
+            (tournamentData.status === "completed" || tournamentData.status === "paid") &&
+            payments.some((payment) => payment.status === "failed"),
+        )
       }
 
       setTournament(tournamentData)
@@ -196,6 +226,36 @@ export default function TournamentPage() {
         // Update the tournament bracket
         await updateTournamentBracket(supabase, tournament.game_id, selectedMatch.id, winnerId)
 
+        // Check if this was the final match
+        if (tournament.status === "in-progress" && selectedMatch.round === Math.log2(tournament.max_players)) {
+          try {
+            const response = await fetch("/api/esports/tournament/payout", {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                tournamentId: tournament.game_id,
+                winnerId: winnerId,
+              }),
+            })
+
+            if (!response.ok) {
+              throw new Error("Failed to process tournament payout")
+            }
+
+            const payoutResult = await response.json()
+            console.log("Payout processed:", payoutResult)
+
+            setSuccessMessage("The tournament has concluded and payouts have been processed.")
+          } catch (error) {
+            console.error("Error processing tournament payout:", error)
+            setErrorMessage(
+              "The match score was updated, but there was an error processing the tournament payout. Please contact support.",
+            )
+          }
+        }
+
         setSuccessMessage("The match score has been successfully updated and the winner advanced.")
         setShowSuccessModal(true)
 
@@ -221,10 +281,47 @@ export default function TournamentPage() {
     return player ? player.username : playerId.slice(0, 6)
   }
 
+  const getPaymentStatus = (playerId: string) => {
+    const payment = payments.find((p) => p.user_id === playerId)
+    if (!payment) return "Not processed"
+    return payment.status.charAt(0).toUpperCase() + payment.status.slice(1)
+  }
+
+  const handleReprocessPayouts = async () => {
+    try {
+      setIsUpdating(true)
+      const response = await fetch(`/api/esports/tournament/reprocess-payouts`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({ tournamentId: tournament.game_id }),
+      })
+
+      const result = await response.json()
+
+      if (response.ok) {
+        setSuccessMessage("Payouts have been reprocessed successfully.")
+        setShowSuccessModal(true)
+        fetchTournamentData() // Refresh the tournament data
+      } else {
+        setErrorMessage(result.error || "Failed to reprocess payouts.")
+        setShowErrorModal(true)
+      }
+    } catch (error) {
+      console.error("Error reprocessing payouts:", error)
+      setErrorMessage("An error occurred while reprocessing payouts.")
+      setShowErrorModal(true)
+    } finally {
+      setIsUpdating(false)
+    }
+  }
+
   if (isLoading) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
-        <p className="text-2xl font-bold">Loading tournament...</p>
+        <Loader className="w-12 h-12 animate-spin text-primary" />
+        <p className="text-2xl font-bold ml-4">Loading tournament...</p>
       </div>
     )
   }
@@ -313,6 +410,18 @@ export default function TournamentPage() {
                 <Users className="w-5 h-5 mr-2 inline" />
                 {players.length} / {tournament.max_players} players
               </Badge>
+              <Badge
+                variant={
+                  tournament.status === "upcoming"
+                    ? "default"
+                    : tournament.status === "in-progress"
+                      ? "secondary"
+                      : "outline"
+                }
+                className="text-lg px-3 py-1"
+              >
+                {tournament.status.charAt(0).toUpperCase() + tournament.status.slice(1)}
+              </Badge>
             </div>
           </div>
         </div>
@@ -320,9 +429,9 @@ export default function TournamentPage() {
         <div className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-8 mb-12 shadow-2xl">
           <h2 className="text-3xl font-bold mb-4 flex items-center">
             <Trophy className="w-8 h-8 mr-2" />
-            {tournament.status === "completed" ? "Winners" : "Prize Pool"}
+            {tournament.status === "completed" || tournament.status === "paid" ? "Winners" : "Prize Pool"}
           </h2>
-          {tournament.status === "completed" ? (
+          {tournament.status === "completed" || tournament.status === "paid" ? (
             <div className="grid grid-cols-3 gap-4">
               {results.map((result, index) => {
                 const player = players.find((p) => p.publicKey === result.player_id)
@@ -336,6 +445,13 @@ export default function TournamentPage() {
                       <span className="font-bold">{player.username}</span>
                       <span className="text-sm">{["1st", "2nd", "3rd"][index]} Place</span>
                       <span className="text-lg font-bold">${result.prize_amount.toFixed(2)}</span>
+                      <span className="text-sm mt-2">Payment Status: {getPaymentStatus(player.publicKey)}</span>
+                      {getPaymentStatus(player.publicKey) === "Completed" && (
+                        <CheckCircle className="w-5 h-5 text-green-500 mt-1" />
+                      )}
+                      {getPaymentStatus(player.publicKey) === "Failed" && (
+                        <XCircle className="w-5 h-5 text-red-500 mt-1" />
+                      )}
                     </div>
                   )
                 )
@@ -375,6 +491,31 @@ export default function TournamentPage() {
         )}
         {showErrorModal && (
           <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
+        )}
+        {canReprocessPayouts && (
+          <Card className="mt-8 bg-gradient-to-br from-yellow-900/30 to-red-900/30 border-primary/20">
+            <CardContent className="p-6">
+              <h3 className="text-xl font-semibold mb-4">Payout Reprocessing</h3>
+              <p className="mb-4">Some payouts have failed. Click the button below to attempt reprocessing.</p>
+              <Button
+                onClick={handleReprocessPayouts}
+                disabled={isUpdating}
+                className="w-full bg-gradient-to-r from-yellow-500 to-red-500 hover:from-yellow-600 hover:to-red-600 text-white font-bold"
+              >
+                {isUpdating ? (
+                  <>
+                    <Loader className="mr-2 h-4 w-4 animate-spin" />
+                    Reprocessing...
+                  </>
+                ) : (
+                  <>
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Reprocess Payouts
+                  </>
+                )}
+              </Button>
+            </CardContent>
+          </Card>
         )}
       </main>
     </div>

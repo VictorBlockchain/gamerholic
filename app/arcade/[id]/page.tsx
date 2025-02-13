@@ -177,7 +177,7 @@ export default function PlayPage() {
   };
 
   const fetchGameData = async () => {
-    const { data, error } = await supabase.from("arcade").select("*").eq("arcade_id", id).single()
+    const { data, error } = await supabase.from("arcade").select("*").eq("game_id", id).single()
     if (error) console.error("Error fetching game data:", error)
     else setGame(data)
     setLoading(false)
@@ -208,26 +208,26 @@ export default function PlayPage() {
     const { data, error } = await supabase
       .from("comments")
       .select("*, users(username, avatar_url)")
-      .eq("arcade_id", id)
+      .eq("game_id", id)
       .order("created_at", { ascending: false })
     if (error) console.error("Error fetching comments:", error)
     else setComments(data)
   }
 
   const fetchVotes = async () => {
-    const { data, error } = await supabase.from("arcade").select("votes_up, votes_down").eq("arcade_id", id).single()
+    const { data, error } = await supabase.from("arcade").select("votes_up, votes_down").eq("game_id", id).single()
     if (error) console.error("Error fetching votes:", error)
     else {
       setUpvotes(data.votes_up)
       setDownvotes(data.votes_down)
     }
   }
-
+  
   const fetchUserVote = async () => {
     const { data, error } = await supabase
       .from("votes")
       .select("vote_type")
-      .eq("arcade_id", id)
+      .eq("game_id", id)
       .eq("user_id", publicKey!.toBase58())
       .maybeSingle()
     if (error) console.error("Error fetching user vote:", error)
@@ -235,7 +235,7 @@ export default function PlayPage() {
   }
 
   const fetchBoosts = async () => {
-    const { data, error } = await supabase.from("arcade").select("boosts").eq("arcade_id", id).single()
+    const { data, error } = await supabase.from("arcade").select("boosts").eq("game_id", id).single()
     if (error) console.error("Error fetching boosts:", error)
     else setBoosts(data.boosts)
   }
@@ -272,7 +272,7 @@ export default function PlayPage() {
         return
       }
 
-      const response = await fetch("/api/game/start", {
+      const response = await fetch("/api/arcade/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId: id, userId: publicKey.toBase58() }),

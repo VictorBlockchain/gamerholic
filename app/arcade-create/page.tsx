@@ -370,7 +370,7 @@ export default function CreateGamePage() {
 
       }else{
       
-        const response = await fetch("/api/create-game", {
+        const response = await fetch("/api/arcade/create", {
           method: "POST",
           body: formDataToSend,
         })

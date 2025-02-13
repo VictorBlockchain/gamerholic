@@ -9,6 +9,8 @@ interface GameTestListProps {
 }
 
 export function GameTestList({ games, onGameSelect }: GameTestListProps) {
+  console.log(games)
+
   return (
     <ScrollArea className="h-[400px]">
       {games.length === 0 ? (
@@ -16,7 +18,7 @@ export function GameTestList({ games, onGameSelect }: GameTestListProps) {
       ) : (
         <div className="space-y-4">
           {games.map((game) => (
-            <Card key={game.id} className="hover:bg-muted/50 transition-colors">
+            <Card key={game.game_id} className="hover:bg-muted/50 transition-colors">
               <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
                 <CardTitle className="text-sm font-medium">{game.title}</CardTitle>
                 <Gamepad2 className="h-4 w-4 text-muted-foreground" />

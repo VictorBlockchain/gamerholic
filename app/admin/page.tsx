@@ -24,6 +24,13 @@ import {
   processPlatformWithdrawal,
   addAdmin,
   updateGameFees,
+  getGamerTokenSettings,
+  updateGamerTokenSettings,
+  getApprovedTokens,
+  addApprovedToken,
+  updateApprovedToken,
+  getWallets,
+  refreshWallet,
 } from "@/lib/platformWallet"
 import { useConnection } from "@solana/wallet-adapter-react"
 import { motion } from "framer-motion"
@@ -42,10 +49,11 @@ import {
   Package,
   Plus,
   Link,
+  CopyIcon,
+  Coins,
 } from "lucide-react"
 import { toast } from "@/components/ui/use-toast"
 import { AddProductModal } from "@/components/add-product-modal"
-// import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import {
   AlertDialog,
   AlertDialogAction,
@@ -56,6 +64,14 @@ import {
   AlertDialogHeader,
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog"
+
+interface Wallet {
+  id: string
+  type: "esports" | "tournament" | "arcade" | "grabbit"
+  public_key: string
+  game_id: string | null
+  created_at: string
+}
 
 export default function AdminPage() {
   const { publicKey } = useWallet()
@@ -80,7 +96,7 @@ export default function AdminPage() {
   const [isPlatformPaused, setIsPlatformPaused] = useState(false)
   const [isSuperAdmin, setIsSuperAdmin] = useState(false)
   const [newPlatformWallet, setNewPlatformWallet] = useState("")
-  const [newAdminAddress, setNewAdminAddress]: any = useState("")
+  const [newAdminAddress, setNewAdminAddress] = useState("")
   const [newAdminRole, setNewAdminRole] = useState("admin")
   const [payWallet, setPaywallet] = useState("")
   const [showAddProductModal, setShowAddProductModal] = useState(false)
@@ -88,8 +104,19 @@ export default function AdminPage() {
   const [editingProduct, setEditingProduct] = useState(null)
   const [showDeleteConfirmation, setShowDeleteConfirmation] = useState(false)
   const [productToDelete, setProductToDelete] = useState(null)
+  const [wallets, setWallets] = useState<Wallet[]>([])
 
-  // const supabase = createClientComponentClient()
+  // New state for GAMEr Tokens Settings
+  const [minTokensArcade, setMinTokensArcade] = useState(0)
+  const [minTokensEsports, setMinTokensEsports] = useState(0)
+  const [minTokensTournaments, setMinTokensTournaments] = useState(0)
+  const [minTokensGrabbit, setMinTokensGrabbit] = useState(0)
+
+  // New state for Approved Tokens
+  const [approvedTokens, setApprovedTokens] = useState([])
+  const [newTokenName, setNewTokenName] = useState("")
+  const [newTokenTicker, setNewTokenTicker] = useState("")
+  const [newTokenAddress, setNewTokenAddress] = useState("")
 
   useEffect(() => {
     if (publicKey) {
@@ -97,6 +124,9 @@ export default function AdminPage() {
       fetchSupportTickets()
       checkSuperAdminStatus()
       fetchProducts()
+      fetchGamerTokenSettings()
+      fetchApprovedTokens()
+      fetchWallets()
     }
   }, [publicKey])
 
@@ -489,6 +519,135 @@ export default function AdminPage() {
     }
   }
 
+  const fetchGamerTokenSettings = async () => {
+    try {
+      const settings = await getGamerTokenSettings()
+      setMinTokensArcade(settings.min_tokens_arcade)
+      setMinTokensEsports(settings.min_tokens_esports)
+      setMinTokensTournaments(settings.min_tokens_tournaments)
+      setMinTokensGrabbit(settings.min_tokens_grabbit)
+    } catch (error) {
+      console.error("Error fetching GAMEr token settings:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch GAMEr token settings. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchApprovedTokens = async () => {
+    try {
+      const tokens = await getApprovedTokens()
+      setApprovedTokens(tokens)
+    } catch (error) {
+      console.error("Error fetching approved tokens:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch approved tokens. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleUpdateGamerTokenSettings = async () => {
+    try {
+      await updateGamerTokenSettings({
+        min_tokens_arcade: minTokensArcade,
+        min_tokens_esports: minTokensEsports,
+        min_tokens_tournament: minTokensTournaments,
+        min_tokens_grabbit: minTokensGrabbit,
+      })
+      toast({
+        title: "Success",
+        description: "GAMEr token settings updated successfully",
+      })
+    } catch (error) {
+      console.error("Error updating GAMEr token settings:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update GAMEr token settings. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleAddApprovedToken = async () => {
+    try {
+      await addApprovedToken({
+        name: newTokenName,
+        ticker: newTokenTicker,
+        address: newTokenAddress,
+        status: "active",
+      })
+      toast({
+        title: "Success",
+        description: "New token added successfully",
+      })
+      setNewTokenName("")
+      setNewTokenTicker("")
+      setNewTokenAddress("")
+      fetchApprovedTokens()
+    } catch (error) {
+      console.error("Error adding new approved token:", error)
+      toast({
+        title: "Error",
+        description: "Failed to add new approved token. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+  
+  const handleToggleTokenStatus = async (tokenId:any, currentStatus:any) => {
+    try {
+      await updateApprovedToken(tokenId, { status: currentStatus === 1 ? 0 : 1 })
+      toast({
+        title: "Success",
+        description: "Token status updated successfully",
+      })
+      fetchApprovedTokens()
+    } catch (error) {
+      console.error("Error updating token status:", error)
+      toast({
+        title: "Error",
+        description: "Failed to update token status. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const fetchWallets = async () => {
+    try {
+      const fetchedWallets = await getWallets()
+      setWallets(fetchedWallets)
+    } catch (error) {
+      console.error("Error fetching wallets:", error)
+      toast({
+        title: "Error",
+        description: "Failed to fetch wallets. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
+  const handleRefreshWallet = async (walletId: string) => {
+    try {
+      await refreshWallet(walletId)
+      toast({
+        title: "Success",
+        description: "Wallet refreshed successfully",
+      })
+      fetchWallets()
+    } catch (error) {
+      console.error("Error refreshing wallet:", error)
+      toast({
+        title: "Error",
+        description: "Failed to refresh wallet. Please try again.",
+        variant: "destructive",
+      })
+    }
+  }
+
   if (!publicKey) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -519,32 +678,36 @@ export default function AdminPage() {
         </motion.h1>
 
         <Tabs defaultValue="platform" className="space-y-8">
-          <TabsList className="grid w-full grid-cols-1 md:grid-cols-5 gap-4">
+          <TabsList className="grid w-full grid-cols-1 md:grid-cols-6 gap-4">
             <TabsTrigger value="platform" className="text-lg">
               <Wallet className="mr-2 h-5 w-5" />
-              Platform 
+              Platform
             </TabsTrigger>
             <TabsTrigger value="games" className="text-lg">
               <GamepadIcon className="mr-2 h-5 w-5" />
-              Game 
+              Arcade
             </TabsTrigger>
             <TabsTrigger value="users" className="text-lg">
               <Users className="mr-2 h-5 w-5" />
-              User 
+              User
             </TabsTrigger>
             <TabsTrigger value="support" className="text-lg">
               <AlertTriangle className="mr-2 h-5 w-5" />
-              Support Tickets
+              Support
             </TabsTrigger>
             <TabsTrigger value="shop" className="text-lg">
               <Package className="mr-2 h-5 w-5" />
-              Shop 
+              Shop
+            </TabsTrigger>
+            <TabsTrigger value="wallets" className="text-lg">
+              <Wallet className="mr-2 h-5 w-5" />
+              Wallet
             </TabsTrigger>
           </TabsList>
 
           {/* Platform Management Tab Content */}
           <TabsContent value="platform">
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-8">
               <Card className="bg-gradient-to-br from-blue-900/30 to-purple-900/30 border-primary/20">
                 <CardHeader>
                   <CardTitle className="flex items-center">
@@ -644,6 +807,58 @@ export default function AdminPage() {
                   </Button>
                 </CardContent>
               </Card>
+
+              {/* New GAMEr Tokens Settings card */}
+              <Card className="bg-gradient-to-br from-yellow-900/30 to-orange-900/30 border-primary/20">
+                <CardHeader>
+                  <CardTitle className="flex items-center">
+                    <Coins className="mr-2 h-6 w-6 text-primary" />
+                    GAMEr Tokens Settings
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="min-tokens-arcade">Min Tokens for Arcade</Label>
+                    <Input
+                      id="min-tokens-arcade"
+                      type="number"
+                      value={minTokensArcade}
+                      onChange={(e) => setMinTokensArcade(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="min-tokens-esports">Min Tokens for Esports</Label>
+                    <Input
+                      id="min-tokens-esports"
+                      type="number"
+                      value={minTokensEsports}
+                      onChange={(e) => setMinTokensEsports(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="min-tokens-tournaments">Min Tokens for Tournaments</Label>
+                    <Input
+                      id="min-tokens-tournaments"
+                      type="number"
+                      value={minTokensTournaments}
+                      onChange={(e) => setMinTokensTournaments(Number(e.target.value))}
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="min-tokens-grabbit">Min Tokens for Grabbit</Label>
+                    <Input
+                      id="min-tokens-grabbit"
+                      type="number"
+                      value={minTokensGrabbit}
+                      onChange={(e) => setMinTokensGrabbit(Number(e.target.value))}
+                    />
+                  </div>
+                  <Button onClick={handleUpdateGamerTokenSettings} className="w-full">
+                    <RefreshCw className="mr-2 h-4 w-4" />
+                    Update GAMEr Token Settings
+                  </Button>
+                </CardContent>
+              </Card>
             </div>
 
             <Card className="mt-8 bg-gradient-to-br from-red-900/30 to-orange-900/30 border-primary/20">
@@ -694,6 +909,79 @@ export default function AdminPage() {
                 )}
               </CardContent>
             </Card>
+
+            {/* Approved Tokens card */}
+            <Card className="mt-8 bg-gradient-to-br from-pink-900/30 to-red-900/30 border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Coins className="mr-2 h-6 w-6 text-primary" />
+                  Approved Tokens
+                </CardTitle>
+              </CardHeader>
+              <CardContent className="space-y-4">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Name</TableHead>
+                      <TableHead>Ticker</TableHead>
+                      <TableHead>Address</TableHead>
+                      <TableHead>Status</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {approvedTokens.map((token:any) => (
+                      <TableRow key={token.id}>
+                        <TableCell>{token.name}</TableCell>
+                        <TableCell>{token.ticker}</TableCell>
+                        <TableCell>{token.address}</TableCell>
+                        <TableCell>{token.status}</TableCell>
+                        <TableCell>
+                          <Button
+                            onClick={() => handleToggleTokenStatus(token.id, token.status)}
+                            variant="outline"
+                            size="sm"
+                          >
+                            {token.status === 1 ? "Deactivate" : "Activate"}
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <div className="space-y-2">
+                  <Label htmlFor="new-token-name">New Token Name</Label>
+                  <Input
+                    id="new-token-name"
+                    value={newTokenName}
+                    onChange={(e) => setNewTokenName(e.target.value)}
+                    placeholder="Enter token name"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-token-ticker">New Token Ticker</Label>
+                  <Input
+                    id="new-token-ticker"
+                    value={newTokenTicker}
+                    onChange={(e) => setNewTokenTicker(e.target.value)}
+                    placeholder="Enter token ticker"
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="new-token-address">New Token Address</Label>
+                  <Input
+                    id="new-token-address"
+                    value={newTokenAddress}
+                    onChange={(e) => setNewTokenAddress(e.target.value)}
+                    placeholder="Enter token address"
+                  />
+                </div>
+                <Button onClick={handleAddApprovedToken} className="w-full">
+                  <Plus className="mr-2 h-4 w-4" />
+                  Add New Approved Token
+                </Button>
+              </CardContent>
+            </Card>
           </TabsContent>
 
           {/* Game Management Tab Content */}
@@ -702,7 +990,7 @@ export default function AdminPage() {
               <CardHeader>
                 <CardTitle className="flex items-center">
                   <GamepadIcon className="mr-2 h-6 w-6 text-primary" />
-                  Game Statistics
+                  Arcade Statistics
                 </CardTitle>
               </CardHeader>
               <CardContent>
@@ -719,7 +1007,7 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {gameStats.map((game:any) => (
+                    {gameStats.map((game) => (
                       <TableRow key={game.id}>
                         <TableCell>{game.title}</TableCell>
                         <TableCell>{game.play_count}</TableCell>
@@ -780,7 +1068,7 @@ export default function AdminPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {searchResults.map((user:any) => (
+                      {searchResults.map((user) => (
                         <TableRow key={user.wallet}>
                           <TableCell>{user.wallet}</TableCell>
                           <TableCell>{user.username}</TableCell>
@@ -914,7 +1202,7 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products.map((product:any) => (
+                    {products.map((product) => (
                       <TableRow key={product.id}>
                         <TableCell>
                           <img
@@ -953,7 +1241,7 @@ export default function AdminPage() {
                             onClick={() => handleEditProduct(product)}
                           >
                             <Edit className="w-4 h-4 mr-1" />
-                            Edit
+                            Edit{" "}
                           </Button>
                           <Button
                             variant="outline"
@@ -965,6 +1253,66 @@ export default function AdminPage() {
                           >
                             <Trash2 className="w-4 h-4 mr-1" />
                             Delete
+                          </Button>
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </CardContent>
+            </Card>
+          </TabsContent>
+
+          {/* Wallet Management Tab Content */}
+          <TabsContent value="wallets">
+            <Card className="bg-gradient-to-br from-cyan-900/30 to-blue-900/30 border-primary/20">
+              <CardHeader>
+                <CardTitle className="flex items-center">
+                  <Wallet className="mr-2 h-6 w-6 text-primary" />
+                  Wallet Management
+                </CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Type</TableHead>
+                      <TableHead>Public Key</TableHead>
+                      <TableHead>Game ID</TableHead>
+                      <TableHead>Created At</TableHead>
+                      <TableHead>Actions</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {wallets.map((wallet) => (
+                      <TableRow key={wallet.id}>
+                        <TableCell>{wallet.type}</TableCell>
+                        <TableCell>
+                          <div className="flex items-center space-x-2">
+                            <span>
+                              {wallet.public_key.slice(0, 8)}...{wallet.public_key.slice(-8)}
+                            </span>
+                            <Button
+                              variant="ghost"
+                              size="sm"
+                              onClick={() => {
+                                navigator.clipboard.writeText(wallet.public_key)
+                                toast({
+                                  title: "Copied",
+                                  description: "Public key copied to clipboard",
+                                })
+                              }}
+                            >
+                              <CopyIcon className="w-4 h-4" />
+                            </Button>
+                          </div>
+                        </TableCell>
+                        <TableCell>{wallet.game_id || "N/A"}</TableCell>
+                        <TableCell>{new Date(wallet.created_at).toLocaleString()}</TableCell>
+                        <TableCell>
+                          <Button variant="outline" size="sm" onClick={() => handleRefreshWallet(wallet.id)}>
+                            <RefreshCw className="w-4 h-4 mr-2" />
+                            Refresh
                           </Button>
                         </TableCell>
                       </TableRow>

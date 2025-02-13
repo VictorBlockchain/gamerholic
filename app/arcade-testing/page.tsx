@@ -68,10 +68,10 @@ export default function GameTestingPage() {
       })
       return
     }
-
+    
     try {
 
-      const response = await fetch("/api/games/test/assign", {
+      const response = await fetch("/api/arcade/test/assign", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ gameId: game.id, user:publicKey }),
@@ -103,13 +103,13 @@ export default function GameTestingPage() {
       <Header />
       <main className="container mx-auto px-4 py-8">
         <motion.div initial={{ opacity: 0, y: -20 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.5 }}>
-          <h1 className="text-4xl font-bold mb-6 text-primary neon-glow text-center">Game Testing</h1>
+          <h1 className="text-4xl font-bold mb-6 text-primary neon-glow text-center">Arcade Game Testing</h1>
         </motion.div>
 
         <Card className="mb-8">
           <CardHeader>
             <CardTitle>Available Games for Testing</CardTitle>
-            <CardDescription>Select a game to start testing and earn credits!</CardDescription>
+            <CardDescription>Select a game to start testing and earn Solana</CardDescription>
           </CardHeader>
           <CardContent>
             <div className="flex justify-between items-center mb-4">

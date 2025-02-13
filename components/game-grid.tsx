@@ -9,8 +9,8 @@ import { Button } from "@/components/ui/button"
 import type React from "react"
 
 interface Game {
-  id: number
-  arcade_id: number
+  id: string
+  game_id: number
   title: string
   thumbnail_image: string
   play_fee: number
@@ -33,6 +33,7 @@ interface GameGridProps {
 }
 
 export function GameGrid({ games, title, icon, className, showNoGamesMessage = false }: GameGridProps) {
+  console.log(games)
   return (
     <section className={`my-8 ${className}`}>
       <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-primary flex items-center">
@@ -43,13 +44,13 @@ export function GameGrid({ games, title, icon, className, showNoGamesMessage = f
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
           {games.map((game, index) => (
             <Card
-              key={game.id}
+              key={game.game_id}
               className={`game-card group hover:shadow-lg transition-all duration-300 transform hover:scale-105 ${
                 index % 3 === 0 ? "neon-border-1" : index % 3 === 1 ? "neon-border-2" : "neon-border-3"
               }`}
             >
               <div className="game-card-image relative overflow-hidden rounded-t-lg">
-              <Link href={`/play/${game.arcade_id}`} className="text-primary hover:underline font-semibold">
+              <Link href={`/arcade/${game.game_id}`} className="text-primary hover:underline font-semibold">
 
                 <Image
                   src={game.thumbnail_image || "/placeholder.svg"}
@@ -98,7 +99,7 @@ export function GameGrid({ games, title, icon, className, showNoGamesMessage = f
       ) : showNoGamesMessage ? (
         <div className="flex flex-col items-center">
           <NoGamesAvailable />
-          <Link href="/create-game" className="mt-6">
+          <Link href="/arcade-create" className="mt-6">
             <Button className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
               <PlusCircle className="mr-2 h-5 w-5" />
               Create a New Game

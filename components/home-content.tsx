@@ -32,6 +32,7 @@ import { useParams, useRouter } from "next/navigation"
 
 interface Game {
   id: string
+  game_id: number
   title: string
   image: string
   play_fee: number
@@ -97,7 +98,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
         // console.log("Result:", result);
       }
     }
-
+  
   }
 
   const fetchTestableGames = async () => {
@@ -107,7 +108,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
       .eq("status",1)
       .order("created_at", { ascending: false })
       .limit(4)
-
+    console.log(data)
     if (error) {
       console.error("Error fetching testable games:", error)
     } else {
@@ -221,7 +222,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
           </div>
           <div className="flex flex-col items-center">
             <h3 className="text-2xl font-semibold mb-4 text-center text-primary">Ready to revolutionize gaming?</h3>
-            <Link href="/create-game">
+            <Link href="/arcade-create">
               <Button className="px-8 py-6 bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                 <PlusCircle className="mr-2 h-6 w-6" />
                 Start Creating Your Game
@@ -288,7 +289,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
               </Card>
             </div>
             <div className="flex justify-center">
-              <Link href="/game-testing">
+              <Link href="/arcade-testing">
                 <Button className="px-8 py-4 bg-gradient-to-r from-blue-500 to-green-500 hover:from-blue-600 hover:to-green-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                   <TestTube className="mr-2 h-5 w-5" />
                   Start Testing Games
@@ -444,7 +445,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
               </Card>
             </div>
             <div className="flex justify-center">
-              <Link href="/games/grabbit">
+              <Link href="/grabbit">
                 <Button className="px-8 py-4 bg-gradient-to-r from-cyan-500 to-emerald-500 hover:from-cyan-600 hover:to-emerald-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
                   <Grab className="mr-2 h-5 w-5" />
                   Play Grabbit Now

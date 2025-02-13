@@ -1,7 +1,5 @@
-// This file contains the platform wallet initialization and related functions
 import { PublicKey, LAMPORTS_PER_SOL, type Connection, Keypair } from "@solana/web3.js"
-import { createClient } from "@supabase/supabase-js"
-import { decryptPlatformWallet } from "./depositAddresses"
+import { supabase } from "@/lib/supabase"
 
 type PlatformSettings = {
   platform_wallet_address: string
@@ -12,6 +10,12 @@ type PlatformSettings = {
   initial_super_admin_address: string
   encrypted_private_key: string
   iv: string
+  min_tokens_arcade: number
+  min_tokens_esports: number
+  min_tokens_tournaments: number
+  min_tokens_grabbit: number
+  fee_address: string
+  arcade_create_fee: number
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -20,8 +24,6 @@ const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY
 if (!supabaseUrl || !supabaseAnonKey) {
   throw new Error("Missing Supabase environment variables")
 }
-
-const supabase = createClient(supabaseUrl, supabaseAnonKey)
 
 let platformSettings: PlatformSettings | null = null
 
@@ -90,40 +92,6 @@ export async function withdrawUserCredits(userId: string, amount: number): Promi
   }
 }
 
-export async function createDepositAddress(userId: string): Promise<string> {
-  try {
-    // Validate the userId as a valid Solana public key
-    new PublicKey(userId)
-    
-    const { data, error } = await supabase.rpc("create_deposit_address", {
-      p_user_id: userId,
-    })
-
-    if (error) {
-      console.error("Error in create_deposit_address RPC:", error)
-      throw new Error(`Failed to create deposit address: ${error.message}`)
-    }
-
-    if (!data || typeof data !== "string") {
-      throw new Error("Invalid response from create_deposit_address RPC")
-    }
-
-    return data
-  } catch (error) {
-    console.error("Error creating deposit address:", error)
-    throw error
-  }
-}
-
-export function isValidPublicKey(key: string): boolean {
-  try {
-    new PublicKey(key)
-    return true
-  } catch {
-    return false
-  }
-}
-
 export async function getFinancialStatistics() {
   try {
     const { data, error } = await supabase.rpc("get_financial_statistics")
@@ -167,21 +135,28 @@ export async function getGameStatistics() {
   return data
 }
 
-export async function updatePayWallet(
-  newPayAddress: string,
-):Promise<{ success:boolean}> {
-  
-  
+export async function updatePlatformWallet(
+  newWalletAddress: string,
+  encryptedPrivateKey: string,
+  iv: string,
+): Promise<void> {
   const { error } = await supabase
     .from("platform_settings")
     .update({
-      payment_wallet: newPayAddress
+      platform_wallet_address: newWalletAddress,
+      encrypted_private_key: encryptedPrivateKey,
+      iv: iv,
     })
-    .eq("id", 3)
-  
+    .eq("id", 1)
+
   if (error) throw error
-  return {success:true}
-  
+
+  // Update the local platformSettings
+  if (platformSettings) {
+    platformSettings.platform_wallet_address = newWalletAddress
+    platformSettings.encrypted_private_key = encryptedPrivateKey
+    platformSettings.iv = iv
+  }
 }
 
 export async function updatePlatformFees(
@@ -232,128 +207,26 @@ export async function searchUsers(searchTerm: string) {
   return data
 }
 
-const getRandomBytes = (length: number) => {
-  const array = new Uint8Array(length)
-  crypto.getRandomValues(array)
-  return Array.from(array, (byte) => byte.toString(16).padStart(2, "0")).join("")
-}
-
-export async function getPlatformWallet(): Promise<{ success:boolean, wallet_platform: string, wallet_payment:string }> {
-  
-  const { data: existingEntry, error: fetchError }:any = await supabase
-  .from('platform_settings')
-  .select('platform_wallet_address, payment_wallet')
-  .limit(1)
-  .maybeSingle();
-  if (existingEntry) {
-    console.log('Address already exists:', existingEntry.platform_wallet_address);
-    return { success:true, wallet_platform: existingEntry.platform_wallet_address, wallet_payment:existingEntry.payment_wallet };
-  }else{
-    return { success:false, wallet_platform: '',wallet_payment:'' };
- 
-  }
-
-}
-
-export async function generateDepositWallet(publicKey:any): Promise<{ success:boolean, message: any}> {
-
-  try{
-  
-    // console.log('user public key is' + publicKey)
-    const response = await fetch("/api/address", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user: "platform" }),
-    })
-
-    if (!response.ok) {
-      return {success:false, message: response.statusText}
-      // throw new Error(`Failed to generate deposit wallet: ${response.statusText}`)
-    }
-    const resp:any = await response.json()
-    console.log(resp)
-
-    const address = resp.address
-    const encryptedPrivateKey = resp.key
-    const iv = resp.iv
-    
-    const { data, error } = await supabase
-    .from("users")
-    .update({ 
-      deposit_wallet: address, 
-      deposit_wallet_encryptedKey: encryptedPrivateKey,
-      iv:iv 
-    })
-    .eq("publicKey", publicKey); // Condition to match the publicKey
-  
-  if (error) {
-    console.error("Error updating user:", error);
-    return {success:false, message: error}
-  } else {
-    console.log("User updated successfully:", publicKey);
-    return {success:true, message: publicKey}
-  }
-      
-  
-  } catch (error) {
-    console.error("Error in generateDepositWallet:", error)
-    throw new Error("Failed to generate platform wallet")
-  }
-
-}
-
-export async function generatePlatformWallet(): Promise<{ success:boolean, message: string}> {
+export async function generatePlatformWallet(): Promise<{
+  publicKey: string
+  encryptedPrivateKey: string
+  iv: string
+}> {
   try {
-    const response = await fetch("/api/address", {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ user: "platform" }),
-    })
+    const keypair = Keypair.generate()
+    const publicKey = keypair.publicKey.toBase58()
+    const privateKey = Buffer.from(keypair.secretKey).toString("base64")
+    const { encrypted, iv } = await encryptWalletKey(privateKey)
 
-    if (!response.ok) {
-      throw new Error(`Failed to generate platform wallet: ${response.statusText}`)
-    }
-    
-      // Check if an address already exists
-      const { data: existingEntry, error: fetchError } = await supabase
-      .from('platform_settings')
-      .select('platform_wallet_address, encrypted_private_key, iv')
-      .limit(1)
-      .maybeSingle();
-
-    if (fetchError && fetchError.code !== 'PGRST116') { // Ignore "No rows found" error
-      console.error('Error checking existing wallet:', fetchError);
-      return { success: false, message: '' };
-    }
-    
-    if (existingEntry) {
-      console.log('Address already exists:', existingEntry.platform_wallet_address);
-      return { success:true, message: existingEntry.platform_wallet_address };
-    }
-    
-    const resp:any = await response.json()
-    const publicKey = resp.address
-    const encryptedPrivateKey = resp.key
-    
-    const { data, error } = await supabase
-    .from('platform_settings')
-    .insert([{ platform_wallet_address: publicKey, encrypted_private_key: encryptedPrivateKey, iv:resp.iv }]);
-    
-    if (error) {
-      return { success:false, message: 'error saving to database' };
-
-    } else {
-      return { success:true, message: publicKey };
-    
-    }
+    return { publicKey, encryptedPrivateKey: encrypted, iv }
   } catch (error) {
     console.error("Error in generatePlatformWallet:", error)
     throw new Error("Failed to generate platform wallet")
   }
+}
+
+export async function decryptPlatformWallet(encryptedPrivateKey: string, iv: string): Promise<string> {
+  return decryptWalletKey(encryptedPrivateKey, iv)
 }
 
 export async function processPlatformWithdrawal(amount: number, recipientAddress: string): Promise<string> {
@@ -361,11 +234,11 @@ export async function processPlatformWithdrawal(amount: number, recipientAddress
     throw new Error("Platform settings not initialized")
   }
 
-  const { data, error } = await supabase.from("platform_settings").select("encrypted_private_key", "iv").single()
+  const { data, error } = await supabase.from("platform_settings").select("encrypted_private_key, iv").single()
 
   if (error) throw error
 
-  const decryptedPrivateKey = await decryptPlatformWallet(data.encrypted_private_key, data.iv)
+  const decryptedPrivateKey = await decryptWalletKey(data.encrypted_private_key, data.iv)
   const keypair = Keypair.fromSecretKey(Buffer.from(decryptedPrivateKey, "base64"))
 
   // Implement the actual withdrawal logic here using the keypair
@@ -390,7 +263,103 @@ export async function addAdmin(
   if (error) throw error
 }
 
-export {
-  initializePlatformWallet as initializePlatformWalletOnLoad,
+export async function getGamerTokenSettings(): Promise<{
+  min_tokens_arcade: number
+  min_tokens_esports: number
+  min_tokens_tournaments: number
+  min_tokens_grabbit: number
+}> {
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("min_tokens_arcade, min_tokens_esports, min_tokens_tournaments, min_tokens_grabbit")
+    .single()
+
+  if (error) throw error
+  return data
+}
+
+export async function updateGamerTokenSettings(settings: {
+  min_tokens_arcade: number;
+  min_tokens_esports: number;
+  min_tokens_tournament: number;
+  min_tokens_grabbit: number;
+}): Promise<void> {
+  // Add the `id` field to the settings object
+  const settingsWithId = { id: 1, ...settings };
+
+  // Perform the upsert operation
+  const { error } = await supabase
+    .from("platform_settings")
+    .upsert(settingsWithId, { onConflict: "id" }); // Specify the conflict resolution column
+
+  // Throw an error if something goes wrong
+  if (error) throw error;
+}
+
+export async function getApprovedTokens() {
+  const { data, error } = await supabase.from("approved_tokens").select("*").order("created_at", { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function addApprovedToken(token: {
+  name: string
+  ticker: string
+  address: string
+  status: string
+}): Promise<void> {
+  const { error } = await supabase.from("approved_tokens").insert(token)
+
+  if (error) throw error
+}
+
+export async function updateApprovedToken(
+  tokenId: number,
+  updates: Partial<{
+    name: string
+    ticker: string
+    address: string
+    status: number
+  }>,
+): Promise<void> {
+  const { error } = await supabase.from("approved_tokens").update(updates).eq("id", tokenId)
+
+  if (error) throw error
+}
+
+export async function getWallets() {
+  const { data, error } = await supabase.from("wallets").select("*").order("created_at", { ascending: false })
+
+  if (error) throw error
+  return data
+}
+
+export async function refreshWallet(walletId: string): Promise<void> {
+  // Implement wallet refresh logic here
+  // This might involve fetching the latest balance or updating other wallet-related information
+  console.log(`Refreshing wallet with ID: ${walletId}`)
+}
+
+export async function encryptWalletKey(walletKey: string): Promise<{ encrypted: string; iv: string }> {
+  const response = await fetch("/api/crypto", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "encrypt", data: walletKey }),
+  })
+  const result = await response.json()
+  if (!result.success) throw new Error("Encryption failed")
+  return { encrypted: result.encrypted, iv: result.iv }
+}
+
+export async function decryptWalletKey(encrypted: string, iv: string): Promise<string> {
+  const response = await fetch("/api/crypto", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ action: "decrypt", data: encrypted, iv }),
+  })
+  const result = await response.json()
+  if (!result.success) throw new Error("Decryption failed")
+  return result.decrypted
 }
 
