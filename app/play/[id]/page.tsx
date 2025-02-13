@@ -258,16 +258,20 @@ export default function PlayPage() {
     //   alert("Insufficient credits to play")
     //   return
     // }
-
+    
     //check user game balance
     let GAMErBalance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
     //check user sol balance
-    let solBalance = await solana.getBalance(userData.deposit_wallet)
-    let createFee:any = process.env.NEXT_PUBLIC_ARCADE_CREATE_FEE
-        solBalance = solBalance  / 10 ** 9
-        createFee = createFee  / 10 ** 9
-
+        GAMErBalance = GAMErBalance  / 10 ** 9
+    
     if (!isFree) {
+
+      if (GAMErBalance < game.play_fee) {
+        setErrorMessage('you need more GAMEr tokens to play')
+        setShowErrorModal(true)
+        return
+      }
+
       const response = await fetch("/api/game/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -536,6 +540,12 @@ export default function PlayPage() {
         </div>
       </main>
       <PauseModal isOpen={isPauseModalOpen} onClose={() => setIsPauseModalOpen(false)} message={pauseMessage} />
+      {showSuccessModal && (
+          <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
+        )}
+        {showErrorModal && (
+          <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
+        )}
     </div>
   )
 }

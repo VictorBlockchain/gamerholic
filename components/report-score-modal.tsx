@@ -18,9 +18,19 @@ interface ReportScoreModalProps {
   onSubmit: (player1Score: number, player2Score: number) => void
   player1Name: string
   player2Name: string
+  isTournamentMatch: boolean
+  matchId?: string
 }
 
-export function ReportScoreModal({ isOpen, onClose, onSubmit, player1Name, player2Name }: ReportScoreModalProps) {
+export function ReportScoreModal({
+  isOpen,
+  onClose,
+  onSubmit,
+  player1Name,
+  player2Name,
+  isTournamentMatch,
+  matchId,
+}: ReportScoreModalProps) {
   const [player1Score, setPlayer1Score] = useState<number | "">("")
   const [player2Score, setPlayer2Score] = useState<number | "">("")
 
@@ -36,19 +46,22 @@ export function ReportScoreModal({ isOpen, onClose, onSubmit, player1Name, playe
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
-      <DialogContent className="sm:max-w-[425px] bg-gradient-to-br from-purple-900/90 to-indigo-900/90 backdrop-blur-sm border-primary/20 text-primary">
+      <DialogContent className="sm:max-w-[425px] bg-gradient-to-br from-gray-900 to-black text-white border-primary/20">
         <DialogHeader>
           <DialogTitle className="text-2xl font-bold flex items-center gap-2">
             <Trophy className="w-6 h-6 text-yellow-400" />
-            Report Match Score
+            Report {isTournamentMatch ? "Tournament" : "Match"} Score
           </DialogTitle>
-          <DialogDescription className="text-primary/70">Enter the final scores for both players.</DialogDescription>
+          <DialogDescription className="text-gray-300">
+            Enter the final scores for both players.
+            {isTournamentMatch && <span className="block mt-2">Match ID: {matchId}</span>}
+          </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-6">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="player1Score" className="text-primary text-center">
-                {player1Name}
+              <Label htmlFor="player1Score" className="text-white">
+                {player1Name} Score
               </Label>
               <Input
                 id="player1Score"
@@ -56,14 +69,14 @@ export function ReportScoreModal({ isOpen, onClose, onSubmit, player1Name, playe
                 min="0"
                 value={player1Score}
                 onChange={(e) => setPlayer1Score(e.target.value ? Number.parseInt(e.target.value) : "")}
-                className="bg-background/50 border-primary/20 text-primary placeholder-primary/50"
+                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
                 placeholder="Enter score"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="player2Score" className="text-primary text-center">
-                {player2Name}
+              <Label htmlFor="player2Score" className="text-white">
+                {player2Name} Score
               </Label>
               <Input
                 id="player2Score"
@@ -71,7 +84,7 @@ export function ReportScoreModal({ isOpen, onClose, onSubmit, player1Name, playe
                 min="0"
                 value={player2Score}
                 onChange={(e) => setPlayer2Score(e.target.value ? Number.parseInt(e.target.value) : "")}
-                className="bg-background/50 border-primary/20 text-primary placeholder-primary/50"
+                className="bg-gray-800 border-gray-700 text-white placeholder-gray-500"
                 placeholder="Enter score"
                 required
               />
@@ -82,14 +95,14 @@ export function ReportScoreModal({ isOpen, onClose, onSubmit, player1Name, playe
               type="button"
               variant="outline"
               onClick={onClose}
-              className="bg-background/50 border-primary/20 text-primary hover:bg-primary/20"
+              className="bg-gray-800 border-gray-700 text-white hover:bg-gray-700"
             >
               <X className="w-4 h-4 mr-2" />
               Cancel
             </Button>
             <Button
               type="submit"
-              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+              className="bg-gradient-to-r from-purple-500 to-indigo-500 hover:from-purple-600 hover:to-indigo-600 text-white"
             >
               <Trophy className="w-4 h-4 mr-2" />
               Submit Scores
