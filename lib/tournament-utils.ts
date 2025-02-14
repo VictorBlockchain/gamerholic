@@ -1,4 +1,16 @@
 import type { SupabaseClient } from "@supabase/supabase-js"
+import {
+  Connection,
+  Transaction,
+  SystemProgram,
+  PublicKey,
+  Keypair,
+  sendAndConfirmTransaction,
+  LAMPORTS_PER_SOL,
+} from "@solana/web3.js"
+import { getAssociatedTokenAddress, createTransferInstruction } from "@solana/spl-token"
+import { supabase } from "@/lib/supabase"
+import { CryptoManager } from "@/lib/server/cryptoManager"
 
 export async function updateTournamentBracket(
   supabase: SupabaseClient,
@@ -136,6 +148,93 @@ async function updateTournamentResults(supabase: SupabaseClient, tournamentId: n
       .insert({ tournament_id: tournamentId, player_id: thirdPlaceId, position: 3, prize_amount: thirdPlacePrize })
 
     if (insertThirdPlaceError) throw insertThirdPlaceError
+  }
+}
+
+export async function refundPlayers(tournamentId: string, playerIds: string[], amount: number, prizeType: string) {
+  const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!, "confirmed")
+  const cryptoManager = new CryptoManager()
+
+  // Fetch tournament wallet details
+  const { data: tournamentWallet, error: walletError } = await supabase
+    .from("wallets")
+    .select("address, encrypted_private_key, iv")
+    .eq("tournament_id", tournamentId)
+    .single()
+
+  if (walletError) throw new Error(`Failed to fetch tournament wallet: ${walletError.message}`)
+
+  // Decrypt tournament wallet private key
+  const privateKey = cryptoManager.decrypt(tournamentWallet.encrypted_private_key, tournamentWallet.iv)
+  const tournamentKeypair = Keypair.fromSecretKey(new Uint8Array(Buffer.from(privateKey, "base64")))
+
+  // Fetch GAMEr token mint address if needed
+  let gamerTokenMint: PublicKey | null = null
+  if (prizeType === "GAMEr") {
+    const { data: tokenData, error: tokenError } = await supabase
+      .from("approved_tokens")
+      .select("address")
+      .eq("ticker", "GAMEr")
+      .single()
+
+    if (tokenError) throw new Error(`Failed to fetch GAMEr token address: ${tokenError.message}`)
+    gamerTokenMint = new PublicKey(tokenData.address)
+  }
+
+  for (const playerId of playerIds) {
+    try {
+      // Fetch player's deposit wallet address
+      const { data: player, error: playerError } = await supabase
+        .from("users")
+        .select("deposit_wallet")
+        .eq("id", playerId)
+        .single()
+
+      if (playerError) throw new Error(`Failed to fetch player deposit wallet: ${playerError.message}`)
+
+      const recipientAddress = new PublicKey(player.deposit_wallet)
+
+      let transaction: Transaction
+      if (prizeType === "Solana") {
+        transaction = new Transaction().add(
+          SystemProgram.transfer({
+            fromPubkey: tournamentKeypair.publicKey,
+            toPubkey: recipientAddress,
+            lamports: Math.floor(amount * LAMPORTS_PER_SOL),
+          }),
+        )
+      } else if (prizeType === "GAMEr" && gamerTokenMint) {
+        const fromTokenAccount = await getAssociatedTokenAddress(gamerTokenMint, tournamentKeypair.publicKey)
+        const toTokenAccount = await getAssociatedTokenAddress(gamerTokenMint, recipientAddress)
+
+        transaction = new Transaction().add(
+          createTransferInstruction(
+            fromTokenAccount,
+            toTokenAccount,
+            tournamentKeypair.publicKey,
+            Math.floor(amount * 1e9), // Assuming GAMEr token has 9 decimals like SOL
+          ),
+        )
+      } else {
+        throw new Error(`Invalid prize type: ${prizeType}`)
+      }
+
+      const signature = await sendAndConfirmTransaction(connection, transaction, [tournamentKeypair])
+
+      // Record the refund in the database
+      await supabase.from("refunds").insert({
+        tournament_id: tournamentId,
+        player_id: playerId,
+        amount: amount,
+        transaction_signature: signature,
+        prize_type: prizeType,
+      })
+
+      console.log(`Refund successful for player ${playerId}. Transaction signature: ${signature}`)
+    } catch (error) {
+      console.error(`Error refunding player ${playerId}:`, error)
+      // You might want to implement a retry mechanism or manual resolution for failed refunds
+    }
   }
 }
 

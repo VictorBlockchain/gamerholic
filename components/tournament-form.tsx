@@ -6,7 +6,6 @@ import { zodResolver } from "@hookform/resolvers/zod"
 import * as z from "zod"
 import { format } from "date-fns"
 import { CalendarIcon, Trophy, Upload } from "lucide-react"
-import { useToast } from "@/components/ui/use-toast"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Form, FormControl, FormDescription, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form"
@@ -17,6 +16,9 @@ import { Calendar } from "@/components/ui/calendar"
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { supabase } from "@/lib/supabase"
+import { ErrorModal } from "@/components/error-modal"
+import { SuccessModal } from "@/components/success-modal"
+import { useWallet } from "@solana/wallet-adapter-react"
 
 const formSchema = z.object({
   title: z.string().min(1, "Title is required"),
@@ -31,15 +33,20 @@ const formSchema = z.object({
   startDate: z.date({
     required_error: "Start date is required",
   }),
+  startTime: z.string().min(1, "Start time is required"),
   prizeType: z.enum(["Solana", "GAMEr"]),
   playerCount: z.enum(["4", "8", "16", "32", "64", "128"]),
   tournamentImage: z.string().url("Invalid URL").optional(),
 })
 
 export function TournamentForm() {
-  const { toast } = useToast()
   const [isSubmitting, setIsSubmitting] = useState(false)
   const [previewImage, setPreviewImage] = useState("/placeholder.svg")
+  const [errorModalOpen, setErrorModalOpen] = useState(false)
+  const [errorMessage, setErrorMessage] = useState("")
+  const [successModalOpen, setSuccessModalOpen] = useState(false)
+  const [successMessage, setSuccessMessage] = useState("")
+  const { publicKey }:any = useWallet()
 
   const form = useForm<z.infer<typeof formSchema>>({
     resolver: zodResolver(formSchema),
@@ -55,6 +62,7 @@ export function TournamentForm() {
       rules: "",
       prizeType: "GAMEr",
       playerCount: "16",
+      startTime: "",
     },
   })
 
@@ -66,11 +74,8 @@ export function TournamentForm() {
       const { data, error } = await supabase.storage.from("images").upload(fileName, file)
 
       if (error) {
-        toast({
-          title: "Error",
-          description: "Failed to upload image. Please try again.",
-          variant: "destructive",
-        })
+        setErrorMessage("Failed to upload image. Please try again.")
+        setErrorModalOpen(true)
       } else {
         const {
           data: { publicUrl },
@@ -84,19 +89,30 @@ export function TournamentForm() {
 
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
+    console.log(values)
     try {
-      // TODO: Implement the API call to create the tournament
-      console.log(values)
-      toast({
-        title: "Tournament Created",
-        description: "Your tournament has been successfully created.",
+      const response = await fetch("/api/esports/tournament/create", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          ...values,
+          host_id: publicKey.toString(),
+        }),
       })
+
+      if (!response.ok) {
+        throw new Error("Failed to create tournament")
+      }
+
+      const data = await response.json()
+      setSuccessMessage("Your tournament has been successfully created.")
+      setSuccessModalOpen(true)
     } catch (error) {
-      toast({
-        title: "Error",
-        description: "There was an error creating your tournament. Please try again.",
-        variant: "destructive",
-      })
+      console.error("Error creating tournament:", error)
+      setErrorMessage("There was an error creating your tournament. Please try again.")
+      setErrorModalOpen(true)
     } finally {
       setIsSubmitting(false)
     }
@@ -257,11 +273,24 @@ export function TournamentForm() {
                       mode="single"
                       selected={field.value}
                       onSelect={field.onChange}
-                      disabled={(date) => date < new Date() || date < new Date("1900-01-01")}
+                      disabled={(date) => date < new Date("1900-01-01")}
                       initialFocus
                     />
                   </PopoverContent>
                 </Popover>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+          <FormField
+            control={form.control}
+            name="startTime"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Start Time</FormLabel>
+                <FormControl>
+                  <Input type="time" {...field} />
+                </FormControl>
                 <FormMessage />
               </FormItem>
             )}
@@ -387,6 +416,8 @@ export function TournamentForm() {
           </CardContent>
         </Card>
       </div>
+      <ErrorModal isOpen={errorModalOpen} onClose={() => setErrorModalOpen(false)} message={errorMessage} />
+      <SuccessModal isOpen={successModalOpen} onClose={() => setSuccessModalOpen(false)} message={successMessage} />
     </div>
   )
 }

@@ -20,7 +20,7 @@ export async function POST(request: Request) {
     .select("current_tester_id")
     .eq("id", gameId)
     .single()
-
+  
   if (gameError || game.current_tester_id !== user.id) {
     return NextResponse.json({ error: "You are not authorized to submit test results for this game" }, { status: 403 })
   }

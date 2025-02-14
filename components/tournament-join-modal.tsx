@@ -11,11 +11,13 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog"
+import { useWallet } from "@solana/wallet-adapter-react"
 
 interface JoinTournamentModalProps {
   isOpen: boolean
   onClose: () => void
-  tournamentId: string
+  onConfirm: ()=> void
+  tournamentId: number
   tournamentName: string
   entryFee: number
 }
@@ -23,33 +25,15 @@ interface JoinTournamentModalProps {
 export function JoinTournamentModal({
   isOpen,
   onClose,
+  onConfirm,
   tournamentId,
   tournamentName,
-  entryFee,
+  entryFee
 }: JoinTournamentModalProps) {
   const { toast } = useToast()
   const [isJoining, setIsJoining] = useState(false)
+  const { publicKey }:any = useWallet()
 
-  const handleJoinTournament = async () => {
-    setIsJoining(true)
-    try {
-      // TODO: Implement the API call to join the tournament
-      console.log(`Joining tournament ${tournamentId}`)
-      toast({
-        title: "Joined Tournament",
-        description: "You have successfully joined the tournament.",
-      })
-      onClose()
-    } catch (error) {
-      toast({
-        title: "Error",
-        description: "There was an error joining the tournament. Please try again.",
-        variant: "destructive",
-      })
-    } finally {
-      setIsJoining(false)
-    }
-  }
 
   return (
     <Dialog open={isOpen} onOpenChange={onClose}>
@@ -66,7 +50,7 @@ export function JoinTournamentModal({
           <Button variant="outline" onClick={onClose}>
             Cancel
           </Button>
-          <Button onClick={handleJoinTournament} disabled={isJoining}>
+          <Button onClick={onConfirm} disabled={isJoining}>
             {isJoining ? "Joining..." : "Join Tournament"}
           </Button>
         </DialogFooter>

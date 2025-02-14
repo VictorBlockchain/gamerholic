@@ -9,20 +9,21 @@ import { Button } from "@/components/ui/button"
 import { Gamepad, Calendar, Users, Trophy } from "lucide-react"
 import { JoinTournamentModal } from "./tournament-join-modal"
 import Link from "next/link"
+import { supabase } from "@/lib/supabase"
+const moment = require("moment");
 
 interface Tournament {
-  id: string
   game_id: number
   title: string
   game: string
   console: string
-  entryFee: number
-  prizePool: number
-  startDate: string
-  playerCount: number
-  maxPlayers: number
-  status: "upcoming" | "in-progress" | "completed"
-  imageUrl: string
+  entry_fee: number
+  prize_percentage: number
+  start_date: string
+  max_players: number
+  prize_type: string
+  status: "upcoming" | "in-progress" | "completed" | "paid"
+  image_url: string
 }
 
 export function TournamentList() {
@@ -39,40 +40,13 @@ export function TournamentList() {
   const fetchTournaments = async () => {
     setIsLoading(true)
     try {
-      // TODO: Replace with actual API call
-      const mockTournaments: Tournament[] = [
-        {
-          id: "1",
-          game_id: 123456,
-          title: "Fortnite Championship",
-          game: "Fortnite",
-          console: "PC",
-          entryFee: 10,
-          prizePool: 1000,
-          startDate: "2023-07-15T18:00:00Z",
-          playerCount: 64,
-          maxPlayers: 128,
-          status: "upcoming",
-          imageUrl: "/placeholder.svg",
-        },
-        {
-          id: "2",
-          game_id: 234567,
-          title: "Call of Duty: Warzone Showdown",
-          game: "Call of Duty: Warzone",
-          console: "PlayStation",
-          entryFee: 15,
-          prizePool: 1500,
-          startDate: "2023-07-20T20:00:00Z",
-          playerCount: 32,
-          maxPlayers: 32,
-          status: "in-progress",
-          imageUrl: "/placeholder.svg",
-        },
-        // Add more mock tournaments as needed
-      ]
-      setTournaments(mockTournaments)
+      const { data, error } = await supabase.from("tournaments").select("*").order("start_date", { ascending: true })
+
+      if (error) throw error
+
+      setTournaments(data)
     } catch (error) {
+      console.error("Error fetching tournaments:", error)
       toast({
         title: "Error",
         description: "Failed to fetch tournaments. Please try again.",
@@ -88,6 +62,10 @@ export function TournamentList() {
     setIsJoinModalOpen(true)
   }
 
+  const calculatePrizePool = (tournament: Tournament) => {
+    return tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)
+  }
+
   if (isLoading) {
     return <div>Loading tournaments...</div>
   }
@@ -95,10 +73,10 @@ export function TournamentList() {
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
       {tournaments.map((tournament) => (
-        <Card key={tournament.id} className="bg-card/50 backdrop-blur-sm border-primary/20">
+        <Card key={tournament.game_id} className="bg-card/50 backdrop-blur-sm border-primary/20">
           <CardHeader className="relative">
             <Avatar className="w-full h-48 rounded-t-lg">
-              <AvatarImage src={tournament.imageUrl} alt={tournament.game} className="object-cover" />
+              <AvatarImage src={tournament.image_url} alt={tournament.game} className="object-cover" />
               <AvatarFallback>{tournament.game[0]}</AvatarFallback>
             </Avatar>
             <Badge
@@ -123,29 +101,25 @@ export function TournamentList() {
               </div>
               <div className="flex items-center">
                 <Calendar className="w-4 h-4 mr-2" />
-                <span>{new Date(tournament.startDate).toLocaleDateString()}</span>
+                <span>{moment(tournament.start_date).format("MMMM D, YYYY h:mm A")}</span>
               </div>
               <div className="flex items-center">
                 <Users className="w-4 h-4 mr-2" />
-                <span>
-                  {tournament.playerCount} / {tournament.maxPlayers} players
-                </span>
+                <span>{tournament.max_players} players</span>
               </div>
               <div className="flex items-center">
                 <Trophy className="w-4 h-4 mr-2" />
-                <span>Prize Pool: ${tournament.prizePool}</span>
+                <span>Prize Pool: {calculatePrizePool(tournament).toFixed(2)} {tournament.prize_type=='Solana' && ('SOL')} {tournament.prize_type=='GAMEr' && ('GAMEr')}</span>
               </div>
             </div>
             <div className="flex space-x-2 mt-4">
               <Button
                 className="flex-1"
                 onClick={() => handleJoinTournament(tournament)}
-                disabled={tournament.status !== "upcoming" || tournament.playerCount >= tournament.maxPlayers}
+                disabled={tournament.status !== "upcoming"}
               >
                 {tournament.status === "upcoming"
-                  ? tournament.playerCount >= tournament.maxPlayers
-                    ? "Full"
-                    : "Join Tournament"
+                  ? "Join Tournament"
                   : tournament.status === "in-progress"
                     ? "In Progress"
                     : "Completed"}
@@ -161,9 +135,9 @@ export function TournamentList() {
         <JoinTournamentModal
           isOpen={isJoinModalOpen}
           onClose={() => setIsJoinModalOpen(false)}
-          tournamentId={selectedTournament.id}
+          tournamentId={selectedTournament.game_id.toString()}
           tournamentName={selectedTournament.title}
-          entryFee={selectedTournament.entryFee}
+          entryFee={selectedTournament.entry_fee}
         />
       )}
     </div>

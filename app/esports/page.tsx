@@ -262,7 +262,7 @@ const EsportsPage: React.FC = () => {
       console.log("Avatar updated successfully!")
     }
   }
-
+  
   const fetchUser = async () => {
     if (isFetching) return // Skip if a fetch is already in progress
     isFetching = true

@@ -367,7 +367,7 @@ export default function CreateGamePage() {
         
         setShowErrorModal(true)
         setErrorMessage("Go to your profile and deposit the game creation fee to your wallet")
-
+      
       }else{
       
         const response = await fetch("/api/arcade/create", {
