@@ -4,6 +4,9 @@ import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PE
 import { createTransferInstruction, getOrCreateAssociatedTokenAccount,getMint ,getAccount,getAssociatedTokenAddress} from "@solana/spl-token"
 import { sendAndConfirmTransaction } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
+import { balanceManager } from "@/lib/balance"
+import { useToast } from "@/components/ui/use-toast"
+let BALANCE = new balanceManager()
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
 
@@ -152,11 +155,12 @@ export async function POST(req: Request) {
     // Check if user has enough tokens in their public wallet
     const userPublicKey: any = new PublicKey(player);
     const tokenMintAddress: any = new PublicKey(approvedToken.address);
-
-    const userTokenBalance: any = await getTokenBalance(userPublicKey, tokenMintAddress);
-
+    
+    let userTokenBalance = await BALANCE.getTokenBalance(userPublicKey.toString(), tokenMintAddress.toString())
+    // console.log(userTokenBalance)
     if (userTokenBalance > 0) {
-      if (userTokenBalance < platformSettings.min_tokens_tournament) {
+        userTokenBalance = userTokenBalance / 10 ** 9
+      if (userTokenBalance < (platformSettings.min_tokens_tournament / 10 ** 9)) {
         return NextResponse.json(
           { success: false, message: "You are not holding enough GAMEr tokens to join tournaments" },
           { status: 400 }
@@ -219,13 +223,11 @@ export async function POST(req: Request) {
 
         return NextResponse.json(
           { success: true, message: "Successfully joined tournament" },
-          { status: 200 }
         );
       }
     } else {
       return NextResponse.json(
         { success: false, message: "You are not holding enough GAMEr tokens to join tournaments" },
-        { status: 400 }
       );
     }
   } catch (error) {

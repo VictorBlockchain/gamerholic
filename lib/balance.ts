@@ -1,19 +1,20 @@
 import { Keypair, PublicKey, Connection, Transaction, SystemProgram } from "@solana/web3.js"
 import {  getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
+const connection = new Connection(RPC_ENDPOINT);
+const axios = require('axios');
+const API_KEY = process.env.NEXT_PUBLIC_HELIUS;
 import crypto from "crypto";
 
 export class balanceManager {
-    private connection: Connection
     
-    constructor() {
-      this.connection = new Connection(process.env.SOLANA_RPC_URL || "https://api.devnet.solana.com")
-    }
+
 
 async getBalance(address: any): Promise<number> {
 try {
     const publicKey = new PublicKey(address)
-    const balance = await this.connection.getBalance(publicKey)
-    console.log(balance)
+    const balance = await connection.getBalance(publicKey)
+    // console.log(balance)
     return balance / 10 ** 9 // Convert lamports to SOL
 } catch (error) {
     console.error("Failed to get balance:", error)
@@ -21,32 +22,25 @@ try {
 }
 }
 
-async getTokenBalance(userAddress: string, tokenMintAddress: string): Promise<number> {
+async getTokenBalance(userAddress: any, tokenMintAddress: any): Promise<number> {
     try {
         const userPublicKey = new PublicKey(userAddress);
-        const tokenMintPublicKey = new PublicKey(tokenMintAddress);
+        const tokenMintPublicKey:any = new PublicKey(tokenMintAddress);
         
-        // Get the associated token account for the user
-        const associatedTokenAccount = await getAssociatedTokenAddress(
-            tokenMintPublicKey,
-            userPublicKey
-        );
+        const url = `https://api.helius.xyz/v0/addresses/${userPublicKey}/balances?api-key=${API_KEY}`;
+        const response = await axios.get(url);
         
-        // 🔹 Check if the token account exists before fetching balance
-        try {
-            const accountInfo = await getAccount(this.connection, associatedTokenAccount);
-            if (!accountInfo) {
-                console.warn("Token account does not exist for user.");
-                return 0; // If the token account doesn't exist, return 0 balance
-            }
-        } catch (error) {
-            console.warn("Token account does not exist for user.");
-            return 0; // If an error occurs, assume the account does not exist
+        const tokens = response.data.tokens;
+        // console.log(tokens)
+        const token = tokens.find((t:any) => t.tokenAccount === tokenMintAddress);
+        let amount = 0
+        if (token) {
+            amount = token.amount
+            console.log(`Token Balance: ${token.amount}`);
+        } else {
+            console.log('No balance found for this token.');
         }
-
-        // Fetch the token balance
-        const tokenAccountInfo = await this.connection.getTokenAccountBalance(associatedTokenAccount);
-        return tokenAccountInfo.value.uiAmount || 0;
+        return amount;
         
     } catch (error) {
         console.error("Failed to get token balance:", error);

@@ -320,9 +320,9 @@ export default function TournamentPage() {
       }
 
     } catch (error) {
-      console.error("Error joining tournament:", error)
-      setErrorMessage("Failed to join the tournament. Please try again.")
-      setShowErrorModal(true)
+      // console.error("Error joining tournament:", error)
+      // setErrorMessage("Failed to join the tournament. Please try again.")
+      // setShowErrorModal(true)
     } finally {
       setIsUpdating(false)
     }
