@@ -4,7 +4,7 @@ import { Header } from "@/components/header"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { aiGameCreationPrompt } from "../create-game/ai-prompt"
+import { aiGameCreationPrompt } from "../arcade-create/ai-prompt"
 import { Gamepad2, Code, Shield, Zap, Book, Rocket } from "lucide-react"
 import { motion } from "framer-motion"
 
