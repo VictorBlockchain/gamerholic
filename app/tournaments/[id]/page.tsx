@@ -307,14 +307,18 @@ export default function TournamentPage() {
           player: publicKey.toBase58(),
         }),
       })
+      const data = await response.json()
       
-      if (!response.ok) {
-        throw new Error("Failed to join tournament")
+      if (!data.success) {
+        setErrorMessage(data.message)
+        setShowErrorModal(true)
+      }else{
+        setSuccessMessage("You have successfully joined the tournament!")
+        setShowSuccessModal(true)
+        await fetchTournamentData()
+      
       }
 
-      setSuccessMessage("You have successfully joined the tournament!")
-      setShowSuccessModal(true)
-      await fetchTournamentData()
     } catch (error) {
       console.error("Error joining tournament:", error)
       setErrorMessage("Failed to join the tournament. Please try again.")

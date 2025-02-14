@@ -33,7 +33,7 @@ interface GameGridProps {
 }
 
 export function GameGrid({ games, title, icon, className, showNoGamesMessage = false }: GameGridProps) {
-  console.log(games)
+  
   return (
     <section className={`my-8 ${className}`}>
       <h2 className="text-2xl sm:text-3xl font-bold mb-6 text-primary flex items-center">

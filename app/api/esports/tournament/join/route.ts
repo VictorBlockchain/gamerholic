@@ -1,144 +1,235 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { Connection, Transaction, SystemProgram, PublicKey, Keypair } from "@solana/web3.js"
-import { Token, TOKEN_PROGRAM_ID, getAssociatedTokenAddress } from "@solana/spl-token"
+import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { createTransferInstruction, getOrCreateAssociatedTokenAccount,getMint ,getAccount,getAssociatedTokenAddress} from "@solana/spl-token"
+import { sendAndConfirmTransaction } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
+const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
+const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
+
+async function getTokenBalance(userPublicKey:any, tokenMintAddress:any) {
+  try {
+    // Derive the associated token account address
+    const associatedTokenAddress = await getAssociatedTokenAddress(tokenMintAddress, userPublicKey);
+    
+    // Attempt to fetch the token account
+    const tokenAccount:any = await getAccount(connection, associatedTokenAddress);
+    
+    // Fetch the mint info to determine decimals
+    const mintInfo = await getMint(connection, tokenMintAddress);
+    const decimals = mintInfo.decimals;
+    
+    // Calculate the formatted balance
+    const userTokenBalanceFormatted = Number.parseFloat(tokenAccount.amount) / Math.pow(10, decimals);
+    return userTokenBalanceFormatted || 0;
+  } catch (error:any) {
+    // console.log(error)
+    // if (error.message.includes("TokenAccountNotFoundError")) {
+    //   // Token account does not exist, so the balance is 0
+    //   return 0;
+    // } else {
+    //   // Re-throw other errors
+    //   throw error;
+    // }
+  }
+}
+
+async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: number) {
+  try {
+    const toPublicKey = new PublicKey(toAddress)
+        
+    const transaction = new Transaction().add(
+      // Main transfer
+      SystemProgram.transfer({
+        fromPubkey: fromKeypair.publicKey,
+        toPubkey: toPublicKey,
+        lamports: amount,
+      }),
+    
+    )
+    
+    const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
+    return signature
+  } catch (error) {
+    console.error("Error transferring SOL:", error)
+    throw error
+  }
+}
+
+async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: number, tokenMintAddress:any) {
+  try {
+    if (!GAME_TOKEN_ADDRESS) {
+      throw new Error("GAMEr token address not configured")
+    }
+    
+    const toPublicKey = new PublicKey(toAddress)
+    const tokenMint = new PublicKey(tokenMintAddress)
+    
+    // Get or create token accounts
+    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+      connection,
+      fromKeypair,
+      tokenMint,
+      fromKeypair.publicKey,
+    )
+    
+    const toTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromKeypair, tokenMint, toPublicKey)
+        
+    const transaction = new Transaction().add(
+      // Main transfer
+      createTransferInstruction(
+        fromTokenAccount.address,
+        toTokenAccount.address,
+        fromKeypair.publicKey,
+        amount,
+      ),
+    )
+    
+    const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
+    return signature
+  } catch (error) {
+    console.error("Error transferring GAMEr:", error)
+    throw error
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    const { tournamentId, player } = await req.json()
+    const { tournamentId, player } = await req.json();
 
+  
     // Get tournament details
     const { data: tournament, error: tournamentError } = await supabase
       .from("tournaments")
       .select("*")
       .eq("game_id", tournamentId)
-      .single()
-
-    if (tournamentError) throw tournamentError
+      .single();
+    if (tournamentError) throw tournamentError;
 
     // Get user's deposit wallet
-    const { data: user, error: userError } = await supabase
+    const { data: user, error: userError }: any = await supabase
       .from("users")
-      .select("deposit_wallet")
+      .select("*")
       .eq("publicKey", player)
-      .single()
-
-    if (userError) throw userError
+      .single();
+    if (userError) throw userError;
 
     // Get tournament wallet
-    const { data: tournamentWallet, error: walletError } = await supabase
+    const { data: tournamentWallet, error: walletError }: any = await supabase
       .from("wallets")
-      .select("address")
+      .select("public_key")
       .eq("tournament_id", tournamentId)
-      .single()
+      .maybeSingle();
+    if (walletError) throw walletError;
 
-    if (walletError) throw walletError
+    if (!tournamentWallet) {
+      return NextResponse.json(
+        { success: false, message: "Tournament wallet not found" },
+        { status: 404 }
+      );
+    }
 
     // Get approved token
     const { data: approvedToken, error: tokenError } = await supabase
-    .from("approved_tokens")
-    .select("*")
-    .eq("status", 1) // Only select tokens with status = 1
-    .neq("name", "Solana") // Exclude tokens with the name "Solana"
-    .single(); // Ensure only one row is returned
-
-    if (tokenError) throw tokenError
+      .from("approved_tokens")
+      .select("*")
+      .eq("status", 1)
+      .neq("name", "Solana")
+      .single();
+    if (tokenError) throw tokenError;
 
     // Get platform settings
     const { data: platformSettings, error: settingsError } = await supabase
       .from("platform_settings")
-      .select("min_tokens_tournaments")
-      .single()
+      .select("min_tokens_tournament")
+      .eq("id", 1)
+      .single();
+    if (settingsError) throw settingsError;
 
-    if (settingsError) throw settingsError
-
-    const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!, "confirmed")
-    const cryptoManager = new CryptoManager()
+    const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!, "confirmed");
+    const cryptoManager = new CryptoManager();
 
     // Check if user has enough tokens in their public wallet
-    const userPublicKey = new PublicKey(player)
-    const tokenMintAddress = new PublicKey(approvedToken.address)
-    const userTokenAccount = await getAssociatedTokenAddress(tokenMintAddress, userPublicKey)
-    const userTokenBalance = await connection.getTokenAccountBalance(userTokenAccount)
+    const userPublicKey: any = new PublicKey(player);
+    const tokenMintAddress: any = new PublicKey(approvedToken.address);
 
-    if (Number.parseFloat(userTokenBalance.value.amount) < platformSettings.min_tokens_tournaments) {
-      return NextResponse.json({ error: "Insufficient tokens in wallet to join tournament" }, { status: 400 })
-    }
+    const userTokenBalance: any = await getTokenBalance(userPublicKey, tokenMintAddress);
 
-    // Check if user has enough balance in deposit wallet
-    let userBalance: number
-    if (tournament.prize_type === "Solana") {
-      userBalance = await connection.getBalance(new PublicKey(user.deposit_wallet))
-      userBalance = userBalance / 1e9 // Convert lamports to SOL
-    } else if (tournament.prize_type === "GAMEr") {
-      const userDepositTokenAccount = await getAssociatedTokenAddress(
-        tokenMintAddress,
-        new PublicKey(user.deposit_wallet),
-      )
-      const tokenBalance = await connection.getTokenAccountBalance(userDepositTokenAccount)
-      userBalance = Number.parseFloat(tokenBalance.value.amount) / 1e9 // Assuming 9 decimals
+    if (userTokenBalance > 0) {
+      if (userTokenBalance < platformSettings.min_tokens_tournament) {
+        return NextResponse.json(
+          { success: false, message: "You are not holding enough GAMEr tokens to join tournaments" },
+          { status: 400 }
+        );
+      } else {
+        const privateKey = cryptoManager.decrypt(user.deposit_wallet_encryptedKey, user.iv);
+        const depositWalletKeypair = Keypair.fromSecretKey(Buffer.from(privateKey, "base64"));
+
+        let signature: string;
+
+        if (tournament.prize_type === "Solana") {
+          if (tournament.entry_fee > 0) {
+            const userSolBalance = await connection.getBalance(new PublicKey(user.deposit_wallet));
+            const solBalance = userSolBalance / LAMPORTS_PER_SOL;
+
+            if (solBalance < tournament.entry_fee) {
+              return NextResponse.json(
+                { success: false, message: "Deposit more SOL to cover the entry fee" },
+                { status: 400 }
+              );
+            } else {
+              signature = await transferSOL(
+                depositWalletKeypair,
+                tournamentWallet.public_key,
+                tournament.entry_fee * LAMPORTS_PER_SOL
+              );
+            }
+          }
+        } else if (tournament.prize_type === "GAMEr") {
+          if (tournament.entry_fee > 0) {
+            const mintInfo = await getMint(connection, tokenMintAddress);
+            const decimals = mintInfo.decimals;
+            
+            const depositWalletTokenBalance:any = await getTokenBalance(
+              new PublicKey(user.deposit_wallet),
+              tokenMintAddress
+            );
+
+            if (depositWalletTokenBalance < tournament.entry_fee) {
+              return NextResponse.json(
+                { success: false, message: "Deposit more GAMEr tokens to cover the entry fee" },
+                { status: 400 }
+              );
+            } else {
+              signature = await transferGAMEr(
+                depositWalletKeypair,
+                tournamentWallet.public_key,
+                tournament.entry_fee * Math.pow(10, decimals),
+                tokenMintAddress
+              );
+            }
+          }
+        }
+
+        // Add user to tournament table
+        const { error: joinError } = await supabase
+          .from("tournament_players")
+          .insert({ tournament_id: tournamentId, player_id: player });
+        if (joinError) throw joinError;
+
+        return NextResponse.json(
+          { success: true, message: "Successfully joined tournament" },
+          { status: 200 }
+        );
+      }
     } else {
-      throw new Error(`Invalid prize type: ${tournament.prize_type}`)
+      return NextResponse.json(
+        { success: false, message: "You are not holding enough GAMEr tokens to join tournaments" },
+        { status: 400 }
+      );
     }
-
-    if (userBalance < tournament.entry_fee) {
-      return NextResponse.json({ error: "Insufficient balance in deposit wallet to join tournament" }, { status: 400 })
-    }
-
-    // Decrypt user's deposit wallet private key
-    const { data: encryptedWallet, error: encryptedWalletError } = await supabase
-      .from("wallets")
-      .select("encrypted_private_key, iv")
-      .eq("address", user.deposit_wallet)
-      .single()
-
-    if (encryptedWalletError) throw encryptedWalletError
-
-    const privateKey = cryptoManager.decrypt(encryptedWallet.encrypted_private_key, encryptedWallet.iv)
-    const userKeypair = Keypair.fromSecretKey(Buffer.from(privateKey, "base64"))
-
-    let transaction: Transaction
-    if (tournament.prize_type === "Solana") {
-      transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: userKeypair.publicKey,
-          toPubkey: new PublicKey(tournamentWallet.address),
-          lamports: tournament.entry_fee * 1e9, // Convert SOL to lamports
-        }),
-      )
-    } else if (tournament.prize_type === "GAMEr") {
-      const fromTokenAccount = await getAssociatedTokenAddress(tokenMintAddress, userKeypair.publicKey)
-      const toTokenAccount = await getAssociatedTokenAddress(tokenMintAddress, new PublicKey(tournamentWallet.address))
-
-      transaction = new Transaction().add(
-        Token.createTransferInstruction(
-          TOKEN_PROGRAM_ID,
-          fromTokenAccount,
-          toTokenAccount,
-          userKeypair.publicKey,
-          [],
-          tournament.entry_fee * 1e9, // Assuming GAMEr token has 9 decimals like SOL
-        ),
-      )
-    } else {
-      throw new Error(`Invalid prize type: ${tournament.prize_type}`)
-    }
-
-    const signature = await connection.sendTransaction(transaction, [userKeypair])
-    await connection.confirmTransaction(signature)
-
-    // Add user to tournament_players
-    const { error: joinError } = await supabase
-      .from("tournament_players")
-      .insert({ tournament_id: tournamentId, player_id: player })
-
-    if (joinError) throw joinError
-
-    return NextResponse.json({ message: "Successfully joined tournament", signature })
   } catch (error) {
-    console.error("Error joining tournament:", error)
-    return NextResponse.json({ error: "Failed to join tournament" }, { status: 500 })
+    console.error("Error joining tournament:", error);
+    return NextResponse.json({ success: false, error: "Failed to join tournament" }, { status: 500 });
   }
 }
-
