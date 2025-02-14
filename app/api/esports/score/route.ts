@@ -1,144 +1,175 @@
 import { NextResponse } from "next/server"
-import { Keypair, Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-import { supabase } from "@/lib/supabase";
-import crypto from "crypto";
+import { Keypair, Connection, PublicKey, Transaction, sendAndConfirmTransaction } from "@solana/web3.js"
+import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token"
+import { supabase } from "@/lib/supabase"
 import { CryptoManager } from "@/lib/server/cryptoManager"
-const cryptoManager = new CryptoManager();
 
-const connection = new Connection("https://api.mainnet-beta.solana.com"); // Replace with appropriate RPC endpoint
-const FEE_ADDRESS = 'YourFeeAddressHere';
+const cryptoManager = new CryptoManager()
+const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com")
 
-const fetchUserData = async (publicKey:any) => {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("publicKey", publicKey)
-      .single();
-  
-    if (error) {
-      console.error(`Error fetching data for ${publicKey}:`, error);
-      return null;
-    }
-  
-    return data;
-  };
-  
-  const fetchGameData = async (id:any) => {
-    const { data, error: fetchError } = await supabase
-    .from("esports")
+const fetchUserData = async (publicKey: string) => {
+  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+
+  if (error) {
+    console.error(`Error fetching data for ${publicKey}:`, error)
+    return null
+  }
+
+  return data
+}
+
+const fetchGameData = async (id: string) => {
+  const { data, error: fetchError } = await supabase.from("esports").select("*").eq("game_id", id).single()
+
+  if (fetchError) {
+    console.error(`Error fetching game data`)
+    return null
+  }
+
+  return data
+}
+
+const fetchPlatformSettings = async () => {
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("wallet_fee, fee_esports")
+    .eq("id", 1)
+    .single()
+
+  if (error) {
+    console.error("Error fetching platform settings:", error)
+    return null
+  }
+
+  return data
+}
+
+const transferToken = async (fromPrivateKey: string, toAddress: string, amount: number, mintAddress: string) => {
+  const fromKeypair = Keypair.fromSecretKey(Buffer.from(JSON.parse(fromPrivateKey)))
+  const mintPublicKey = new PublicKey(mintAddress)
+
+  const toPublicKey = new PublicKey(toAddress)
+  const fromTokenAccount = await getAssociatedTokenAddress(mintPublicKey, fromKeypair.publicKey)
+  const toTokenAccount = await getAssociatedTokenAddress(mintPublicKey, toPublicKey)
+
+  const transaction = new Transaction().add(
+    createTransferInstruction(fromTokenAccount, toTokenAccount, fromKeypair.publicKey, amount, [], TOKEN_PROGRAM_ID),
+  )
+
+  const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
+  console.log("Transaction successful with signature:", signature)
+  return signature
+}
+
+const updateEsportsRecord = async (publicKey: string, game: string, isWinner: boolean) => {
+  const { data, error } = await supabase
+    .from("esports_records")
     .select("*")
-    .eq("id", id)
-    .single();
-  
-    if (fetchError) {
-      console.error(`Error fetching game data`);
-      return null;
+    .eq("public_key", publicKey)
+    .eq("game", game)
+    .single()
+
+  if (error && error.code !== "PGRST116") {
+    console.error(`Error fetching esports record for ${publicKey}:`, error)
+    return
+  }
+
+  if (data) {
+    const { error: updateError } = await supabase
+      .from("esports_records")
+      .update({
+        wins: isWinner ? data.wins + 1 : data.wins,
+        losses: isWinner ? data.losses : data.losses + 1,
+        win_streak: isWinner ? data.win_streak + 1 : 0,
+        loss_streak: isWinner ? data.loss_streak + 1 : 0
+      })
+      .eq("public_key", publicKey)
+      .eq("game", game)
+
+    if (updateError) {
+      console.error(`Error updating esports record for ${publicKey}:`, updateError)
     }
-  
-    return data;
-  };
+  } else {
+    const { error: insertError } = await supabase.from("esports_records").insert({
+      public_key: publicKey,
+      game: game,
+      wins: isWinner ? 1 : 0,
+      losses: isWinner ? 0 : 1,
+      win_streak: isWinner ? 1 : 0,
+      loss_streak: isWinner ? 1 : 0
+    })
 
-  const transferToken = async (fromPrivateKey: string, toAddresses: string[], amount: number, mintAddress: string) => {
-    const fromKeypair = Keypair.fromSecretKey(Buffer.from(JSON.parse(fromPrivateKey)));
-    const mintPublicKey = new PublicKey(mintAddress);
-    
-    for (const toAddress of toAddresses) {
-        const toPublicKey = new PublicKey(toAddress);
-        const fromTokenAccount = await getAssociatedTokenAddress(mintPublicKey, fromKeypair.publicKey);
-        const toTokenAccount = await getAssociatedTokenAddress(mintPublicKey, toPublicKey);
-        
-        const transaction = new Transaction().add(
-            createTransferInstruction(
-                fromTokenAccount,
-                toTokenAccount,
-                fromKeypair.publicKey,
-                amount / toAddresses.length,
-                [],
-                TOKEN_PROGRAM_ID
-            )
-        );
-        await sendAndConfirmTransaction(connection, transaction, [fromKeypair]);
+    if (insertError) {
+      console.error(`Error inserting esports record for ${publicKey}:`, insertError)
     }
-};
-
-const sendTokenTransactions = async (recipientAddress:any, amount:any, privateKey:any) => {
-    try {
-      const senderKeypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
-
-      const feeAmount = amount * 0.03;
-      const recipientAmount = amount - feeAmount;
-      
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: senderKeypair.publicKey,
-          toPubkey: new PublicKey(recipientAddress),
-          lamports: recipientAmount * 10 ** 9, // convert to lamports
-        }),
-        SystemProgram.transfer({
-          fromPubkey: senderKeypair.publicKey,
-          toPubkey: new PublicKey(FEE_ADDRESS),
-          lamports: feeAmount * 10 ** 9, // 3% fee
-        })
-      );
-
-      const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
-      console.log('Transaction successful with signature:', signature);
-    } catch (error) {
-      console.error('Transaction failed:', error);
-    }
-  };
+  }
+}
 
 export async function POST(req: Request) {
   try {
-    const { id } = await req.json();
-    const mintAddress:any = '';
-    // console.log(player1, player2, player1score, player2score)
-    let gameData = await fetchGameData(id)
-    if(gameData){
-        if(gameData.status==3){
-            //game scored and ready to process confirm score
-            let player1PrivateKey:any;
-            let player2PrivateKey:any;
-            
-            const player1Data = await fetchUserData(gameData.player1);
-            if (player1Data) {
-                player1PrivateKey = cryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv);
-            }
-            
-            const player2Data = await fetchUserData(gameData.player2);
-            if (player2Data) {
-                player2PrivateKey = cryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv);
-            }
-            
-            const winner = gameData.player1score > gameData.player2score ? gameData.player1 : gameData.player2;
-            const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1;
-            const amount = 0.1; // Example amount to transfer in SOL
-            
-            await transferToken(
-                winner === gameData.player1 ? player1PrivateKey : player2PrivateKey,
-                [winner, loser],
-                amount,
-                mintAddress
-            );
-            
-            return NextResponse.json({ success: true})
-        }else if (gameData.status==4){
-            //game already scored
-            return NextResponse.json({ success: false})
-
-        }else{
-            //game can't be scored
-            return NextResponse.json({ success: false})
-        }
-    }else{
-        return NextResponse.json({ success: false})
-
+    const { id } = await req.json()
+    const gameData = await fetchGameData(id)
+    if (!gameData) {
+      return NextResponse.json({ success: false, message: "Game not found" })
     }
-  
+
+    if (gameData.status !== 3) {
+      return NextResponse.json({
+        success: false,
+        message: gameData.status === 4 ? "Game already scored" : "Game cannot be scored",
+      })
+    }
+
+    const platformSettings = await fetchPlatformSettings()
+    if (!platformSettings) {
+      return NextResponse.json({ success: false, message: "Failed to fetch platform settings" })
+    }
+
+    const { wallet_fee, fee_esports } = platformSettings
+    const gameFee = gameData.amount * fee_esports
+
+    const player1Data = await fetchUserData(gameData.player1)
+    const player2Data = await fetchUserData(gameData.player2)
+
+    if (!player1Data || !player2Data) {
+      return NextResponse.json({ success: false, message: "Failed to fetch player data" })
+    }
+
+    const winner = gameData.player1score > gameData.player2score ? gameData.player1 : gameData.player2
+    const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1
+
+    // Deduct fees from both players
+    const player1PrivateKey = cryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
+    const player2PrivateKey = cryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
+    
+    await transferToken(player1PrivateKey, wallet_fee, gameFee, gameData.token_mint_address)
+    await transferToken(player2PrivateKey, wallet_fee, gameFee, gameData.token_mint_address)
+
+    // Transfer the game amount to the winner
+    const winnerPrivateKey = winner === gameData.player1 ? player1PrivateKey : player2PrivateKey
+    await transferToken(
+      winner === gameData.player1 ? player2PrivateKey : player1PrivateKey,
+      winner,
+      gameData.amount - gameFee,
+      gameData.token_mint_address,
+    )
+
+    // Update esports records
+    await updateEsportsRecord(winner, gameData.game, true)
+    await updateEsportsRecord(loser, gameData.game, false)
+
+    // Update game status to completed
+    const { error: updateError } = await supabase.from("esports").update({ status: 4 }).eq("game_id", id)
+
+    if (updateError) {
+      console.error("Error updating game status:", updateError)
+      return NextResponse.json({ error: "Failed to update game status" }, { status: 500 })
+    }
+
+    return NextResponse.json({ success: true })
   } catch (e) {
-    console.error("Error in /api/address:", e)
-    return NextResponse.json({ error: "Failed to generate address" }, { status: 500 })
+    console.error("Error in /api/esports/score:", e)
+    return NextResponse.json({ error: "Failed to process score" }, { status: 500 })
   }
 }
 

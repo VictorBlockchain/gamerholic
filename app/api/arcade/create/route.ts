@@ -48,14 +48,16 @@ export async function POST(request: Request) {
     const thumbnailUrl = supabase.storage.from("images").getPublicUrl(thumbnailData.path).data.publicUrl
     const fullSizeUrl = supabase.storage.from("images").getPublicUrl(fullSizeData.path).data.publicUrl
     
-    const keypair = Keypair.generate();
-    const privateKeyHex = Buffer.from(keypair.secretKey).toString("hex");
+    const arcadeWallet = Keypair.generate()
+    const publicKey = arcadeWallet.publicKey.toString()
+    const privateKey = Buffer.from(arcadeWallet.secretKey).toString("hex")
     
-    // // Encrypt the private key using the unified encryption function
-    const { iv, encrypted } = cryptoManager.encrypt(privateKeyHex);
+    // Encrypt the private key
+    const { iv, encrypted } = cryptoManager.encrypt(privateKey)
+    
     
     // // Insert game data into the database
-    const { data, error } = await supabase
+    const { data:arcade, error: arcadeError }:any = await supabase
       .from("arcade")
       .insert({
         title: title,
@@ -69,14 +71,23 @@ export async function POST(request: Request) {
         creator_wallet: creatorWallet,
         thumbnail_image: thumbnailUrl,
         full_size_image: fullSizeUrl,
-        game_wallet: keypair.publicKey.toString(),
-        game_wallet_encrypted_key: encrypted,
-        game_wallet_iv: iv,
         status: 1
       })
       .select()
         
-    if (error) throw error
+      if (arcadeError) throw arcadeError
+      // Insert the wallet information
+      const { error: walletError } = await supabase.from("wallets").insert({
+        type: "tournament",
+        public_key: publicKey,
+        encrypted_key: encrypted,
+        iv,
+        arcade_id: arcade.game_id,
+        esports_id: null,
+        tourmament_id: null,
+        grabbit_id: null
+      })
+    if (walletError) throw walletError
     
     return NextResponse.json({ success: true })
 

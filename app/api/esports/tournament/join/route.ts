@@ -10,33 +10,6 @@ let BALANCE = new balanceManager()
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
 
-async function getTokenBalance(userPublicKey:any, tokenMintAddress:any) {
-  try {
-    // Derive the associated token account address
-    const associatedTokenAddress = await getAssociatedTokenAddress(tokenMintAddress, userPublicKey);
-    
-    // Attempt to fetch the token account
-    const tokenAccount:any = await getAccount(connection, associatedTokenAddress);
-    
-    // Fetch the mint info to determine decimals
-    const mintInfo = await getMint(connection, tokenMintAddress);
-    const decimals = mintInfo.decimals;
-    
-    // Calculate the formatted balance
-    const userTokenBalanceFormatted = Number.parseFloat(tokenAccount.amount) / Math.pow(10, decimals);
-    return userTokenBalanceFormatted || 0;
-  } catch (error:any) {
-    // console.log(error)
-    // if (error.message.includes("TokenAccountNotFoundError")) {
-    //   // Token account does not exist, so the balance is 0
-    //   return 0;
-    // } else {
-    //   // Re-throw other errors
-    //   throw error;
-    // }
-  }
-}
-
 async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: number) {
   try {
     const toPublicKey = new PublicKey(toAddress)
@@ -157,25 +130,25 @@ export async function POST(req: Request) {
     const tokenMintAddress: any = new PublicKey(approvedToken.address);
     
     let userTokenBalance = await BALANCE.getTokenBalance(userPublicKey.toString(), tokenMintAddress.toString())
-    // console.log(userTokenBalance)
     if (userTokenBalance > 0) {
-        userTokenBalance = userTokenBalance / 10 ** 9
-      if (userTokenBalance < (platformSettings.min_tokens_tournament / 10 ** 9)) {
+      
+      // console.log(platformSettings.min_tokens_tournament / 10 ** 9)
+        if (userTokenBalance < (platformSettings.min_tokens_tournament / 10 ** 9)) {
         return NextResponse.json(
           { success: false, message: "You are not holding enough GAMEr tokens to join tournaments" },
           { status: 400 }
         );
       } else {
         const privateKey = cryptoManager.decrypt(user.deposit_wallet_encryptedKey, user.iv);
-        const depositWalletKeypair = Keypair.fromSecretKey(Buffer.from(privateKey, "base64"));
-
+        const depositWalletKeypair:any = Buffer.from(privateKey).toString("hex");
+        
         let signature: string;
 
         if (tournament.prize_type === "Solana") {
           if (tournament.entry_fee > 0) {
             const userSolBalance = await connection.getBalance(new PublicKey(user.deposit_wallet));
             const solBalance = userSolBalance / LAMPORTS_PER_SOL;
-
+            // console.log(userSolBalance)
             if (solBalance < tournament.entry_fee) {
               return NextResponse.json(
                 { success: false, message: "Deposit more SOL to cover the entry fee" },
@@ -194,7 +167,7 @@ export async function POST(req: Request) {
             const mintInfo = await getMint(connection, tokenMintAddress);
             const decimals = mintInfo.decimals;
             
-            const depositWalletTokenBalance:any = await getTokenBalance(
+            const depositWalletTokenBalance:any = await BALANCE.getTokenBalance(
               new PublicKey(user.deposit_wallet),
               tokenMintAddress
             );

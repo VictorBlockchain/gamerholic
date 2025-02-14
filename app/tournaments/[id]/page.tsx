@@ -101,7 +101,7 @@ export default function TournamentPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
-
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   useEffect(() => {
     fetchTournamentData()
   }, [])
@@ -550,13 +550,57 @@ export default function TournamentPage() {
                 </div>
               )}
               {isCreator && tournament.status === "upcoming" && (
-                <div className="mt-4 space-x-4">
-                  <Button onClick={() => setIsEditModalOpen(true)} className="bg-blue-500 hover:bg-blue-600">
-                    Edit Tournament
+                <div className="mt-4 relative inline-block text-left w-full">
+                  {/* Dropdown Button */}
+                  <Button
+                    onClick={() => setIsDropdownOpen(!isDropdownOpen)}
+                   className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-black font-bold w-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
+                    Actions
+                    <svg
+                      className="-mr-1 ml-2 h-5 w-5 text-white"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 20 20"
+                      fill="currentColor"
+                      aria-hidden="true"
+                    >
+                      <path
+                        fillRule="evenodd"
+                        d="M5.293 7.293a1 1 0 011.414 0L10 10.586l3.293-3.293a1 1 0 111.414 1.414l-4 4a1 1 0 01-1.414 0l-4-4a1 1 0 010-1.414z"
+                        clipRule="evenodd"
+                      />
+                    </svg>
                   </Button>
-                  <Button onClick={handleCancelTournament} className="bg-red-500 hover:bg-red-600">
-                    Cancel Tournament
-                  </Button>
+                        
+                  {/* Dropdown Menu */}
+                  {isDropdownOpen && (
+                    <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
+                      <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                        {/* Edit Tournament Option */}
+                        <button
+                          onClick={() => {
+                            setIsEditModalOpen(true);
+                            setIsDropdownOpen(false); // Close the dropdown after selection
+                          }}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 w-full text-left"
+                          role="menuitem"
+                        >
+                          Edit Tournament
+                        </button>
+                        
+                        {/* Cancel Tournament Option */}
+                        <button
+                          onClick={() => {
+                            handleCancelTournament();
+                            setIsDropdownOpen(false); // Close the dropdown after selection
+                          }}
+                          className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 w-full text-left"
+                          role="menuitem"
+                        >
+                          Cancel Tournament
+                        </button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
             </CardContent>

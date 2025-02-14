@@ -24,23 +24,45 @@ try {
 
 async getTokenBalance(userAddress: any, tokenMintAddress: any): Promise<number> {
     try {
+        // const userPublicKey = new PublicKey("8C7Q8GBbCN4Y7a3Xe9P8T4dkugubN8ypFW5fFbiCrVtj");
+        // const tokenMintPublicKey:any = new PublicKey("ECxMKDURVmnyvav42xDMC44Btuaf1eWC8nLQk6Tcpump");
         const userPublicKey = new PublicKey(userAddress);
         const tokenMintPublicKey:any = new PublicKey(tokenMintAddress);
-        
-        const url = `https://api.helius.xyz/v0/addresses/${userPublicKey}/balances?api-key=${API_KEY}`;
-        const response = await axios.get(url);
-        
-        const tokens = response.data.tokens;
-        // console.log(tokens)
-        const token = tokens.find((t:any) => t.tokenAccount === tokenMintAddress);
-        let amount = 0
-        if (token) {
-            amount = token.amount
-            console.log(`Token Balance: ${token.amount}`);
+
+        let balance = 0;
+        const tokenAccounts = await connection.getParsedTokenAccountsByOwner(
+            userPublicKey,
+            {
+                programId: new PublicKey('TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA') // SPL Token Program
+            }
+        );
+        // console.log(tokenAccounts.value[1].account.data.parsed.info.mint)
+        // console.log(JSON.stringify(tokenAccounts))
+        const account:any = tokenAccounts.value.find(
+            (acc:any) => acc.account.data.parsed.info.mint === tokenMintPublicKey.toString()
+        );
+        // console.log(account)
+        if (account) {
+            balance = account.account.data.parsed.info.tokenAmount.uiAmount;
+            // console.log(`Token Balance: ${balance}`);
         } else {
             console.log('No balance found for this token.');
         }
-        return amount;
+        // const url = `https://api.helius.xyz/v0/addresses/${userPublicKey}/balances?api-key=${API_KEY}`;
+        // const response = await axios.get(url);
+        
+        // const tokens = response.data.tokens;
+        // // console.log(tokens)
+        // const token = tokens.find((t:any) => t.tokenAccount === tokenMintAddress);
+        // let amount = 0
+        // if (token) {
+        //     amount = token.amount
+        //     console.log(`Token Balance: ${token.amount}`);
+        // } else {
+        //     console.log('No balance found for this token.');
+        // }
+        // console.log(balance)
+        return balance;
         
     } catch (error) {
         console.error("Failed to get token balance:", error);

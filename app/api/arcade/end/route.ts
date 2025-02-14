@@ -9,16 +9,16 @@ export async function POST(request: Request) {
   const { gameId, userId, sessionId, encryptedScore, gameToken, playTime } = await request.json()
 
   if (!gameId || !userId || !sessionId || !encryptedScore || !gameToken || !playTime) {
-    return NextResponse.json({ error: "Missing required fields" }, { status: 400 })
+    return NextResponse.json({success: false, message: "Missing required fields" }, { status: 400 })
   }
-
+  
   const decodedToken = verifyGameToken(gameToken)
   if (!decodedToken || decodedToken.gameId !== gameId || decodedToken.userId !== userId) {
-    return NextResponse.json({ error: "Invalid game token" }, { status: 401 })
+    return NextResponse.json({success:false, message: "Invalid game token" }, { status: 401 })
   }
 
   if (!checkAndStoreNonce(decodedToken.nonce)) {
-    return NextResponse.json({ error: "Token already used" }, { status: 401 })
+    return NextResponse.json({ success:false, message: "Token already used" }, { status: 401 })
   }
 
   const score = decryptScore(encryptedScore)

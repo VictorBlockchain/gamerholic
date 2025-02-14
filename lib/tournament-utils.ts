@@ -168,20 +168,55 @@ export async function refundPlayers(tournamentId: string, playerIds: string[], a
   const privateKey = cryptoManager.decrypt(tournamentWallet.encrypted_private_key, tournamentWallet.iv)
   const tournamentKeypair = Keypair.fromSecretKey(new Uint8Array(Buffer.from(privateKey, "base64")))
 
-  // Fetch GAMEr token mint address if needed
-  let gamerTokenMint: PublicKey | null = null
-  if (prizeType === "GAMEr") {
+  // Fetch token mint address if needed
+  let tokenMint: PublicKey | null = null
+  if (prizeType !== "Solana") {
     const { data: tokenData, error: tokenError } = await supabase
       .from("approved_tokens")
       .select("address")
-      .eq("ticker", "GAMEr")
+      .eq("ticker", prizeType)
       .single()
 
-    if (tokenError) throw new Error(`Failed to fetch GAMEr token address: ${tokenError.message}`)
-    gamerTokenMint = new PublicKey(tokenData.address)
+    if (tokenError) throw new Error(`Failed to fetch ${prizeType} token address: ${tokenError.message}`)
+    tokenMint = new PublicKey(tokenData.address)
   }
 
-  for (const playerId of playerIds) {
+  // Calculate the fee for a single transaction
+  const recentBlockhash = await connection.getRecentBlockhash()
+  const dummyTransaction = new Transaction().add(
+    SystemProgram.transfer({
+      fromPubkey: tournamentKeypair.publicKey,
+      toPubkey: tournamentKeypair.publicKey,
+      lamports: 0,
+    }),
+  )
+  dummyTransaction.recentBlockhash = recentBlockhash.blockhash
+  dummyTransaction.feePayer = tournamentKeypair.publicKey
+  const fee = await dummyTransaction.getEstimatedFee(connection)
+
+  // Calculate the total fees for all refunds
+  const totalFees = fee * playerIds.length
+
+  // Ensure the tournament wallet has enough SOL to cover all transaction fees
+  const tournamentBalance = await connection.getBalance(tournamentKeypair.publicKey)
+  if (tournamentBalance < totalFees) {
+    throw new Error("Insufficient SOL balance in tournament wallet to cover transaction fees")
+  }
+
+  // For non-SOL tokens, we need to fetch the token balance
+  let tokenBalance = 0
+  if (tokenMint) {
+    const tokenAccount = await getAssociatedTokenAddress(tokenMint, tournamentKeypair.publicKey)
+    const tokenAccountInfo = await connection.getTokenAccountBalance(tokenAccount)
+    tokenBalance = Number.parseInt(tokenAccountInfo.value.amount)
+  }
+
+  // Calculate the amount to refund each player
+  const amountInSmallestUnit = prizeType === "Solana" ? amount * LAMPORTS_PER_SOL : amount * 1e9 // Assuming all tokens have 9 decimals like SOL
+  const totalRefundAmount = prizeType === "Solana" ? tournamentBalance - totalFees : tokenBalance
+  const amountPerPlayer = Math.floor(totalRefundAmount / playerIds.length)
+
+  for (const [index, playerId] of playerIds.entries()) {
     try {
       // Fetch player's deposit wallet address
       const { data: player, error: playerError } = await supabase
@@ -194,26 +229,33 @@ export async function refundPlayers(tournamentId: string, playerIds: string[], a
 
       const recipientAddress = new PublicKey(player.deposit_wallet)
 
-      let transaction: Transaction
+      const transaction = new Transaction()
+      let amountToSend: number
+
       if (prizeType === "Solana") {
-        transaction = new Transaction().add(
+        // For the last player, send the remaining balance to account for any rounding errors
+        amountToSend =
+          index === playerIds.length - 1
+            ? (await connection.getBalance(tournamentKeypair.publicKey)) - fee
+            : amountPerPlayer
+
+        transaction.add(
           SystemProgram.transfer({
             fromPubkey: tournamentKeypair.publicKey,
             toPubkey: recipientAddress,
-            lamports: Math.floor(amount * LAMPORTS_PER_SOL),
+            lamports: amountToSend,
           }),
         )
-      } else if (prizeType === "GAMEr" && gamerTokenMint) {
-        const fromTokenAccount = await getAssociatedTokenAddress(gamerTokenMint, tournamentKeypair.publicKey)
-        const toTokenAccount = await getAssociatedTokenAddress(gamerTokenMint, recipientAddress)
+      } else if (tokenMint) {
+        const fromTokenAccount = await getAssociatedTokenAddress(tokenMint, tournamentKeypair.publicKey)
+        const toTokenAccount = await getAssociatedTokenAddress(tokenMint, recipientAddress)
 
-        transaction = new Transaction().add(
-          createTransferInstruction(
-            fromTokenAccount,
-            toTokenAccount,
-            tournamentKeypair.publicKey,
-            Math.floor(amount * 1e9), // Assuming GAMEr token has 9 decimals like SOL
-          ),
+        // For the last player, send the remaining token balance
+        amountToSend =
+          index === playerIds.length - 1 ? tokenBalance - amountPerPlayer * (playerIds.length - 1) : amountPerPlayer
+
+        transaction.add(
+          createTransferInstruction(fromTokenAccount, toTokenAccount, tournamentKeypair.publicKey, amountToSend),
         )
       } else {
         throw new Error(`Invalid prize type: ${prizeType}`)
@@ -225,12 +267,17 @@ export async function refundPlayers(tournamentId: string, playerIds: string[], a
       await supabase.from("refunds").insert({
         tournament_id: tournamentId,
         player_id: playerId,
-        amount: amount,
+        amount: amountToSend / (prizeType === "Solana" ? LAMPORTS_PER_SOL : 1e9), // Convert back to standard units for database storage
         transaction_signature: signature,
         prize_type: prizeType,
       })
 
       console.log(`Refund successful for player ${playerId}. Transaction signature: ${signature}`)
+
+      // Update the remaining token balance for non-SOL tokens
+      if (tokenMint) {
+        tokenBalance -= amountToSend
+      }
     } catch (error) {
       console.error(`Error refunding player ${playerId}:`, error)
       // You might want to implement a retry mechanism or manual resolution for failed refunds
