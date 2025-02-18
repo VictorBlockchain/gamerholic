@@ -106,7 +106,7 @@ export async function createDepositAddress(userId: string): Promise<string> {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ user: userId }),
+      body: JSON.stringify({ user: userId, type:0 }),
     })
     
     if (!response.ok) {

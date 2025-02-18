@@ -15,7 +15,7 @@ async function getWalletKeypair(tournamentId: string): Promise<Keypair> {
   const { data: wallet, error } = await supabase.from("wallets").select("*").eq("game_id", tournamentId).single()
 
   if (error) throw error
-
+  
   const privateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
   return Keypair.fromSecretKey(Buffer.from(JSON.parse(privateKey)))
 }
@@ -24,10 +24,10 @@ async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: numb
   try {
     const toPublicKey = new PublicKey(toAddress)
     const feePublicKey = new PublicKey(feeAddress)
-
+    
     const feeAmount = Math.floor(amount * PLATFORM_FEE_PERCENT * LAMPORTS_PER_SOL)
     const transferAmount = Math.floor(amount * (1 - PLATFORM_FEE_PERCENT) * LAMPORTS_PER_SOL)
-
+    
     const transaction = new Transaction().add(
       // Main transfer
       SystemProgram.transfer({
@@ -42,7 +42,7 @@ async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: numb
         lamports: feeAmount,
       }),
     )
-
+    
     const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
     return signature
   } catch (error) {
@@ -56,11 +56,11 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
     if (!GAME_TOKEN_ADDRESS) {
       throw new Error("GAMEr token address not configured")
     }
-
+    
     const toPublicKey = new PublicKey(toAddress)
     const feePublicKey = new PublicKey(feeAddress)
     const tokenMint = new PublicKey(GAME_TOKEN_ADDRESS)
-
+    
     // Get or create token accounts
     const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
@@ -68,14 +68,14 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
       tokenMint,
       fromKeypair.publicKey,
     )
-
+    
     const toTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromKeypair, tokenMint, toPublicKey)
-
+    
     const feeTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromKeypair, tokenMint, feePublicKey)
-
+    
     const feeAmount = Math.floor(amount * PLATFORM_FEE_PERCENT * Math.pow(10, 9)) // GAMEr has 9 decimals
     const transferAmount = Math.floor(amount * (1 - PLATFORM_FEE_PERCENT) * Math.pow(10, 9))
-
+    
     const transaction = new Transaction().add(
       // Main transfer
       createTransferInstruction(
@@ -87,7 +87,7 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
       // Platform fee transfer
       createTransferInstruction(fromTokenAccount.address, feeTokenAccount.address, fromKeypair.publicKey, feeAmount),
     )
-
+    
     const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
     return signature
   } catch (error) {

@@ -8,6 +8,8 @@ import { WalletDisplay } from "@/components/wallet-display"
 import { AuthButton } from "@/components/auth-button"
 import { useState, useEffect } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
+import { balanceManager } from "@/lib/balance"
+const BALANCE = new balanceManager()
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -23,6 +25,7 @@ export function Header() {
 
   useEffect(() => {
     if (publicKey) {
+      fetchBalace()
       // Fetch notifications
       // This is a placeholder and should be replaced with actual API call
       setNotifications([
@@ -31,7 +34,11 @@ export function Header() {
       ])
     }
   }, [publicKey])
-
+  
+  const fetchBalace = async()=>{
+    let balance = await BALANCE.getBalance(publicKey)
+    console.log(balance)
+  }
   const ProfileMenu = () => (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>

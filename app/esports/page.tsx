@@ -37,7 +37,7 @@ import { MutualCancelModal } from "@/components/mutual-cancel-modal"
 import { balanceManager } from "@/lib/balance"
 import { TournamentForm } from "@/components/tournament-form"
 import { TournamentList } from "@/components/tournament-list"
-const solana = new balanceManager()
+const BALANCE = new balanceManager()
 // Define types for chat messages, chatrooms, and esports challenges
 interface ChatMessage {
   id: string
@@ -57,6 +57,7 @@ interface EsportsChallenge {
   id: string
   game: string
   console: string
+  money: number
   amount: number
   rules: string
   player1: string
@@ -130,7 +131,7 @@ const EsportsPage: React.FC = () => {
   const [query, setQuery] = useState("")
   const [suggestions, setSuggestions] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
-
+  const [isScoring, setIsScoring] = useState(false)
   const [selectedChallenge, setSelectedChallenge]: any = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [showAcceptModal, setShowAcceptModal] = useState(false)
@@ -139,6 +140,7 @@ const EsportsPage: React.FC = () => {
   const [showConfirmScoreModal, setShowConfirmScoreModal] = useState(false)
   const [showDisputeScoreModal, setShowDisputeScoreModal] = useState(false)
   const [showMutualCancelModal, setShowMutualCancelModal] = useState(false)
+
 
   const popularGames: any = [
     "Madden NFL",
@@ -165,11 +167,11 @@ const EsportsPage: React.FC = () => {
 
   useEffect(() => {
     if (publicKey) {
+      fetchUser()
       fetchChatRooms()
       fetchPendingChallenges()
       fetchGameHistory()
       fetchAvailableGames()
-      fetchUser()
     }
   }, [publicKey])
   let isFetching = false
@@ -268,25 +270,28 @@ const EsportsPage: React.FC = () => {
     isFetching = true
 
     try {
+
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+        
+        if (error && error.code !== "PGRST116") {
+          // Ignore "no rows" error
+          console.error("Select Error:", error)
+          return
+        }
+        
+        if (!data) {
 
-      if (error && error.code !== "PGRST116") {
-        // Ignore "no rows" error
-        console.error("Select Error:", error)
-        return
-      }
-
-      if (!data) {
-        if (publicKey) {
-          const { error: insertError } = await supabase.from("users").insert([{ publicKey }])
-
-          if (insertError) {
-            console.error("Insert Error:", insertError)
-          } else {
-            setShowUserNameModal(true)
-            console.log("New publicKey inserted into the database.")
-          }
-        } else {
+            const { error: insertError } = await supabase.from("users").insert([{ publicKey }])
+            
+            if (insertError) {
+              console.error("Insert Error:", insertError)
+            } else {
+              setShowUserNameModal(true)
+              console.log("New publicKey inserted into the database.")
+            }
+        
+        }else{
+          // console.log(data)
           setUserId(data.id)
           if (!data.username) {
             setShowUserNameModal(true)
@@ -300,16 +305,15 @@ const EsportsPage: React.FC = () => {
               avatar: data.avatar,
             })
           }
-          //   console.log("publicKey already exists:", data);
         }
-      }
+
     } finally {
       isFetching = false
     }
   }
 
   const fetchEsportsRecords = async () => {
-    const { data, error }: any = await supabase.from("esports_records").select("*").eq("user_id", user_id)
+    const { data, error }: any = await supabase.from("esports_records").select("*").eq("public_key", user_id)
 
     if (error) {
       console.error("Error fetching esports records:", error)
@@ -489,21 +493,29 @@ const EsportsPage: React.FC = () => {
       )
       return
     }
-
+    
     //check user balance
     const GAME = ""
-    let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+    let balance = 0
+    if(challengeData.money == 1){
+      balance = await BALANCE.getBalance(userData.deposit_wallet)
+    }else{
+      balance = await BALANCE.getTokenBalance(userData.deposit_wallet, GAME)
+    }
+
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
     const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
     challengeData.fee = feeAmount
     balance = balance / 10 ** 9
+    console.log(balance, gameAmount)
+    
     if (balance >= gameAmount) {
       const { error } = await supabase.from("esports").insert({
         ...challengeData,
         player1: publicKey!.toString(),
         status: 1, // Initial status for a new challenge
       })
-
+    
       if (error) {
         console.error("Error sending challenge:", error)
         setShowErrorModal(true)
@@ -511,7 +523,7 @@ const EsportsPage: React.FC = () => {
       } else {
         setShowSuccessModal(true)
         setSuccessMessage("Your challenge has been sent successfully.")
-
+    
         setShowChallengeModal(false)
         fetchPendingChallenges()
       }
@@ -535,9 +547,8 @@ const EsportsPage: React.FC = () => {
       player1_name: user_name,
       player1_avatar: user_avater,
       player2: data.publicKey,
-      player2_name: username,
       player2_avatar: data.avatar_url,
-      player2_username: data.username,
+      player2_name: data.username,
     })
     setQuery(username)
     setShowDropdown(false)
@@ -606,7 +617,14 @@ const EsportsPage: React.FC = () => {
     if (selectedChallenge) {
       //check user balance
       const GAME = ""
-      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+      let balance = 0
+      if(selectedChallenge.money==1){
+        balance = await BALANCE.getBalance(userData.deposit_wallet)
+
+      }else{
+        balance = await BALANCE.getTokenBalance(userData.deposit_wallet, GAME)
+
+      }
       const gameAmount = selectedChallenge.amount / 10 ** 9
       balance = balance / 10 ** 9
       if (balance >= gameAmount) {
@@ -678,53 +696,50 @@ const EsportsPage: React.FC = () => {
 
   const handleConfirmScore = async () => {
     if (selectedChallenge) {
-      //get game
-      const { data, error: fetchError } = await supabase
-        .from("esports")
-        .select("*")
-        .eq("id", selectedChallenge.id)
-        .single()
-
-      const player1score = data.player1score
-      const player2score = data.player2score
-      const player1 = data.player1
-      const player2 = data.player2
-      const amount = data.amount
-      const fee = data.fee
-
-      const response = await fetch("/api/esports", {
+    setIsScoring(true)
+            
+      const response = await fetch("/api/esports/score/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          player1: player1,
-          player2: player2,
-          player1score: player1score,
-          player2score: player2score,
-          amount: amount,
-          fee: fee,
+          game_id: selectedChallenge.id
         }),
       })
+      const resp = await response.json()
 
-      const { error } = await supabase
+      if(resp.success){
+        const { error } = await supabase
         .from("esports")
         .update({
           status: 9,
           score_confirmed_at: new Date().toISOString(),
         })
         .eq("id", selectedChallenge.id)
-
+      
       if (error) {
-        console.error("Error confirming score:", error)
-        setErrorMessage("error confirm score error")
+
+        // console.error("Error confirming score:", error)
+        setErrorMessage("error confirming score")
         setShowErrorModal(true)
+      
       } else {
+        setIsScoring(false)
         fetchPendingChallenges()
         fetchEsportsRecords()
         setSuccessMessage("score confirmed")
         setShowSuccessModal(true)
+
       }
-      setShowConfirmScoreModal(false)
-      setSelectedChallenge(null)
+
+        setShowConfirmScoreModal(false)
+        setSelectedChallenge(null)
+      
+      }
+
+    }else{
+      setErrorMessage("error confirming score")
+      setShowErrorModal(true)
+
     }
   }
 
@@ -1245,6 +1260,8 @@ const EsportsPage: React.FC = () => {
                   onSubmit={submitScore}
                   player1Name={selectedChallenge?.player1_name || "Player 1"}
                   player2Name={selectedChallenge?.player2_name || "Player 2"}
+                  isTournamentMatch={false}
+                  matchId="0"
                 />
                 <ConfirmScoreModal
                   isOpen={showConfirmScoreModal}
@@ -1258,6 +1275,7 @@ const EsportsPage: React.FC = () => {
                   player2Name={selectedChallenge?.player2_name}
                   initialPlayer1Score={selectedChallenge?.player1score}
                   initialPlayer2Score={selectedChallenge?.player2score}
+                  isScoring = {isScoring}
                 />
 
                 <DisputeScoreModal
@@ -1411,6 +1429,24 @@ const EsportsPage: React.FC = () => {
                     <SelectItem value="PC">PC</SelectItem>
                     <SelectItem value="PS5">PS5</SelectItem>
                     <SelectItem value="Xbox Series X">Xbox Series X</SelectItem>
+                    {/* Add more consoles as needed */}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="money" className="text-right">
+                  SOL/GAMER
+                </Label>
+                <Select
+                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
+                  value={challengeData.money || ""}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select a console" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Solana</SelectItem>
+                    <SelectItem value="2">GAMER</SelectItem>
                     {/* Add more consoles as needed */}
                   </SelectContent>
                 </Select>

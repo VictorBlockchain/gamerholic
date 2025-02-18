@@ -20,17 +20,17 @@ export function DepositForm() {
     if (!publicKey) return
 
     const { data, error } = await supabase
-      .from("user_deposit_addresses")
-      .select("deposit_address")
-      .eq("user_id", publicKey.toBase58())
-      .single()
+      .from("users")
+      .select("deposit_wallet")
+      .eq("publicKey", publicKey.toBase58())
+      .maybeSingle()
 
     if (error || !data) {
       // If no deposit address exists, create a new one
       const newAddress = await createDepositAddress(publicKey.toBase58())
       setDepositAddress(newAddress)
     } else {
-      setDepositAddress(data.deposit_address)
+      setDepositAddress(data.deposit_wallet)
     }
   }
 

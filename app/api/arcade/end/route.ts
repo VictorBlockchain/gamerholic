@@ -22,7 +22,7 @@ export async function POST(request: Request) {
   }
 
   const score = decryptScore(encryptedScore)
-
+  
   if (!(await verifyScore(gameId, userId, score, playTime))) {
     // Instead of immediately rejecting, flag for review
     await supabase.from("flagged_scores").insert({ gameId, userId, score, playTime })

@@ -19,6 +19,7 @@ import {
     player2Name: string
     initialPlayer1Score: number
     initialPlayer2Score: number
+    isScoring: boolean
     }
   
   export function ConfirmScoreModal({
@@ -30,6 +31,7 @@ import {
     player2Name,
     initialPlayer1Score,
     initialPlayer2Score,
+    isScoring
   }: ConfirmScoreModalProps) {
 
     const [player1Score, setPlayer1Score] = useState<number>(initialPlayer1Score)
@@ -69,20 +71,31 @@ import {
               <X className="w-4 h-4 mr-2" />
               Close
             </Button> */}
-            <Button
-              onClick={onDispute}
-              className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white"
-            >
-              <AlertTriangle className="w-4 h-4 mr-2" />
-              Dispute Score
-            </Button>
-            <Button
-              onClick={onConfirm}
-              className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
-            >
-              <CheckCircle className="w-4 h-4 mr-2" />
-              Confirm Score
-            </Button>
+            {isScoring && (
+              <>
+                <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
+                <p className="text-2xl font-bold ml-4">confirming score...</p>
+              </>
+            )}
+            {!isScoring && (
+              <>
+              <Button
+                  onClick={onDispute}
+                  className="bg-gradient-to-r from-yellow-500 to-orange-500 hover:from-yellow-600 hover:to-orange-600 text-white"
+                >
+                  <AlertTriangle className="w-4 h-4 mr-2" />
+                  Dispute Score
+                </Button>
+                <Button
+                  onClick={onConfirm}
+                  className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+                >
+                  <CheckCircle className="w-4 h-4 mr-2" />
+                  Confirm Score
+                </Button>
+              </>
+            )}
+          
           </DialogFooter>
         </DialogContent>
       </Dialog>

@@ -73,13 +73,13 @@ export function WithdrawEarningsModal({ isOpen, onClose, onWithdraw, balance }: 
               <Label htmlFor="sol-balance" className="text-primary">
                 SOL Balance
               </Label>
-              <Input id="sol-balance" value={balance.sol.toFixed(4)} disabled className="bg-background/50" />
+              {/* <Input id="sol-balance" value={balance.sol.toFixed(4)} disabled className="bg-background/50" /> */}
             </div>
             <div>
               <Label htmlFor="game-balance" className="text-primary">
                 GAME Balance
               </Label>
-              <Input id="game-balance" value={balance.game.toFixed(4)} disabled className="bg-background/50" />
+              {/* <Input id="game-balance" value={balance.game.toFixed(4)} disabled className="bg-background/50" /> */}
             </div>
           </div>
           <div className="space-y-2">

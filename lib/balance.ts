@@ -1,9 +1,9 @@
 import { Keypair, PublicKey, Connection, Transaction, SystemProgram } from "@solana/web3.js"
 import {  getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
-const RPC_ENDPOINT = 'https://api.mainnet-beta.solana.com';
+const RPC_ENDPOINT:any = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
 const connection = new Connection(RPC_ENDPOINT);
 const axios = require('axios');
-const API_KEY = process.env.NEXT_PUBLIC_HELIUS;
+// const API_KEY = process.env.NEXT_PUBLIC_HELIUS;
 import crypto from "crypto";
 
 export class balanceManager {

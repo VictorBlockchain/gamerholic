@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useEffect } from "react"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { useParams } from "next/navigation"
@@ -12,9 +14,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { supabase } from "@/lib/supabase"
 import Link from "next/link"
-import { withdrawUserCredits, isValidPublicKey } from "@/lib/platformWallet"
-import { DepositForm } from "@/components/deposit-form"
-import { Loader2, Upload, Gamepad, Trophy, Coins, Zap, Star } from "lucide-react"
+import { withdrawUserCredits } from "@/lib/platformWallet"
+import { Loader2, Upload, Gamepad, Trophy, Coins, Zap } from "lucide-react"
 import { motion } from "framer-motion"
 import { toast } from "@/components/ui/use-toast"
 import { GamesBeingTested } from "@/components/games-being-tested"
@@ -29,6 +30,10 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog"
 import { generateDepositWallet } from "@/lib/platformWallet"
+import { balanceManager } from "@/lib/balance"
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+
+const BALANCE = new balanceManager()
 
 interface GameHistory {
   id: string
@@ -58,6 +63,16 @@ interface User {
   username: string
   avatar_url: string
   deposit_wallet: string
+  balance_sol: number
+  balance_game: number
+}
+
+interface EsportsRecord {
+  game: string
+  wins: number
+  losses: number
+  win_streak: number
+  loss_streak: number
 }
 
 export default function ProfilePage() {
@@ -75,22 +90,18 @@ export default function ProfilePage() {
   const [isUploading, setIsUploading] = useState(false)
   const [isGeneratingAddress, setIsGeneratingAddress] = useState(false)
   const [gamesBeingTested, setGamesBeingTested] = useState<TestingGame[]>([])
-  const [achievements, setAchievements] = useState([
-    { id: 1, name: "First Win", description: "Win your first game", completed: true },
-    { id: 2, name: "Big Spender", description: "Spend 1000 credits", completed: false },
-    { id: 3, name: "Game Creator", description: "Create your first game", completed: false },
-  ])
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false)
   const [isDepositModalOpen, setIsDepositModalOpen] = useState(false)
+  const [withdrawType, setWithdrawType] = useState<"sol" | "game">("sol")
+  const [esportsRecords, setEsportsRecords] = useState<EsportsRecord[]>([])
 
   const [userData, setUserData] = useState<Partial<User>>({})
   const [showUserNameModal, setShowUserNameModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
-  const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
+  const [errorMessage, setErrorMessage] = useState("")
   const [avatarFile, setAvatarFile] = useState("")
-  const [balance, setBalance] = useState({ sol: 0, game: 0 })
 
   const params = useParams()
   const profileId = params.id as string
@@ -100,8 +111,8 @@ export default function ProfilePage() {
       fetchUser()
       fetchGameHistory()
       fetchCreatedGames()
-      fetchOrCreateDepositAddress()
       fetchGamesBeingTested()
+      fetchEsportsRecords()
     }
   }, [publicKey])
 
@@ -126,11 +137,18 @@ export default function ProfilePage() {
           console.log("New publicKey inserted into the database.")
         }
       } else {
+        let balance_sol = 0
+        if (data.deposit_wallet) {
+          balance_sol = await BALANCE.getBalance(data.deposit_wallet)
+        }
+
         setUserData({
           id: data.id,
           username: data.username,
           deposit_wallet: data.deposit_wallet,
           avatar_url: data.avatar_url,
+          balance_sol: balance_sol,
+          balance_game: data.balance_game || 0,
         })
         setCredits(data.credits || 0)
         setTotalEarnings(data.total_earnings || 0)
@@ -172,10 +190,10 @@ export default function ProfilePage() {
   const fetchCreatedGames = async () => {
     if (!publicKey) return
 
-    const { data, error }:any = await supabase
+    const { data, error }: any = await supabase
       .from("arcade")
-      .select("id, title, creator_earnings")
-      .eq("creator_wallet", publicKey.toBase58())
+      .select("id, title, earnings_creator")
+      .eq("creator", publicKey.toBase58())
 
     if (error) {
       console.error("Error fetching created games:", error)
@@ -207,6 +225,21 @@ export default function ProfilePage() {
           reward: item.reward,
         })),
       )
+    }
+  }
+
+  const fetchEsportsRecords = async () => {
+    if (!publicKey) return
+
+    const { data, error } = await supabase
+      .from("esports_records")
+      .select("game, wins, losses, win_streak, loss_streak")
+      .eq("public_key", publicKey.toBase58())
+
+    if (error) {
+      console.error("Error fetching esports records:", error)
+    } else {
+      setEsportsRecords(data)
     }
   }
 
@@ -307,34 +340,6 @@ export default function ProfilePage() {
     }
   }
 
-  const handleWithdraw = async (amount: number) => {
-    if (!publicKey) return
-
-    try {
-      const success = await withdrawUserCredits(publicKey.toBase58(), amount)
-      if (success) {
-        toast({
-          title: "Success",
-          description: `Successfully withdrawn ${amount} SOL`,
-        })
-        await fetchUser()
-      } else {
-        toast({
-          title: "Error",
-          description: "Failed to withdraw earnings. Please try again.",
-          variant: "destructive",
-        })
-      }
-    } catch (error) {
-      console.error("Error withdrawing earnings:", error)
-      toast({
-        title: "Error",
-        description: "Error withdrawing earnings. Please try again.",
-        variant: "destructive",
-      })
-    }
-  }
-
   const fetchOrCreateDepositAddress = async () => {
     if (!publicKey) return
 
@@ -343,30 +348,34 @@ export default function ProfilePage() {
 
     try {
       const userId = publicKey.toBase58()
-      if (!isValidPublicKey(userId)) {
-        throw new Error("Invalid public key")
+
+      const { data, error }: any = await supabase
+        .from("users")
+        .select("deposit_wallet")
+        .eq("publicKey", userId)
+        .single()
+
+      if (!data.deposit_wallet) {
+        const response = await fetch("/api/generate_address", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user: userId,
+            type: 1,
+          }),
+        })
+        const resp = await response.json()
+        if (resp.success) {
+          setDepositAddress(resp.address)
+        }
       }
-
-      const { data, error } = await supabase.from("users").select("deposit_wallet").eq("publicKey", userId).single()
-
       if (error) {
         throw error
       } else {
         setDepositAddress(data.deposit_wallet)
       }
-
-      toast({
-        title: "Success",
-        description: "Deposit address fetched successfully!",
-      })
     } catch (error) {
-      console.error("Error fetching or creating deposit address:", error)
       setErrorMessage("Unable to fetch or create deposit address. Please try again.")
-      toast({
-        title: "Error",
-        description: "Unable to fetch or create deposit address. Please try again.",
-        variant: "destructive",
-      })
     } finally {
       setIsGeneratingAddress(false)
     }
@@ -413,6 +422,55 @@ export default function ProfilePage() {
   const handleErrorNotification = (message: string) => {
     setErrorMessage(message)
     setShowErrorModal(true)
+  }
+
+  const handleDeposit = (type: "sol" | "game") => {
+    setIsDepositModalOpen(true)
+  }
+
+  const handleWithdraw = (type: "sol" | "game") => {
+    setWithdrawType(type)
+    setIsWithdrawModalOpen(true)
+  }
+
+  const handleWithdrawSubmit = async (amount: number, isAll: boolean) => {
+    if (!publicKey) return
+
+    try {
+      let withdrawAmount = amount
+      if (isAll) {
+        withdrawAmount = withdrawType === "sol" ? userData.balance_sol || 0 : userData.balance_game || 0
+      }
+
+      if (withdrawType === "sol") {
+        const success = await withdrawUserCredits(publicKey.toBase58(), withdrawAmount)
+        if (success) {
+          toast({
+            title: "Success",
+            description: `Successfully withdrawn ${withdrawAmount} SOL`,
+          })
+          await fetchUser()
+        } else {
+          throw new Error("Withdrawal failed")
+        }
+      } else {
+        // Implement GAME token withdrawal logic here
+        toast({
+          title: "Not Implemented",
+          description: "GAME token withdrawal is not yet implemented",
+          variant: "destructive",
+        })
+      }
+
+      setIsWithdrawModalOpen(false)
+    } catch (error) {
+      console.error("Error withdrawing:", error)
+      toast({
+        title: "Error",
+        description: "Error withdrawing. Please try again.",
+        variant: "destructive",
+      })
+    }
   }
 
   if (!publicKey) {
@@ -464,13 +522,15 @@ export default function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{credits}</p>
-              <Button
-                onClick={() => setIsDepositModalOpen(true)}
-                className="w-full mt-4 bg-gradient-to-r from-red-400 to-blue-500 hover:from-red-500 hover:to-blue-600"
-              >
-                <Coins className="mr-2 h-4 w-4" /> Deposit
-              </Button>
+              <p className="text-4xl font-bold text-center">{userData.balance_sol || 0}</p>
+              <div className="flex justify-between mt-4">
+                <Button onClick={() => handleDeposit("sol")} className="bg-green-500 hover:bg-green-600">
+                  <Coins className="mr-2 h-4 w-4" /> Deposit
+                </Button>
+                <Button onClick={() => handleWithdraw("sol")} className="bg-red-500 hover:bg-red-600">
+                  <Coins className="mr-2 h-4 w-4" /> Withdraw
+                </Button>
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -478,13 +538,15 @@ export default function ProfilePage() {
               <CardTitle>GAME</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{totalEarnings.toFixed(2)}</p>
-              <Button
-                onClick={() => setIsWithdrawModalOpen(true)}
-                className="w-full mt-4 bg-gradient-to-r from-green-400 to-blue-500 hover:from-green-500 hover:to-blue-600"
-              >
-                <Coins className="mr-2 h-4 w-4" /> Withdraw
-              </Button>
+              <p className="text-4xl font-bold text-center">{userData.balance_game || 0}</p>
+              <div className="flex justify-between mt-4">
+                <Button onClick={() => handleDeposit("game")} className="bg-green-500 hover:bg-green-600">
+                  <Coins className="mr-2 h-4 w-4" /> Deposit
+                </Button>
+                <Button onClick={() => handleWithdraw("game")} className="bg-red-500 hover:bg-red-600">
+                  <Coins className="mr-2 h-4 w-4" /> Withdraw
+                </Button>
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -502,9 +564,9 @@ export default function ProfilePage() {
         <Tabs defaultValue="profile" className="mb-8">
           <TabsList className="grid w-full grid-cols-5">
             <TabsTrigger value="profile">Profile</TabsTrigger>
-            <TabsTrigger value="games">Games</TabsTrigger>
-            <TabsTrigger value="testing">Testing</TabsTrigger>
-            <TabsTrigger value="achievements">Achievements</TabsTrigger>
+            <TabsTrigger value="arcade">Arcade</TabsTrigger>
+            <TabsTrigger value="testing">Arcade Testing</TabsTrigger>
+            <TabsTrigger value="esports">Esports</TabsTrigger>
             <TabsTrigger value="wallet">Wallet</TabsTrigger>
           </TabsList>
           <TabsContent value="profile">
@@ -568,11 +630,11 @@ export default function ProfilePage() {
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="games">
+          <TabsContent value="arcade">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
               <Card>
                 <CardHeader>
-                  <CardTitle>Game History</CardTitle>
+                  <CardTitle>Arcade Play History</CardTitle>
                 </CardHeader>
                 <CardContent>
                   {gameHistory.length > 0 ? (
@@ -612,7 +674,7 @@ export default function ProfilePage() {
                           key={game.id}
                           className="flex justify-between items-center p-2 bg-muted rounded-lg hover:bg-muted/80 transition-colors"
                         >
-                          <Link href={`/play/${game.id}`} className="text-primary hover:underline font-semibold">
+                          <Link href={`/arcade/${game.id}`} className="text-primary hover:underline font-semibold">
                             {game.title}
                           </Link>
                           <div className="flex items-center">
@@ -629,7 +691,7 @@ export default function ProfilePage() {
                     asChild
                     className="w-full mt-4 bg-gradient-to-r from-indigo-500 to-purple-500 hover:from-indigo-600 hover:to-purple-600"
                   >
-                    <Link href="/create-game">
+                    <Link href="/arcade-create">
                       <Gamepad className="mr-2 h-4 w-4" /> Create a New Game
                     </Link>
                   </Button>
@@ -640,46 +702,56 @@ export default function ProfilePage() {
           <TabsContent value="testing">
             <Card>
               <CardHeader>
-                <CardTitle>Games Being Tested</CardTitle>
+                <CardTitle>Arcade Games Being Tested</CardTitle>
               </CardHeader>
               <CardContent>
                 <GamesBeingTested games={gamesBeingTested} />
               </CardContent>
             </Card>
           </TabsContent>
-          <TabsContent value="achievements">
+          <TabsContent value="esports">
             <Card>
               <CardHeader>
-                <CardTitle>Achievements</CardTitle>
+                <CardTitle>Esports Records</CardTitle>
               </CardHeader>
               <CardContent>
-                <ul className="space-y-4">
-                  {achievements.map((achievement) => (
-                    <li key={achievement.id} className="flex items-center justify-between p-3 bg-muted rounded-lg">
-                      <div>
-                        <h3 className="font-semibold">{achievement.name}</h3>
-                        <p className="text-sm text-muted-foreground">{achievement.description}</p>
-                      </div>
-                      {achievement.completed ? (
-                        <Star className="w-6 h-6 text-yellow-500" />
-                      ) : (
-                        <Star className="w-6 h-6 text-muted-foreground" />
-                      )}
-                    </li>
-                  ))}
-                </ul>
+                {esportsRecords.length > 0 ? (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Game</TableHead>
+                        <TableHead>Wins</TableHead>
+                        <TableHead>Losses</TableHead>
+                        <TableHead>Win Streak</TableHead>
+                        <TableHead>Loss Streak</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {esportsRecords.map((record, index) => (
+                        <TableRow key={index}>
+                          <TableCell className="font-medium">{record.game}</TableCell>
+                          <TableCell>{record.wins}</TableCell>
+                          <TableCell>{record.losses}</TableCell>
+                          <TableCell>{record.win_streak}</TableCell>
+                          <TableCell>{record.loss_streak}</TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                ) : (
+                  <p>No esports records found.</p>
+                )}
               </CardContent>
             </Card>
           </TabsContent>
           <TabsContent value="wallet">
             <Card>
               <CardHeader>
-                <CardTitle>Wallet Information</CardTitle>
+                <CardTitle>Deposit Wallet</CardTitle>
               </CardHeader>
               <CardContent>
-                <p className="mb-4">Your wallet address: {publicKey.toBase58()}</p>
-                {depositAddress ? (
-                  <p className="mb-4">Deposit address: {depositAddress}</p>
+                {userData.deposit_wallet ? (
+                  <p className="mb-4">Deposit address: {userData.deposit_wallet}</p>
                 ) : (
                   <div className="mb-4">
                     <p className="mb-2">No deposit address found.</p>
@@ -696,7 +768,6 @@ export default function ProfilePage() {
                   </div>
                 )}
                 {errorMessage && <p className="text-red-500 mb-4">{errorMessage}</p>}
-                <DepositForm />
               </CardContent>
             </Card>
           </TabsContent>
@@ -705,13 +776,14 @@ export default function ProfilePage() {
         <WithdrawEarningsModal
           isOpen={isWithdrawModalOpen}
           onClose={() => setIsWithdrawModalOpen(false)}
-          onWithdraw={handleWithdraw}
-          balance={balance}
+          onWithdraw={handleWithdrawSubmit}
+          balance={withdrawType === "sol" ? userData.balance_sol || 0 : userData.balance_game || 0}
+          type={withdrawType}
         />
         <DepositModal
           isOpen={isDepositModalOpen}
           onClose={() => setIsDepositModalOpen(false)}
-          depositAddress={depositAddress}
+          depositAddress={userData.deposit_wallet || ""}
         />
         <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
           <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">

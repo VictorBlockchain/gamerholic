@@ -37,7 +37,7 @@ export function DepositModal({ isOpen, onClose, depositAddress }: DepositModalPr
     <Dialog open={isOpen} onOpenChange={onClose}>
       <DialogContent className="sm:max-w-[425px] bg-gradient-to-br from-purple-900/90 to-indigo-900/90 backdrop-blur-sm border-primary/20">
         <DialogHeader>
-          <DialogTitle className="text-2xl font-bold text-primary">Deposit SOL</DialogTitle>
+          <DialogTitle className="text-2xl font-bold text-primary">Deposit</DialogTitle>
         </DialogHeader>
         <div className="flex flex-col items-center space-y-4">
           <div className="bg-white p-4 rounded-lg">
