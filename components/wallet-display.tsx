@@ -1,52 +1,55 @@
 "use client"
-
 import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Wallet } from "lucide-react"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { supabase } from "@/lib/supabase"
+import { balanceManager } from "@/lib/balance";
+const BALANCE = new balanceManager();
+const GAMER = process.env.NEXT_PUBLIC_GAMER;
 
 export function WalletDisplay() {
-  const { publicKey } = useWallet()
-  const [balance, setBalance] = useState(0)
-  const [credits, setCredits] = useState(0)
+  const { publicKey } = useWallet();
+  const [balanceSol, setSolBalance] = useState(0);
+  const [balanceGamer, setGamerBalance] = useState(0);
+  const [showSol, setShowSol] = useState(true); // Track whether to show SOL or GAMER balance
 
   useEffect(() => {
     if (publicKey) {
-      fetchBalance()
-      fetchCredits()
+      fetchBalances();
     }
-  }, [publicKey])
+  }, [publicKey]);
 
-  const fetchBalance = async () => {
-    // Fetch SOL balance from Solana network
-    // This is a placeholder, replace with actual balance fetching logic
-    setBalance(1.234)
-  }
-
-  const fetchCredits = async () => {
-    if (publicKey) {
-      const { data, error }:any = await supabase.from("users").select("credits").eq("publicKey", publicKey.toBase58()).maybeSingle()
-
-      if (error) {
-        console.error("Error fetching user credits:", error)
-      } else {
-        if(data){
-          setCredits(data.credits)
-
-        }else{
-          setCredits(0)
-
-        }
+  const fetchBalances = async () => {
+    try {
+      // Fetch SOL balance
+      let solBalance = await BALANCE.getBalance(publicKey);
+      if (solBalance > 0) {
+        setSolBalance(solBalance / 1_000_000_000);
       }
-    }
-  }
-  
-  return (
-    <Button variant="outline" className="bg-background/50 backdrop-blur-sm">
-      <Wallet className="mr-2 h-4 w-4" />
-      {credits.toFixed(4)} GAMEr
-    </Button>
-  )
-}
 
+      // Fetch GAMER token balance
+      let gamerBalance = await BALANCE.getTokenBalance(publicKey, GAMER);
+      if (gamerBalance > 0) {
+        setGamerBalance(gamerBalance / 1_000_000_000);
+      }
+    } catch (error) {
+      console.error("Error fetching balances:", error);
+    }
+  };
+
+  const toggleBalance = () => {
+    setShowSol((prev) => !prev); // Toggle between showing SOL and GAMER balance
+  };
+
+  return (
+    <Button
+      variant="outline"
+      className="bg-background/50 backdrop-blur-sm"
+      onClick={toggleBalance} // Toggle balance display on click
+    >
+      <Wallet className="mr-2 h-4 w-4" />
+      {showSol ? `${balanceSol.toFixed(6)} SOL` : `${balanceGamer.toFixed(6)} GAMER`}
+    </Button>
+  );
+}

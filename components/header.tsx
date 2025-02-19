@@ -9,8 +9,6 @@ import { AuthButton } from "@/components/auth-button";
 import { useState, useEffect } from "react";
 import { useWallet } from "@solana/wallet-adapter-react";
 import { supabase } from "@/lib/supabase";
-import { balanceManager } from "@/lib/balance";
-const BALANCE = new balanceManager();
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -27,11 +25,10 @@ export function Header() {
 
   useEffect(() => {
     if (publicKey) {
-      fetchBalance();
       fetchUser();
     }
   }, [publicKey]);
-
+  
   const fetchUser = async () => {
     const { data: user, error: userError } = await supabase
       .from("users")
@@ -43,10 +40,6 @@ export function Header() {
     }
   };
 
-  const fetchBalance = async () => {
-    let balance = await BALANCE.getBalance(publicKey);
-    console.log(balance);
-  };
 
   const ProfileMenu = () => (
     <DropdownMenu>

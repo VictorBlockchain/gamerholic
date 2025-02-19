@@ -227,6 +227,15 @@ export default function PlayPage() {
 
   const fetchGameWalletData = async () => {
     const { data, error } = await supabase.from("wallets").select("*").eq("arcade_id", id).single()
+    // if(!data){
+    //   const response = await fetch("/api/arcade/create/wallet", {
+    //     method: "POST",
+    //     headers: { "Content-Type": "application/json" },
+    //     body: JSON.stringify({ game_id: id}),
+    //   })
+      
+    //   const data = await response.json()
+    // }
     setGameWallet(data.public_key)
   }
   
