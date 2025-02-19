@@ -10,9 +10,10 @@ interface GamePreviewProps {
   gameCss: string
   onScoreUpdate?: (score: number) => void
   onTimerUpdate?: (timer: number) => void
+  onGameStart?: (runGame: boolean) => void// Add this prop
 }
 
-export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onScoreUpdate, onTimerUpdate }) => {
+export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onScoreUpdate, onTimerUpdate,onGameStart }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
@@ -22,6 +23,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onS
   const [gameHeight, setGameHeight] = useState(600)
   const [score, setScore] = useState(0)
   const [timer, setTimer] = useState(0)
+  const [runGame, setRunGame] = useState(false)
 
   useEffect(() => {
     const canvas = canvasRef.current
@@ -119,11 +121,11 @@ export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onS
         setScore(currentScore)
         if (onScoreUpdate) onScoreUpdate(currentScore)
       }
-      if (typeof gameInstance.getTimer === "function") {
-        const currentTimer = gameInstance.getTimer()
-        setTimer(currentTimer)
-        if (onTimerUpdate) onTimerUpdate(currentTimer)
-      }
+      // if (typeof gameInstance.getTimer === "function") {
+      //   const currentTimer = gameInstance.getTimer()
+      //   setTimer(currentTimer)
+      //   if (onTimerUpdate) onTimerUpdate(currentTimer)
+      // }
     }
 
     const frameId = requestAnimationFrame(gameLoop)
@@ -132,15 +134,19 @@ export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onS
 
   const handleStartGame = () => {
     if (!gameInstance || typeof gameInstance.start !== "function") return
-
+    
     // Stop previous loop if running
     if (animationFrameId) {
       cancelAnimationFrame(animationFrameId)
     }
-
+    
     canvasRef.current?.focus()
     gameInstance.start()
     gameLoop()
+    setRunGame(true)
+    if (onGameStart) {
+      onGameStart(true)
+    }
   }
 
   const handleUserInput = (event: Event) => {
@@ -220,13 +226,15 @@ export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onS
           </div>
         )}
         <div className="flex justify-center mt-4">
-          <Button
-            onClick={handleStartGame}
-            variant="default"
-            className="w-48 h-12 text-lg font-bold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-          >
-            Start Game
-          </Button>
+          {!runGame && (
+                    <Button
+                    onClick={handleStartGame}
+                    variant="default"
+                    className="w-48 h-12 text-lg font-bold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
+                    Start Game
+                  </Button>
+          )}
         </div>
         <div>Score: {score}</div>
         <div>Timer: {timer}</div>
@@ -234,4 +242,3 @@ export const GamePreview: React.FC<GamePreviewProps> = ({ gameCode, gameCss, onS
     </Card>
   )
 }
-

@@ -69,7 +69,9 @@ export async function POST(req: Request) {
     // Decrypt wallet private key
     const cryptoManager = new CryptoManager()
     const decryptedPrivateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
-    const keypair = Keypair.fromSecretKey(Buffer.from(decryptedPrivateKey, "base64"))
+    // const keypair = Keypair.fromSecretKey(Buffer.from(decryptedPrivateKey, "base64"))
+    const secretKey = Uint8Array.from(Buffer.from(decryptedPrivateKey, "hex"));
+    const senderKeypair = Keypair.fromSecretKey(secretKey);
 
     // Prepare transaction
     const transaction = new Transaction()
@@ -78,12 +80,12 @@ export async function POST(req: Request) {
       // SOL transfer
       transaction.add(
         SystemProgram.transfer({
-          fromPubkey: keypair.publicKey,
+          fromPubkey: senderKeypair.publicKey,
           toPubkey: new PublicKey(platformSettings.wallet_fee),
           lamports: platformFee,
         }),
         SystemProgram.transfer({
-          fromPubkey: keypair.publicKey,
+          fromPubkey: senderKeypair.publicKey,
           toPubkey: new PublicKey(winnerPublicKey),
           lamports: winnerAmount,
         }),
@@ -92,7 +94,7 @@ export async function POST(req: Request) {
       if (hostFee > 0) {
         transaction.add(
           SystemProgram.transfer({
-            fromPubkey: keypair.publicKey,
+            fromPubkey: senderKeypair.publicKey,
             toPubkey: new PublicKey(grabbit.created_by),
             lamports: hostFee,
           }),
@@ -101,7 +103,7 @@ export async function POST(req: Request) {
     } else {
       // SPL Token transfer
       const tokenMint = new PublicKey(grabbit.prize_token)
-      const fromTokenAccount = await getAssociatedTokenAddress(tokenMint, keypair.publicKey)
+      const fromTokenAccount = await getAssociatedTokenAddress(tokenMint, senderKeypair.publicKey)
       const toPlatformTokenAccount = await getAssociatedTokenAddress(
         tokenMint,
         new PublicKey(platformSettings.wallet_fee),
@@ -109,18 +111,18 @@ export async function POST(req: Request) {
       const toWinnerTokenAccount = await getAssociatedTokenAddress(tokenMint, new PublicKey(winnerPublicKey))
 
       transaction.add(
-        createTransferInstruction(fromTokenAccount, toPlatformTokenAccount, keypair.publicKey, platformFee),
-        createTransferInstruction(fromTokenAccount, toWinnerTokenAccount, keypair.publicKey, winnerAmount),
+        createTransferInstruction(fromTokenAccount, toPlatformTokenAccount, senderKeypair.publicKey, platformFee),
+        createTransferInstruction(fromTokenAccount, toWinnerTokenAccount, senderKeypair.publicKey, winnerAmount),
       )
 
       if (hostFee > 0) {
         const toHostTokenAccount = await getAssociatedTokenAddress(tokenMint, new PublicKey(grabbit.created_by))
-        transaction.add(createTransferInstruction(fromTokenAccount, toHostTokenAccount, keypair.publicKey, hostFee))
+        transaction.add(createTransferInstruction(fromTokenAccount, toHostTokenAccount, senderKeypair.publicKey, hostFee))
       }
     }
 
     // Sign and send transaction
-    const signature = await sendAndConfirmTransaction(connection, transaction, [keypair])
+    const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair])
 
     // Update Grabbit game status
     const { error: updateError } = await supabase

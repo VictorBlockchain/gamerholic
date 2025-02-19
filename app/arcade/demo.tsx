@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback,useRef } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useParams } from "next/navigation"
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js"
@@ -18,11 +18,10 @@ import { GamePreview } from "@/components/game-preview"
 import React from "react"
 import { SuccessModal } from "@/components/success-modal"
 import { ErrorModal } from "@/components/error-modal"
-import moment from "moment"
-import { encryptScore } from "@/lib/scoreEncryption"
-import { generateGameToken } from "@/lib/gameSession"
 import { balanceManager } from "@/lib/balance"
+
 const solana = new balanceManager()
+
 const SOLANA_NETWORK = process.env.NEXT_PUBLIC_SOLANA_NETWORK || "devnet"
 const SOLANA_RPC_URL = process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.devnet.solana.com"
 const GAMER_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_GAMER || ""
@@ -35,10 +34,11 @@ interface User {
   avatar: string
 }
 interface LeaderboardEntry {
-  player: string
-  users: any
+  user_id: string
+  username: string
+  avatar_url: string
   score: number
-  credits: number
+  earnings: number
 }
 const GAME: any = process.env.NEXT_PUBLIC_GAMER
 
@@ -46,7 +46,7 @@ export default function PlayPage() {
   const { id } = useParams()
   const { publicKey } = useWallet()
   const { connection } = useConnection()
-  const [game, setGame]:any = useState<any>(null)
+  const [game, setGame] = useState<any>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
   const [userCredits, setUserCredits] = useState<number>(0)
   const [comment, setComment] = useState("")
@@ -62,27 +62,18 @@ export default function PlayPage() {
   const [loading, setLoading] = useState(true)
   const [gameStarted, setGameStarted] = useState(false)
   const [score, setScore] = useState(0)
-  const [finalScore, setFinalScore] = useState(0)
-  const scoreRef = useRef(0);
-  const [timer, setTimer] = useState(180)
-  const [runGame, setRunGame] = useState(false)
-  const [startTime, setStartTime] = useState<moment.Moment | null>(null)
-  const [freePlay, setFreePlay] = useState(false)
-  const sessionId = useRef(0);  
-  const token = useRef(0);
-  const [loading_play, setLoadingPlay] = useState(false)
-  const [play_time, setPlayTime]:any = useState()
-
+  const [timer, setTimer] = useState(0)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
   const [showUserNameModal, setShowUserNameModal] = useState(false)
-  const [user_id, setUserId]: any = useState("")
-  const [user_name, setUserName]: any = useState("")
-  const [user_avater, setUserAvatar]: any = useState("")
-  const [avatarFile, setAvatarFile]: any = useState("")
-  const [userData, setUserData]: any = useState<Partial<User>>({})
+  const [user_id, setUserId] = useState("")
+  const [user_name, setUserName] = useState("")
+  const [user_avater, setUserAvatar] = useState("")
+  const [avatarFile, setAvatarFile] = useState("")
+  const [userData, setUserData] = useState<Partial<User>>({})
+  const [runGame, setRunGame] = useState(false)
 
   useEffect(() => {
     if (id) {
@@ -94,67 +85,66 @@ export default function PlayPage() {
       fetchBoostFee()
     }
     if (publicKey) {
-      fetchUserCredits()
+      fetchUser()
       fetchUserVote()
     }
   }, [id, publicKey])
-
-  useEffect(() => {
-    if (runGame) {
-      setTimer(game?.play_time ? game.play_time * 60 : 300)
-      setGameStarted(true)
-    }
-  }, [runGame, game?.play_time])
-
-  useEffect(() => {
-    let interval: NodeJS.Timeout
-
-    if (gameStarted && startTime) {
-      // Start the timer interval
-      interval = setInterval(() => {
-        const now = moment() // Current time
-        const endTime = startTime.clone().add(game.play_time, "minutes") // End time
-        const remainingTime = endTime.diff(now, "seconds") // Remaining time in seconds
-
-        if (remainingTime > 0) {
-          setTimer(remainingTime) // Update the timer
-          console.log("running")
-        } else {
-          setTimer(0) // Timer has reached 0
-          clearInterval(interval) // Stop the interval
-          handleGameEnd() // Handle game end logic
-          console.log("ended")
-        }
-      }, 1000)
-    }
-
-    return () => clearInterval(interval) // Cleanup interval on unmount or when game stops
-  }, [startTime, gameStarted, game?.play_time])
   
   useEffect(() => {
-    scoreRef.current = score;
-  }, [score]);
+    let interval: NodeJS.Timeout
+    if (gameStarted && timer > 0) {
+      interval = setInterval(() => {
+        setTimer((prevTimer) => prevTimer - 1)
+      }, 1000)
+    } else if (timer === 0 && gameStarted) {
+      handleGameEnd()
+    }
+    return () => clearInterval(interval)
+  }, [gameStarted, timer])
+  
+  useEffect(() => {
+    if (gameInstance) {
+      console.log("Game instance is now ready, starting game...")
+      handleGameStart()
+    }
+  }, [gameInstance])
+  
+  const handleGameStart = useCallback(() => {
+    if (gameInstance) {
+      console.log("Starting game...")
+      gameInstance.start()
+      setGameStarted(true)
+      setRunGame(true)
+      setScore(0)
+      setTimer(game?.play_time ? game.play_time * 60 : 300)
+    } else {
+      console.error("Game instance not ready")
+      setErrorMessage("Game instance not ready")
+      setShowErrorModal(true)
+    }
+  }, [gameInstance, game])
+  
 
   const handleGameEnd = useCallback(() => {
-    if (!freePlay) {
-      handleScore(scoreRef.current);
-    }
     setGameStarted(false)
-    // setScore(score)
-  }, [])
+    setRunGame(false)
+    console.log("Game ended with score:", score)
+    // You might want to call an API to submit the score here
+    // For example:
+    // submitScore(score)
+  }, [score])
 
-  const isFetching = false
   const fetchUser = async () => {
     if (!publicKey) return
-
+    
     try {
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
-
+      
       if (error) {
         console.error("Select Error:", error)
         return
       }
-
+      
       if (!data) {
         const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
 
@@ -184,11 +174,11 @@ export default function PlayPage() {
     }
   }
 
-  const handleAvatarUpload = async (event: any) => {
+  const handleAvatarUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     console.log("uploading")
     const file = event.target.files?.[0]
     if (file) {
-      const fileName = `${Date.now()}_${file.name}` // Unique filename
+      const fileName = `${Date.now()}_${file.name}`
       const { data, error } = await supabase.storage
         .from("images") // Your bucket name
         .upload(fileName, file)
@@ -197,13 +187,14 @@ export default function PlayPage() {
         console.error("Upload Error:", error)
       } else {
         console.log("File uploaded successfully:", data)
-        const url = "https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/" + data.fullPath
-        await updateUserAvatar(publicKey, url)
+        const url = `https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/images/${fileName}`
+        await updateUserAvatar(publicKey?.toBase58(), url)
       }
     }
   }
 
-  const updateUserAvatar = async (publicKey: any, avatarUrl: any) => {
+  const updateUserAvatar = async (publicKey: string | undefined, avatarUrl: string) => {
+    if (!publicKey) return
     const { error } = await supabase.from("users").update({ avatar_url: avatarUrl }).eq("publicKey", publicKey)
     setAvatarFile(avatarUrl)
     if (error) {
@@ -216,32 +207,30 @@ export default function PlayPage() {
   const fetchGameData = async () => {
     const { data, error } = await supabase.from("arcade").select("*").eq("game_id", id).single()
     if (error) console.error("Error fetching game data:", error)
-    else setGame(data)
-    setPlayTime(data.play_time)
+    else {
+      setGame(data)
+      setTimer(data.play_time ? data.play_time * 60 : 300) // Convert minutes to seconds, default to 5 minutes
+    }
     setLoading(false)
   }
-  
-  const fetchLeaderboard = async () => {
-    const { data, error }: any = await supabase
-    .from("arcade_leaderboard")
-    .select(`
-      *,
-      users!inner(username, avatar_url) // Join with the users table to get username and avatar_url
-    `)
-    .eq("game_id", id) // Filter by game_id
-    .order("score", { ascending: false }) // Order by score in descending order
-    .limit(10); // Limit to the top 10 entries
 
+  const fetchLeaderboard = async () => {
+    const { data, error } = await supabase
+      .from("arcade_leaderboard")
+      .select("*")
+      .eq("game_id", id)
+      .order("score", { ascending: false })
+      .limit(10)
     if (error) console.error("Error fetching leaderboard:", error)
     else setLeaderboard(data)
-  console.log(data)
   }
 
   const fetchUserCredits = async () => {
+    if (!publicKey) return
     const { data, error } = await supabase
       .from("users")
       .select("credits")
-      .eq("publicKey", publicKey!.toBase58())
+      .eq("publicKey", publicKey.toBase58())
       .single()
     if (error) console.error("Error fetching user credits:", error)
     else setUserCredits(data.credits)
@@ -267,11 +256,12 @@ export default function PlayPage() {
   }
 
   const fetchUserVote = async () => {
+    if (!publicKey) return
     const { data, error } = await supabase
       .from("votes")
       .select("vote_type")
       .eq("game_id", id)
-      .eq("user_id", publicKey!.toBase58())
+      .eq("user_id", publicKey.toBase58())
       .maybeSingle()
     if (error) console.error("Error fetching user vote:", error)
     else setUserVote(data?.vote_type)
@@ -297,32 +287,28 @@ export default function PlayPage() {
       alert("Please connect your wallet to play")
       return
     }
-    setFreePlay(isFree)
-    setLoadingPlay(true)
-    setScore(0);
-    setFinalScore(0);
-    scoreRef.current = 0;
+    setRunGame(true)
+
+    let balance: number
+    if (game.play_money === 1) {
+      // Entry fee is in SOL
+      balance = (await connection.getBalance(publicKey)) / LAMPORTS_PER_SOL
+    } else {
+      // Entry fee is in GAMER tokens
+      const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
+        mint: new PublicKey(GAMER_TOKEN_ADDRESS),
+      })
+      if (tokenAccounts.value.length > 0) {
+        const tokenBalance = await connection.getTokenAccountBalance(tokenAccounts.value[0].pubkey)
+        balance = Number(tokenBalance.value.amount) / Math.pow(10, tokenBalance.value.decimals)
+      } else {
+        balance = 0
+      }
+    }
 
     if (!isFree) {
-      // Check balance and handle payment logic here
-      let balance: number
-      if (game.play_money === 1) {
-        // Entry fee is in SOL
-        balance = (await connection.getBalance(publicKey)) / LAMPORTS_PER_SOL
-      } else {
-        // Entry fee is in GAMER tokens
-        const tokenAccounts = await connection.getTokenAccountsByOwner(publicKey, {
-          mint: new PublicKey(GAMER_TOKEN_ADDRESS),
-        })
-        if (tokenAccounts.value.length > 0) {
-          const tokenBalance = await connection.getTokenAccountBalance(tokenAccounts.value[0].pubkey)
-          balance = Number(tokenBalance.value.amount) / Math.pow(10, tokenBalance.value.decimals)
-        } else {
-          balance = 0
-        }
-      }
       if (balance < game.play_fee) {
-        setErrorMessage("you need more GAMEr tokens to play")
+        setErrorMessage(`You need more ${game.play_money === 1 ? "SOL" : "GAMER tokens"} to play`)
         setShowErrorModal(true)
         return
       }
@@ -330,67 +316,27 @@ export default function PlayPage() {
       const response = await fetch("/api/arcade/start", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ gameId: id, player: publicKey.toBase58()}),
+        body: JSON.stringify({ gameId: id, player: publicKey.toBase58() }),
       })
       
       const data = await response.json()
-      if (data.success) {
-        // console.log(data.token, data.sessionId)
-        sessionId.current = data.sessionId
-        token.current = data.token
-        // setSessionId(data.sessionId)
-        // setToken(data.token)
-      } else {
-        setErrorMessage(data.error || "Failed to start game. Please try again.")
+      
+      if (data.error) {
+        if (data.isPaused) {
+          setPauseMessage(data.error)
+          setIsPauseModalOpen(true)
+        } else {
+          alert(data.error)
+        }
+        return
+      }
+      if (!data.success) {
+        setErrorMessage("Failed to start the game. Please try again.")
         setShowErrorModal(true)
         return
       }
     }
-
-    const now = moment()
-    setStartTime(now)
     setGameStarted(true)
-    setTimer(game.play_time * 60)
-    if (gameInstance && typeof gameInstance.start === "function") {
-      gameInstance.start()
-    }
-    setLoadingPlay(false)
-
-  }
-
-  const handleScore = async (currentScore: number) => {
-    if (!freePlay) {
-      console.log('score is ' + currentScore, play_time)
-      const encryptedScore = encryptScore(currentScore)
-      const response = await fetch("/api/arcade/end", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          gameId: id,
-          userId: publicKey?.toBase58(),
-          sessionId: sessionId.current,
-          encryptedScore: encryptedScore,
-          gameToken: token.current,
-          playTime: play_time * 60 - timer,
-        }),
-      })
-
-      const data = await response.json()
-      if (data.success) {
-        setSuccessMessage("Score submitted successfully!")
-        setShowSuccessModal(true)
-        fetchLeaderboard() // Refresh the leaderboard
-      } else {
-        setErrorMessage("Failed to submit score. Please try again.")
-        setShowErrorModal(true)
-      }
-    }
-  }
-  // Format the timer for display
-  const formatTimer = (seconds: number): string => {
-    const minutes = Math.floor(seconds / 60)
-    const remainingSeconds = seconds % 60
-    return `${minutes}:${remainingSeconds.toString().padStart(2, "0")}`
   }
 
   const handleComment = async () => {
@@ -477,10 +423,22 @@ export default function PlayPage() {
                   </div>
                   <div className="flex items-center space-x-2">
                     <Clock className="w-6 h-6 text-blue-400" />
-                    <span className="text-2xl font-bold text-white">Time: {Math.floor(timer)}s</span>
+                    <span className="text-2xl font-bold text-white">
+                      Time: {Math.floor(timer / 60)}:{(timer % 60).toString().padStart(2, "0")}
+                    </span>
                   </div>
                 </div>
-                {!gameStarted ? (
+                {gameStarted ? (
+                  <GamePreview
+                    gameCode={game.game_code}
+                    gameCss={game.game_css}
+                    onScoreUpdate={setScore}
+                    onTimerUpdate={setTimer}
+                    onGameEnd={handleGameEnd}
+                    setGameInstance={setGameInstance}
+                    runGame={gameStarted}
+                  />
+                ) : (
                   <div className="flex justify-center">
                     <Image
                       src={game.full_size_image || "/placeholder.svg?height=600&width=800"}
@@ -490,39 +448,20 @@ export default function PlayPage() {
                       className="rounded-lg shadow-lg"
                     />
                   </div>
-                ) : (
-                  <GamePreview
-                    gameCode={game.game_code}
-                    gameCss={game.game_css}
-                    onScoreUpdate={setScore}
-                    onTimerUpdate={(remainingTime) => setTimer(remainingTime)}
-                    onGameStart={setGameStarted}
-                    onGameEnd={() => handleScore()}
-                  />
                 )}
-                {!gameStarted && !loading_play && (
-                  <>
                 <div className="flex justify-center space-x-4 mt-4">
                   <Button
                     onClick={() => handlePlay(false)}
                     className="bg-gradient-to-r from-purple-500 to-pink-500 text-white"
+                    disabled={gameStarted}
                   >
-                    Insert {game.play_fee} {game.play_money==1&&(<span>SOL</span>)} {game.play_money==2&&(<span>GAMER</span>)}
+                    Insert {game.play_fee}
+                    {game.play_money == 1 && <span>SOL</span>} {game.play_money == 2 && <span>GAMER</span>}
                   </Button>
-                  <Button onClick={() => handlePlay(true)} variant="outline">
+                  <Button onClick={() => handlePlay(true)} variant="outline" disabled={gameStarted}>
                     Play Free
                   </Button>
-                </div>                  
-                  </>
-                )}
-                {loading_play && (
-                    <div className="flex justify-center space-x-4 mt-4">
-                        <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
-                        <p className="text-2xl font-bold ml-4">get ready...</p>
-                    
-                    </div>
-                )}
-                
+                </div>
                 <div className="flex justify-between items-center mt-4">
                   <div className="flex items-center space-x-2">
                     <Button variant="outline" size="sm" onClick={() => handleVote("up")} disabled={userVote === "up"}>
@@ -556,7 +495,7 @@ export default function PlayPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <p>
-                      {game.description.split("\n").map((line: any, index: any) => (
+                      {game.description.split("\n").map((line: string, index: number) => (
                         <React.Fragment key={index}>
                           {line}
                           <br />
@@ -570,7 +509,7 @@ export default function PlayPage() {
                 <Card>
                   <CardContent className="pt-6">
                     <p>
-                      {game.rules.split("\n").map((line: any, index: any) => (
+                      {game.rules.split("\n").map((line: string, index: number) => (
                         <React.Fragment key={index}>
                           {line}
                           <br />
@@ -619,16 +558,16 @@ export default function PlayPage() {
                 {leaderboard.length > 0 ? (
                   <div className="space-y-4">
                     {leaderboard.map((entry, index) => (
-                      <div key={entry.player} className="flex items-center space-x-2">
+                      <div key={entry.user_id} className="flex items-center space-x-2">
                         <span className="font-bold">{index + 1}.</span>
                         <Avatar>
-                          <AvatarImage src={entry.users.avatar_url} />
-                          <AvatarFallback>{entry.users.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+                          <AvatarImage src={entry.avatar_url} />
+                          <AvatarFallback>{entry.username.slice(0, 2).toUpperCase()}</AvatarFallback>
                         </Avatar>
                         <div>
-                          <p className="font-semibold">{entry.users.username}</p>
+                          <p className="font-semibold">{entry.username}</p>
                           <p className="text-sm text-muted-foreground">
-                            Score: {entry.score} | Earnings: {parseFloat(entry.credits).toFixed(6) || 0} {game.play_money==1 && (<span>SOL</span>)} {game.play_money==2 && (<span>GAMER</span>)}
+                            Score: {entry.score} | Earnings: {entry.earnings} credits
                           </p>
                         </div>
                       </div>

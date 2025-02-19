@@ -1,7 +1,7 @@
 import { sign, verify } from "jsonwebtoken"
 import { randomBytes } from "crypto"
 
-const JWT_SECRET = process.env.JWT_SECRET || randomBytes(32).toString("hex")
+const JWT_SECRET:any = process.env.NEXT_PUBIC_JWT_SECRET
 
 export function generateGameToken(gameId: string, userId: string): string {
   const nonce = randomBytes(16).toString("hex")

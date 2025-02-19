@@ -268,9 +268,9 @@ const EsportsPage: React.FC = () => {
   const fetchUser = async () => {
     if (isFetching) return // Skip if a fetch is already in progress
     isFetching = true
-
+    
     try {
-
+      
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
         
         if (error && error.code !== "PGRST116") {
@@ -280,7 +280,7 @@ const EsportsPage: React.FC = () => {
         }
         
         if (!data) {
-
+            
             const { error: insertError } = await supabase.from("users").insert([{ publicKey }])
             
             if (insertError) {
@@ -306,7 +306,7 @@ const EsportsPage: React.FC = () => {
             })
           }
         }
-
+    
     } finally {
       isFetching = false
     }

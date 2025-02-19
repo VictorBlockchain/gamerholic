@@ -6,42 +6,14 @@ import moment from "moment";
 import "moment-timezone"; // Import moment-timezone for timezone handling
 const timezone = "America/New_York";
 import crypto from "crypto";
+import { CryptoManager } from "@/lib/server/cryptoManager"
+const cryptoManager = new CryptoManager();
 
 const IV_LENGTH = 16; // AES block size
 const connection = new Connection("https://api.mainnet-beta.solana.com"); // Replace with appropriate RPC endpoint
 const FEE_ADDRESS:any = process.env.FEE_ADDRESS;
 
-// Encryption and Decryption Class
-class CryptoManager {
-    private ENCRYPTION_KEY: process.env.ENCRYPTION_KEY ;
-  
-  constructor() {
-    if (!process.env.ENCRYPTION_KEY) {
-      this.ENCRYPTION_KEY = crypto.randomBytes(32); // 256-bit key
-      console.log("Generated ENCRYPTION_KEY:", this.ENCRYPTION_KEY.toString("hex"));
-    } else {
-      this.ENCRYPTION_KEY = Buffer.from(process.env.ENCRYPTION_KEY, "hex");
-    }
-  }
 
-  encrypt(text: string): { iv: string; encrypted: string } {
-    const iv = crypto.randomBytes(IV_LENGTH);
-    const cipher = crypto.createCipheriv("aes-256-cbc", this.ENCRYPTION_KEY, iv);
-    let encrypted = cipher.update(text, "utf8");
-    encrypted = Buffer.concat([encrypted, cipher.final()]);
-    return { iv: iv.toString("hex"), encrypted: encrypted.toString("hex") };
-  }
-  
-  decrypt(encrypted: string, iv: string): string {
-    const ivBuffer = Buffer.from(iv, "hex");
-    const encryptedBuffer = Buffer.from(encrypted, "hex");
-    const decipher = crypto.createDecipheriv("aes-256-cbc", this.ENCRYPTION_KEY, ivBuffer);
-    let decrypted = decipher.update(encryptedBuffer);
-    decrypted = Buffer.concat([decrypted, decipher.final()]);
-    return decrypted.toString("utf8");
-  }
-}
-const cryptoManager = new CryptoManager();
 
 const fetchGameData = async (gameid:any) => {
   const { data, error: fetchError } = await supabase
@@ -126,6 +98,34 @@ const updateGameData = async (gameid:any, userId:any, userName:any, userAvatar:a
     ;
   };
   
+  async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
+    try {
+      const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
+      const senderKeypair = Keypair.fromSecretKey(secretKey);
+      const receiverPubKey = new PublicKey(toAddress);
+          
+      const transaction = new Transaction().add(
+          SystemProgram.transfer({
+              fromPubkey: senderKeypair.publicKey,
+              toPubkey: receiverPubKey,
+              lamports: amount * 1e9, // Convert SOL to lamports
+          }),
+      )
+      
+      const signature = await sendAndConfirmTransaction(
+          connection,
+          transaction,
+          [senderKeypair]
+      );
+      console.log(signature)
+      return signature
+    
+    } catch (error) {
+      console.error("Error transferring SOL:", error)
+      throw error
+    }
+  }
+
   const sendTokenTransactions = async (
     recipientAddress: string,
     amount: number,
@@ -165,6 +165,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { gameId, publicKey } = body;
     const currentTime:any = new Date().toISOString();
+    let txid_play:any;
     
     let gameData:any = await fetchGameData(gameId)
     let playerData:any = await fetchPlayerData(gameId,publicKey)
@@ -189,11 +190,16 @@ export async function POST(req: Request) {
     
         //collect entry fee and send it to game wallet
         if(gameData.entry_fee>0){
-            let fee = gameData.entry_fee / 10 ** 9
-            let userKey:any = cryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
-            let data:any = await sendTokenTransactions(gameData.wallet, fee, userKey)
-            if(!data.success){
-                return NextResponse.json({success:false, message: 'error collecting fee'})
+            
+          let userKey:any = cryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
+          let fee_entry = gameData.entry_fee / 10 ** 9
+            if(gameData.play_money==1){
+              //entry fee is in solana
+                  txid_play = await transferSOL(userKey, gameData.wallet, fee_entry)
+                  if(!txid_play){
+                    return NextResponse.json({ success: false, message: "error paying entry fee" })
+                  }
+            
             }
         }
         // Calculate the expiration time (now + 3 minutes)
@@ -211,7 +217,8 @@ export async function POST(req: Request) {
             slaps: gameData.free_slaps,
             sneaks: gameData.free_sneaks,
             seat_expire: seatExpire, // Set to now + 2 minutes
-            status:1
+            status:1,
+            txid:txid_play
             },{ onConflict: "game_id,player" } // Specify the unique constraint columns
         );
 

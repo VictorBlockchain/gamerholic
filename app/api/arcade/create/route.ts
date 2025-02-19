@@ -2,10 +2,67 @@ import { NextResponse } from "next/server"
 import { validateGameCode } from "@/lib/codeValidation"
 import { supabase } from "@/lib/supabase"
 import crypto from "crypto";
-import { Keypair } from "@solana/web3.js"
+import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token"
 import { CryptoManager } from "@/lib/server/cryptoManager"
+import { sendAndConfirmTransaction } from "@/lib/solana"
 
 const cryptoManager = new CryptoManager();
+const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
+
+const fetchUserData = async (publicKey: string) => {
+  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+  
+  if (error) {
+    console.error(`Error fetching data for ${publicKey}:`, error)
+    return null
+  }
+  
+  return data
+}
+
+const fetchPlatformSettings = async () => {
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("wallet_fee, fee_esports")
+    .eq("id", 1)
+    .single()
+  
+  if (error) {
+    console.error("Error fetching platform settings:", error)
+    return null
+  }
+  
+  return data
+}
+
+async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
+  try {
+    const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
+    const senderKeypair = Keypair.fromSecretKey(secretKey);
+    const receiverPubKey = new PublicKey(toAddress);
+        
+    const transaction = new Transaction().add(
+        SystemProgram.transfer({
+            fromPubkey: senderKeypair.publicKey,
+            toPubkey: receiverPubKey,
+            lamports: amount * 1e9, // Convert SOL to lamports
+        }),
+    )
+    
+    const signature = await sendAndConfirmTransaction(
+        connection,
+        transaction,
+        [senderKeypair]
+    );
+    console.log(signature)
+    return signature
+  
+  } catch (error) {
+    console.error("Error transferring SOL:", error)
+    throw error
+  }
+}
 
 export async function POST(request: Request) {
   try {
@@ -22,7 +79,7 @@ export async function POST(request: Request) {
     const creatorWallet = formData.get("creatorWallet") as string
     const thumbnailImage = formData.get("image") as File
     const fullSizeImage = formData.get("fullSizeImage") as File
-      
+    let fee_txid:any;
 
     // Validate the game code
     const validationResult = validateGameCode(gameCode)
@@ -30,6 +87,25 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: validationResult.error }, { status: 400 })
     }
 
+    const platformSettings = await fetchPlatformSettings()
+    if (!platformSettings) {
+      return NextResponse.json({ success: false, message: "Failed to fetch platform settings" })
+    }
+    
+    const { wallet_fee, fee_arcade_create }:any = platformSettings
+    
+    const userData = await fetchUserData(creatorWallet)
+        if (!userData) {
+      return NextResponse.json({ success: false, message: "Failed to fetch user data" })
+    }
+    const userPrivateKey = cryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv)
+    if(fee_arcade_create>0){
+        
+      fee_txid = await transferSOL(userPrivateKey, wallet_fee, fee_arcade_create)
+      if(!fee_txid){
+        return NextResponse.json({ success: false, message: "error paying fee" })
+      }
+    }
     // Upload thumbnail image
     const { data: thumbnailData, error: thumbnailError } = await supabase.storage
       .from("images")
@@ -55,7 +131,6 @@ export async function POST(request: Request) {
     // Encrypt the private key
     const { iv, encrypted } = cryptoManager.encrypt(privateKey)
     
-    
     // // Insert game data into the database
     const { data:arcade, error: arcadeError }:any = await supabase
       .from("arcade")
@@ -71,14 +146,15 @@ export async function POST(request: Request) {
         creator_wallet: creatorWallet,
         thumbnail_image: thumbnailUrl,
         full_size_image: fullSizeUrl,
-        status: 1
+        status: 1,
+        fee_txid: fee_txid
       })
       .select()
         
       if (arcadeError) throw arcadeError
       // Insert the wallet information
       const { error: walletError } = await supabase.from("wallets").insert({
-        type: "tournament",
+        type: "arcade",
         public_key: publicKey,
         encrypted_key: encrypted,
         iv,

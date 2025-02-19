@@ -3,7 +3,7 @@ import type { GameMetrics } from "./types"
 
 export async function verifyScore(gameId: string, userId: string, score: number, playTime: number): Promise<boolean> {
   // Fetch game metrics
-  const { data: gameMetrics, error } = await supabase.from("game_metrics").select("*").eq("game_id", gameId).single()
+  const { data: gameMetrics, error } = await supabase.from("arcade_metrics").select("*").eq("arcade_id", gameId).single()
 
   if (error) {
     console.error("Error fetching game metrics:", error)

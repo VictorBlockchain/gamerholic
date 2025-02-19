@@ -12,7 +12,7 @@ const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint ad
 
 const fetchUserData = async (publicKey: string) => {
   const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-
+  
   if (error) {
     console.error(`Error fetching data for ${publicKey}:`, error)
     return null
@@ -38,12 +38,12 @@ const fetchPlatformSettings = async () => {
     .select("wallet_fee, fee_esports")
     .eq("id", 1)
     .single()
-
+  
   if (error) {
     console.error("Error fetching platform settings:", error)
     return null
   }
-
+  
   return data
 }
 

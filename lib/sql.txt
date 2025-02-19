@@ -1,0 +1,23 @@
+SELECT format(
+  'DROP FUNCTION %s(%s);',
+  proname,
+  pg_get_function_identity_arguments(oid)
+) AS drop_command
+FROM pg_proc
+WHERE proname = 'increment_player_credits';
+
+CREATE OR REPLACE FUNCTION increment_player_credits(
+  amount NUMERIC, -- Use NUMERIC for precise handling of fractional values
+  game_id TEXT,
+  player TEXT
+) RETURNS VOID AS $$
+BEGIN
+  UPDATE arcade_leaderboard
+  SET 
+    credits = credits + amount,
+    credits_available = credits_available + amount
+  WHERE 
+    arcade_leaderboard.game_id = increment_player_credits.game_id
+    AND arcade_leaderboard.player = increment_player_credits.player; 
+    END;
+$$ LANGUAGE plpgsql;
