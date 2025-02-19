@@ -156,7 +156,7 @@ export async function POST(request: Request) {
     }
   
     // Update leaderboard and process payouts
-    await updateLeaderboardAndPayouts(gameId, userId, score)
+    // await updateLeaderboardAndPayouts(gameId, userId, score)
 
     return NextResponse.json({ success: true })
   } catch (error) {
