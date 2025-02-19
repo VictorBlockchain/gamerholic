@@ -1,173 +1,175 @@
-import { NextResponse } from "next/server"
-import { validateGameCode } from "@/lib/codeValidation"
-import { supabase } from "@/lib/supabase"
+import { NextResponse } from "next/server";
+import { validateGameCode } from "@/lib/codeValidation";
+import { supabase } from "@/lib/supabase";
 import crypto from "crypto";
-import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token"
-import { CryptoManager } from "@/lib/server/cryptoManager"
-import { sendAndConfirmTransaction } from "@/lib/solana"
-CryptoManager.initialize()
+import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js";
+import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { CryptoManager } from "@/lib/server/cryptoManager";
+import { sendAndConfirmTransaction } from "@/lib/solana";
 
-const rpc:any = process.env.NEXT_PUBLIC_SOLANA_RPC_URL
-const connection:any = new Connection(rpc)
+CryptoManager.initialize();
 
-const fetchUserData = async (publicKey: string) => {
-  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-  
+const rpc:any = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
+const connection = new Connection(rpc);
+
+const fetchUserData = async (publicKey:any) => {
+  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single();
   if (error) {
-    console.error(`Error fetching data for ${publicKey}:`, error)
-    return null
+    console.error(`Error fetching data for ${publicKey}:`, error);
+    return null;
   }
-  
-  return data
-}
+  return data;
+};
 
 const fetchPlatformSettings = async () => {
   const { data, error } = await supabase
     .from("platform_settings")
-    .select("wallet_fee, fee_esports")
+    .select("wallet_fee, fee_arcade_create")
     .eq("id", 1)
-    .single()
-  
+    .single();
   if (error) {
-    console.error("Error fetching platform settings:", error)
-    return null
+    console.error("Error fetching platform settings:", error);
+    return null;
   }
-  
-  return data
-}
+  return data;
+};
 
-async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
+async function transferSOL(fromPrivateKey:any, toAddress:any, amount:any) {
   try {
     const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
     const senderKeypair = Keypair.fromSecretKey(secretKey);
     const receiverPubKey = new PublicKey(toAddress);
-        
     const transaction = new Transaction().add(
-        SystemProgram.transfer({
-            fromPubkey: senderKeypair.publicKey,
-            toPubkey: receiverPubKey,
-            lamports: amount * 1e9, // Convert SOL to lamports
-        }),
-    )
-    
-    const signature = await sendAndConfirmTransaction(
-        connection,
-        transaction,
-        [senderKeypair]
+      SystemProgram.transfer({
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: receiverPubKey,
+        lamports: amount * LAMPORTS_PER_SOL,
+      }),
     );
-    console.log(signature)
-    return signature
-  
+    const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
+    return signature;
   } catch (error) {
-    console.error("Error transferring SOL:", error)
-    throw error
+    console.error("Error transferring SOL:", error);
+    throw error;
   }
 }
 
-export async function POST(request: Request) {
+export async function POST(request:any) {
   try {
-    
-    const formData = await request.formData()
-    const title = formData.get("title") as string
-    const description = formData.get("description") as string
-    const playFee = formData.get("playFee") as string
-    const topPayout = formData.get("topPayout") as string
-    const category = formData.get("category") as string
-    const rules = formData.get("rules") as string
-    const gameCode = formData.get("gameCode") as string
-    const gameCss = formData.get("gameCss") as string
-    const creatorWallet = formData.get("creatorWallet") as string
-    const thumbnailImage = formData.get("image") as File
-    const fullSizeImage = formData.get("fullSizeImage") as File
-    let fee_txid:any;
-
-    // Validate the game code
-    const validationResult = validateGameCode(gameCode)
-    if (!validationResult.isValid) {
-      return NextResponse.json({ error: validationResult.error }, { status: 400 })
-    }
-    
-    const platformSettings = await fetchPlatformSettings()
-    if (!platformSettings) {
-      return NextResponse.json({ success: false, message: "Failed to fetch platform settings" })
-    }
-    
-    const { wallet_fee, fee_arcade_create }:any = platformSettings
-    
-    const userData = await fetchUserData(creatorWallet)
-        if (!userData) {
-      return NextResponse.json({ success: false, message: "Failed to fetch user data" })
-    }
-    const userPrivateKey = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv)
-    if(fee_arcade_create>0){
-        
-      fee_txid = await transferSOL(userPrivateKey, wallet_fee, fee_arcade_create)
-      if(!fee_txid){
-        return NextResponse.json({ success: false, message: "error paying fee" })
+    const formData = await request.formData();
+    const requiredFields = ["title", "description", "playFee", "topPayout", "category", "rules", "gameCode", "gameCss", "creatorWallet", "image", "fullSizeImage"];
+    for (const field of requiredFields) {
+      if (!formData.get(field)) {
+        return NextResponse.json({ error: `Missing required field: ${field}` }, { status: 400 });
       }
     }
-    // Upload thumbnail image
+
+    const title = formData.get("title");
+    const description = formData.get("description");
+    const playFee = formData.get("playFee");
+    const topPayout = formData.get("topPayout");
+    const category = formData.get("category");
+    const rules = formData.get("rules");
+    const gameCode = formData.get("gameCode");
+    const gameCss = formData.get("gameCss");
+    const creatorWallet = formData.get("creatorWallet");
+    const thumbnailImage = formData.get("image");
+    const fullSizeImage = formData.get("fullSizeImage");
+
+    const validationResult = validateGameCode(gameCode);
+    if (!validationResult.isValid) {
+      return NextResponse.json({ error: validationResult.error }, { status: 400 });
+    }
+
+    const platformSettings = await fetchPlatformSettings();
+    if (!platformSettings) {
+      return NextResponse.json({ error: "Failed to fetch platform settings" }, { status: 500 });
+    }
+
+    const { wallet_fee, fee_arcade_create } = platformSettings;
+    const userData = await fetchUserData(creatorWallet);
+    if (!userData) {
+      return NextResponse.json({ error: "Failed to fetch user data" }, { status: 500 });
+    }
+
+    const userPrivateKey = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
+    let fee_txid;
+    if (fee_arcade_create > 0) {
+      try {
+        fee_txid = await transferSOL(userPrivateKey, wallet_fee, fee_arcade_create);
+        if (!fee_txid) {
+          return NextResponse.json({ error: "Failed to pay fee" }, { status: 500 });
+        }
+      } catch (error) {
+        console.error("Error transferring SOL:", error);
+        return NextResponse.json({ error: "Failed to pay fee" }, { status: 500 });
+      }
+    }
+
     const { data: thumbnailData, error: thumbnailError } = await supabase.storage
       .from("images")
-      .upload(`thumbnails/${Date.now()}-${thumbnailImage.name}`, thumbnailImage)
-    
-    if (thumbnailError) throw new Error("Failed to upload thumbnail image")
+      .upload(`thumbnails/${Date.now()}-${thumbnailImage.name}`, thumbnailImage);
+    if (thumbnailError) {
+      console.error("Failed to upload thumbnail image:", thumbnailError);
+      return NextResponse.json({ error: "Failed to upload thumbnail image" }, { status: 500 });
+    }
 
-    // Upload full-size image
     const { data: fullSizeData, error: fullSizeError } = await supabase.storage
       .from("images")
-      .upload(`full-size/${Date.now()}-${fullSizeImage.name}`, fullSizeImage)
-    
-    if (fullSizeError) throw new Error("Failed to upload full-size image")
+      .upload(`full-size/${Date.now()}-${fullSizeImage.name}`, fullSizeImage);
+    if (fullSizeError) {
+      console.error("Failed to upload full-size image:", fullSizeError);
+      return NextResponse.json({ error: "Failed to upload full-size image" }, { status: 500 });
+    }
 
-    // Get public URLs for the uploaded images
-    const thumbnailUrl = supabase.storage.from("images").getPublicUrl(thumbnailData.path).data.publicUrl
-    const fullSizeUrl = supabase.storage.from("images").getPublicUrl(fullSizeData.path).data.publicUrl
-    
-    const arcadeWallet = Keypair.generate()
-    const publicKey = arcadeWallet.publicKey.toString()
-    const privateKey = Buffer.from(arcadeWallet.secretKey).toString("hex")
-    
-    // Encrypt the private key
-    const { iv, encrypted } = CryptoManager.encrypt(privateKey)
-    
-    // // Insert game data into the database
-    // const { data:arcade, error: arcadeError }:any = await supabase
-    //   .from("arcade")
-    //   .insert({
-    //     title: title,
-    //     description: description,
-    //     play_fee: Number.parseFloat(playFee),
-    //     top_payout: Number.parseInt(topPayout),
-    //     category: category,
-    //     rules: rules,
-    //     game_code: gameCode,
-    //     game_css: gameCss,
-    //     creator_wallet: creatorWallet,
-    //     thumbnail_image: thumbnailUrl,
-    //     full_size_image: fullSizeUrl,
-    //     status: 1,
-    //     fee_txid: fee_txid
-    //   })
-    //   .select()
-        
-    //   if (arcadeError) throw arcadeError
-    //   // Insert the wallet information
-    //   const { error: walletError } = await supabase.from("wallets").insert({
-    //     type: "arcade",
-    //     public_key: publicKey,
-    //     encrypted_key: encrypted,
-    //     iv,
-    //     arcade_id: arcade.game_id
-    //   })
-    // if (walletError) throw walletError
-    
-    return NextResponse.json({ success: true })
+    const thumbnailUrl = supabase.storage.from("images").getPublicUrl(thumbnailData.path).data.publicUrl;
+    const fullSizeUrl = supabase.storage.from("images").getPublicUrl(fullSizeData.path).data.publicUrl;
 
+    const arcadeWallet = Keypair.generate();
+    const publicKey = arcadeWallet.publicKey.toString();
+    const privateKey = Buffer.from(arcadeWallet.secretKey).toString("hex");
+    const { iv, encrypted } = CryptoManager.encrypt(privateKey);
+
+    const { data: arcade, error: arcadeError } = await supabase
+      .from("arcade")
+      .insert({
+        title,
+        description,
+        play_fee: Number.parseFloat(playFee),
+        top_payout: Number.parseInt(topPayout),
+        category,
+        rules,
+        game_code: gameCode,
+        game_css: gameCss,
+        creator_wallet: creatorWallet,
+        thumbnail_image: thumbnailUrl,
+        full_size_image: fullSizeUrl,
+        status: 1,
+        fee_txid,
+      })
+      .select();
+
+    if (arcadeError) {
+      console.error("Failed to insert arcade data:", arcadeError);
+      return NextResponse.json({ error: "Failed to create game" }, { status: 500 });
+    }
+
+    const { error: walletError } = await supabase.from("wallets").insert({
+      type: "arcade",
+      public_key: publicKey,
+      encrypted_key: encrypted,
+      iv,
+      arcade_id: arcade[0].game_id,
+    });
+
+    if (walletError) {
+      console.error("Failed to insert wallet data:", walletError);
+      return NextResponse.json({ error: "Failed to create game" }, { status: 500 });
+    }
+
+    return NextResponse.json({ success: true });
   } catch (error) {
-    console.error("Error creating game:", error)
-    return NextResponse.json({ error: "Failed to create game" }, { status: 500 })
+    console.error("Error creating game:", error);
+    return NextResponse.json({ error: "Internal server error" }, { status: 500 });
   }
 }
-
