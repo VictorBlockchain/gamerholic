@@ -8,7 +8,8 @@ import { CryptoManager } from "@/lib/server/cryptoManager"
 import { sendAndConfirmTransaction } from "@/lib/solana"
 CryptoManager.initialize()
 
-const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
+const rpc:any = process.env.NEXT_PUBLIC_SOLANA_RPC_URL
+const connection:any = new Connection(rpc)
 
 const fetchUserData = async (publicKey: string) => {
   const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
