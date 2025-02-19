@@ -6,8 +6,8 @@ import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PE
 import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import { sendAndConfirmTransaction } from "@/lib/solana"
+CryptoManager.initialize()
 
-const cryptoManager = new CryptoManager();
 const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 
 const fetchUserData = async (publicKey: string) => {
@@ -158,10 +158,7 @@ export async function POST(request: Request) {
         public_key: publicKey,
         encrypted_key: encrypted,
         iv,
-        arcade_id: arcade.game_id,
-        esports_id: null,
-        tourmament_id: null,
-        grabbit_id: null
+        arcade_id: arcade.game_id
       })
     if (walletError) throw walletError
     

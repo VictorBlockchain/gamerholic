@@ -9,7 +9,7 @@ const connection = createConnection("https://api.mainnet-beta.solana.com")
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
 
-const cryptoManager = new CryptoManager()
+CryptoManager.initialize()
 
 async function getWalletKeypair(tournamentId: number): Promise<Keypair> {
   const { data: wallet, error } = await supabase.from("wallets").select("*").eq("tournament_id", tournamentId).single()

@@ -4,7 +4,7 @@ import { Keypair } from "@solana/web3.js"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import * as z from "zod"
 const moment = require("moment");
-const cryptoManager = new CryptoManager()
+CryptoManager.initialize()
 
 const formSchema = z.object({
   title: z.string(),
@@ -58,7 +58,7 @@ export async function POST(req: Request) {
     const privateKey = Buffer.from(tournamentWallet.secretKey).toString("hex")
     
     // Encrypt the private key
-    const { iv, encrypted } = cryptoManager.encrypt(privateKey)
+    const { iv, encrypted } = CryptoManager.encrypt(privateKey)
     
     // Insert the new tournament
     const { data: tournament, error: tournamentError } = await supabase

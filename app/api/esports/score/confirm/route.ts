@@ -5,7 +5,7 @@ import { supabase } from "@/lib/supabase"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import { sendAndConfirmTransaction } from "@/lib/solana"
 
-const cryptoManager = new CryptoManager()
+CryptoManager.initialize()
 const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address

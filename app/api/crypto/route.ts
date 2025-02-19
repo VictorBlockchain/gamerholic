@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server"
 import { CryptoManager } from "@/lib/server/cryptoManager"
+CryptoManager.initialize()
 
 export async function POST(req: Request) {
   try {

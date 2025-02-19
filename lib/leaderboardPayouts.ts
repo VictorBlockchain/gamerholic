@@ -20,6 +20,20 @@ const fetchLeaderData = async (game_id: number, player: string) => {
   return data
 }
 
+const fetchArcadeData = async (game_id: number) => {
+  const { data, error: fetchError } = await supabase
+    .from("arcade")
+    .select("id, earnings_creator, earnings_creator_available")
+    .eq("game_id", game_id)
+    .single()
+  
+  if (fetchError) {
+    console.error(`Error fetching aracade data`, fetchError)
+    return null
+  }
+  
+  return data
+}
 export async function updateLeaderboardAndPayouts(gameId: string, playerPublicKey: string, score: number) {
   try {
     // 1. Get the game details from arcade table
@@ -34,18 +48,7 @@ export async function updateLeaderboardAndPayouts(gameId: string, playerPublicKe
     const { play_fee, top_payout, creator } = game;
 
     if (play_fee > 0) {
-      // 2. Get fee percentages from platform settings
-      const { data: settings, error: settingsError } = await supabase
-        .from("platform_settings")
-        .select("top_player_percentage, dev_fee_percentage")
-        .eq("id", 1)
-        .single();
-
-      if (settingsError) throw settingsError;
-
-      const { top_player_percentage, dev_fee_percentage } = settings;
-
-      // 3. Get current leaderboard
+      // 2. Get current leaderboard
       const { data: leaderboard, error: leaderboardError } = await supabase
         .from("arcade_leaderboard")
         .select("*")
@@ -67,6 +70,7 @@ export async function updateLeaderboardAndPayouts(gameId: string, playerPublicKe
       const filteredPlayers = eligiblePlayers.filter((player) => player.player !== playerPublicKey);
 
       // Calculate fees
+      let dev_fee_percentage = 10 / 100; // Developer fee percentage
       const playFeeDecimal = new Decimal(play_fee);
       const devFee = playFeeDecimal.times(dev_fee_percentage); // Developer fee
       const totalPlayerPayout = playFeeDecimal.minus(devFee);
@@ -75,21 +79,28 @@ export async function updateLeaderboardAndPayouts(gameId: string, playerPublicKe
       await creditDeveloper(gameId, creator, devFee.toNumber());
 
       if (filteredPlayers.length > 0) {
-        // Calculate payouts
-        const topPlayerPayout = totalPlayerPayout.times(top_player_percentage).dividedBy(100);
-        const remainingPayout = totalPlayerPayout.minus(topPlayerPayout);
+        // If there are eligible players, distribute payouts
+        if (filteredPlayers.length === 1) {
+          // If only one eligible player, they get the entire payout
+          await creditUser(gameId, filteredPlayers[0].player, totalPlayerPayout.toNumber());
+        } else {
+          // Otherwise, use the tiered payout logic
+          const top_player_percentage = 40 / 100;
+          const topPlayerPayout = totalPlayerPayout.times(top_player_percentage);
+          const remainingPayout = totalPlayerPayout.minus(topPlayerPayout);
 
-        // Credit the top player
-        if (filteredPlayers[0]) {
-          await creditUser(gameId, filteredPlayers[0].player, topPlayerPayout.toNumber());
-        }
+          // Credit the top player
+          if (filteredPlayers[0]) {
+            await creditUser(gameId, filteredPlayers[0].player, topPlayerPayout.toNumber());
+          }
 
-        // Credit remaining players with scaled payouts
-        if (filteredPlayers.length > 1) {
-          const payouts = calculateTieredPayouts(remainingPayout, filteredPlayers.length - 1);
+          // Credit remaining players with scaled payouts
+          if (filteredPlayers.length > 1) {
+            const payouts = calculateTieredPayouts(remainingPayout, filteredPlayers.length - 1);
 
-          for (let i = 1; i < filteredPlayers.length; i++) {
-            await creditUser(gameId, filteredPlayers[i].player, payouts[i - 1].toNumber());
+            for (let i = 1; i < filteredPlayers.length; i++) {
+              await creditUser(gameId, filteredPlayers[i].player, payouts[i - 1].toNumber());
+            }
           }
         }
       } else {
@@ -161,24 +172,24 @@ async function creditUser(gameId: any, playerPublicKey: string, amount: any) {
 
 async function creditDeveloper(gameId: any, developerPublicKey: string, amount: number) {
   try {
-    const data = await fetchLeaderData(gameId, developerPublicKey);
+    const data = await fetchArcadeData(gameId);
     if (!data) {
       console.error("No leaderboard data found for the developer.");
       return;
     }
     
     // Step 2: Calculate the new values
-    const newCredits = data.credits + amount;
-    const newCreditsAvailable = data.credits_available + amount;
+    const newCredits = data.earnings_creator + amount;
+    const newCreditsAvailable = data.earnings_creator_available + amount;
 
     // Step 3: Update the database
     const { error } = await supabase
-      .from("arcade_leaderboard")
+      .from("arcade")
       .update({
-        credits: newCredits,
-        credits_available: newCreditsAvailable,
+        earnings_creator: newCredits,
+        earnings_creator_available: newCreditsAvailable,
       })
-      .eq("id", data.id);
+      .eq("game_id", gameId);
 
     if (error) {
       console.error(`Error crediting developer ${developerPublicKey}:`, error);

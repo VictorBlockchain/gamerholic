@@ -9,15 +9,15 @@ const connection = createConnection("https://api.mainnet-beta.solana.com")
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS
 const PLATFORM_FEE_ADDRESS = process.env.PLATFORM_FEE_ADDRESS
 
-const cryptoManager = new CryptoManager()
+CryptoManager.initialize()
 
 async function getWalletKeypair(tournamentId: number): Promise<Keypair> {
   const { data: wallet, error } = await supabase.from("wallets").select("*").eq("tournament_id", tournamentId).single()
-
+  
   if (error) throw new Error(`Failed to fetch wallet for tournament ${tournamentId}: ${error.message}`)
   if (!wallet) throw new Error(`No wallet found for tournament ${tournamentId}`)
 
-  const privateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
+  const privateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
   return Keypair.fromSecretKey(Buffer.from(privateKey, "hex"))
 }
 

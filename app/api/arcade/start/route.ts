@@ -9,7 +9,7 @@ import { balanceManager } from "@/lib/balance"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import moment from 'moment';
 let BALANCE = new balanceManager()
-const cryptoManager = new CryptoManager();
+CryptoManager.initialize()
 
 const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 const GAMEr:any = process.env.NEXT_PUBLIC_GAMER // GAMEr token mint address

@@ -44,7 +44,7 @@ const GAME: any = process.env.NEXT_PUBLIC_GAMER
 
 export default function PlayPage() {
   const { id } = useParams()
-  const { publicKey } = useWallet()
+  const { publicKey }:any = useWallet()
   const { connection } = useConnection()
   const [game, setGame]:any = useState<any>(null)
   const [leaderboard, setLeaderboard] = useState<LeaderboardEntry[]>([])
@@ -70,8 +70,10 @@ export default function PlayPage() {
   const [freePlay, setFreePlay] = useState(false)
   const sessionId = useRef(0);  
   const token = useRef(0);
+  const user = useRef(publicKey)
   const [loading_play, setLoadingPlay] = useState(false)
   const [play_time, setPlayTime]:any = useState()
+  const [gameWallet, setGameWallet]:any = useState()
 
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
@@ -92,10 +94,12 @@ export default function PlayPage() {
       fetchVotes()
       fetchBoosts()
       fetchBoostFee()
+      fetchGameWalletData()
     }
     if (publicKey) {
       fetchUserCredits()
       fetchUserVote()
+      user.current = publicKey
     }
   }, [id, publicKey])
 
@@ -110,7 +114,7 @@ export default function PlayPage() {
     let interval: NodeJS.Timeout
 
     if (gameStarted && startTime) {
-      // Start the timer interval
+      // Start the timer intervalf
       interval = setInterval(() => {
         const now = moment() // Current time
         const endTime = startTime.clone().add(game.play_time, "minutes") // End time
@@ -146,15 +150,15 @@ export default function PlayPage() {
   const isFetching = false
   const fetchUser = async () => {
     if (!publicKey) return
-
+    
     try {
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
-
+      
       if (error) {
         console.error("Select Error:", error)
         return
       }
-
+      
       if (!data) {
         const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
 
@@ -212,13 +216,18 @@ export default function PlayPage() {
       console.log("Avatar updated successfully!")
     }
   }
-
+  
   const fetchGameData = async () => {
     const { data, error } = await supabase.from("arcade").select("*").eq("game_id", id).single()
     if (error) console.error("Error fetching game data:", error)
     else setGame(data)
     setPlayTime(data.play_time)
     setLoading(false)
+  }
+
+  const fetchGameWalletData = async () => {
+    const { data, error } = await supabase.from("wallets").select("*").eq("arcade_id", id).single()
+    setGameWallet(data.public_key)
   }
   
   const fetchLeaderboard = async () => {
@@ -234,7 +243,7 @@ export default function PlayPage() {
 
     if (error) console.error("Error fetching leaderboard:", error)
     else setLeaderboard(data)
-  console.log(data)
+  // console.log(data)
   }
 
   const fetchUserCredits = async () => {
@@ -360,14 +369,24 @@ export default function PlayPage() {
 
   const handleScore = async (currentScore: number) => {
     if (!freePlay) {
-      console.log('score is ' + currentScore, play_time)
+      let player = publicKey.toBase58()
+      // console.log('score is ' + currentScore, play_time)
+      if(!player){
+        player = user.current
+      }
+      if(!player){
+        setErrorMessage("error submitting score")
+        setShowErrorModal(true)
+
+        return
+      }
       const encryptedScore = encryptScore(currentScore)
       const response = await fetch("/api/arcade/end", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId: id,
-          userId: publicKey?.toBase58(),
+          userId: player,
           sessionId: sessionId.current,
           encryptedScore: encryptedScore,
           gameToken: token.current,
@@ -646,6 +665,22 @@ export default function PlayPage() {
                     If the top payout is the top 10 and you fail to beat the 8th score, players 1 - 8 earn a portion of
                     your play fee. Aim high and win big!
                   </p>
+                </div>
+                <div className="mt-6 p-4 bg-primary/10 rounded-lg border border-primary/20">
+                  <h3 className="font-bold text-lg mb-2 text-primary">Game Wallet</h3>
+                  {gameWallet && (
+                                    <p className="text-sm">
+                                    <a
+                                      href={`https://solscan.io/account/${gameWallet}`}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="text-blue-500 hover:text-blue-700 underline"
+                                    >
+                                      {`${gameWallet.slice(0, 4)}...${gameWallet.slice(-4)}`}
+                                    </a>
+                                  </p>
+                  )}
+                
                 </div>
               </CardContent>
             </Card>

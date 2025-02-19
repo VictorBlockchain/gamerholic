@@ -6,6 +6,8 @@ import { sendAndConfirmTransaction } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import { balanceManager } from "@/lib/balance"
 import { useToast } from "@/components/ui/use-toast"
+CryptoManager.initialize()
+
 let BALANCE = new balanceManager()
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address

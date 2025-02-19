@@ -7,7 +7,7 @@ import "moment-timezone"; // Import moment-timezone for timezone handling
 const timezone = "America/New_York";
 import crypto from "crypto";
 import { CryptoManager } from "@/lib/server/cryptoManager"
-const cryptoManager = new CryptoManager();
+CryptoManager.initialize()
 
 const IV_LENGTH = 16; // AES block size
 const connection = new Connection("https://api.mainnet-beta.solana.com"); // Replace with appropriate RPC endpoint

@@ -4,6 +4,7 @@ import { PublicKey, Transaction, SystemProgram, Keypair } from "@solana/web3.js"
 import { getAssociatedTokenAddress, createTransferInstruction } from "@solana/spl-token"
 import { sendAndConfirmTransaction, createConnection } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
+CryptoManager.initialize()
 
 export async function POST(req: Request) {
   try {
@@ -67,7 +68,6 @@ export async function POST(req: Request) {
     const connection = createConnection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!)
     
     // Decrypt wallet private key
-    const cryptoManager = new CryptoManager()
     const decryptedPrivateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
     // const keypair = Keypair.fromSecretKey(Buffer.from(decryptedPrivateKey, "base64"))
     const secretKey = Uint8Array.from(Buffer.from(decryptedPrivateKey, "hex"));
