@@ -13,7 +13,7 @@ export async function POST(req: Request) {
     const privateKeyHex = Buffer.from(keypair.secretKey).toString("hex");
     
     // // Encrypt the private key using the unified encryption function
-    const { iv, encrypted } = cryptoManager.encrypt(privateKeyHex);
+    const { iv, encrypted } = CryptoManager.encrypt(privateKeyHex);
     if(type==1){
 
           const { error: updateError } = await supabase.from("users").update({ deposit_wallet: keypair.publicKey.toString(), deposit_wallet_encryptedKey: encrypted, iv:iv }).eq("publicKey", user)

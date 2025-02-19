@@ -65,10 +65,10 @@ export async function POST(req: Request) {
 
     // Initialize Solana connection
     const connection = createConnection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL!)
-
+    
     // Decrypt wallet private key
     const cryptoManager = new CryptoManager()
-    const decryptedPrivateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
+    const decryptedPrivateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
     // const keypair = Keypair.fromSecretKey(Buffer.from(decryptedPrivateKey, "base64"))
     const secretKey = Uint8Array.from(Buffer.from(decryptedPrivateKey, "hex"));
     const senderKeypair = Keypair.fromSecretKey(secretKey);

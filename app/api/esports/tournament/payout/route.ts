@@ -17,14 +17,14 @@ async function getWalletKeypair(tournamentId: number): Promise<Keypair> {
   if (error) throw new Error(`Failed to fetch wallet for tournament ${tournamentId}: ${error.message}`)
   if (!wallet) throw new Error(`No wallet found for tournament ${tournamentId}`)
 
-  const privateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
+  const privateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
   return Keypair.fromSecretKey(Buffer.from(JSON.parse(privateKey)))
 }
 
 async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: number) {
   try {
     const toPublicKey = new PublicKey(toAddress)
-
+    
     const transaction = new Transaction().add(
       SystemProgram.transfer({
         fromPubkey: fromKeypair.publicKey,

@@ -174,8 +174,8 @@ export async function POST(req: Request) {
     const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1
 
     // Deduct fees from both players
-    const player1PrivateKey = cryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
-    const player2PrivateKey = cryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
+    const player1PrivateKey = CryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
+    const player2PrivateKey = CryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
     if(gameData.money==1){
             
       

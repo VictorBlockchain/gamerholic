@@ -98,7 +98,7 @@ export async function POST(request: Request) {
         if (!userData) {
       return NextResponse.json({ success: false, message: "Failed to fetch user data" })
     }
-    const userPrivateKey = cryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv)
+    const userPrivateKey = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv)
     if(fee_arcade_create>0){
         
       fee_txid = await transferSOL(userPrivateKey, wallet_fee, fee_arcade_create)
@@ -129,7 +129,7 @@ export async function POST(request: Request) {
     const privateKey = Buffer.from(arcadeWallet.secretKey).toString("hex")
     
     // Encrypt the private key
-    const { iv, encrypted } = cryptoManager.encrypt(privateKey)
+    const { iv, encrypted } = CryptoManager.encrypt(privateKey)
     
     // // Insert game data into the database
     const { data:arcade, error: arcadeError }:any = await supabase

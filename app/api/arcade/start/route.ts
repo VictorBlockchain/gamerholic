@@ -141,7 +141,7 @@ export async function POST(request: Request) {
         .maybeSingle();
       if (walletError) throw walletError;
       
-      const playerPrivateKey:any = cryptoManager.decrypt(user.deposit_wallet_encryptedKey, user.iv);
+      const playerPrivateKey:any = CryptoManager.decrypt(user.deposit_wallet_encryptedKey, user.iv);
 
       const tokenMintAddress: any = new PublicKey(GAMEr);
       

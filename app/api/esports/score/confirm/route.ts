@@ -23,12 +23,12 @@ const fetchUserData = async (publicKey: string) => {
 
 const fetchGameData = async (id: string) => {
   const { data, error: fetchError } = await supabase.from("esports").select("*").eq("id", id).single()
-
+  
   if (fetchError) {
     console.error(`Error fetching game data`)
     return null
   }
-
+  
   return data
 }
 
@@ -172,8 +172,8 @@ export async function POST(req: Request) {
     const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1
 
     // Deduct fees from both players
-    const player1PrivateKey = cryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
-    const player2PrivateKey = cryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
+    const player1PrivateKey = CryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
+    const player2PrivateKey = CryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
     // console.log(player2PrivateKey)
     if(gameData.money==1){
             

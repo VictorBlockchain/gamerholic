@@ -191,7 +191,7 @@ export async function POST(req: Request) {
         //collect entry fee and send it to game wallet
         if(gameData.entry_fee>0){
             
-          let userKey:any = cryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
+          let userKey:any = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
           let fee_entry = gameData.entry_fee / 10 ** 9
             if(gameData.play_money==1){
               //entry fee is in solana

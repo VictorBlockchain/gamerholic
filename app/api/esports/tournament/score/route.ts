@@ -16,7 +16,7 @@ async function getWalletKeypair(tournamentId: string): Promise<Keypair> {
 
   if (error) throw error
   
-  const privateKey = cryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
+  const privateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
   return Keypair.fromSecretKey(Buffer.from(JSON.parse(privateKey)))
 }
 
