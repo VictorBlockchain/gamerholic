@@ -17,7 +17,7 @@ import {
   getTotalUserCredits,
   getGameStatistics,
   getFinancialStatistics,
-  updatePayWallet,
+  // updatePayWallet,
   updatePlatformFees,
   searchUsers,
   generatePlatformWallet,
@@ -129,7 +129,7 @@ export default function AdminPage() {
       fetchWallets()
     }
   }, [publicKey])
-
+  
   const fetchData = async () => {
     try {
       const data: any = await getPlatformWallet()
@@ -219,12 +219,12 @@ export default function AdminPage() {
 
   const handleUpdatePayWallet = async () => {
     try {
-      await updatePayWallet(payWallet)
-      toast({
-        title: "Success",
-        description: "Platform wallet updated successfully",
-      })
-      fetchData()
+      // await updatePayWallet(payWallet)
+      // toast({
+      //   title: "Success",
+      //   description: "Platform wallet updated successfully",
+      // })
+      // fetchData()
     } catch (error) {
       console.error("Error updating platform wallet:", error)
       toast({
@@ -255,7 +255,7 @@ export default function AdminPage() {
 
   const handleSearch = async () => {
     try {
-      const results = await searchUsers(searchTerm)
+      const results:any = await searchUsers(searchTerm)
       setSearchResults(results)
     } catch (error) {
       console.error("Error searching users:", error)
@@ -349,7 +349,7 @@ export default function AdminPage() {
 
   const fetchProducts = async () => {
     try {
-      const { data, error } = await supabase.from("shop_items").select("*").order("created_at", { ascending: false })
+      const { data, error }:any = await supabase.from("shop_items").select("*").order("created_at", { ascending: false })
       if (error) throw error
       setProducts(data || [])
     } catch (error) {
@@ -365,7 +365,7 @@ export default function AdminPage() {
   const handleAddProduct = async (formData: FormData) => {
     try {
       // Convert FormData to a plain object
-      const productData = Object.fromEntries(formData.entries())
+      const productData:any = Object.fromEntries(formData.entries())
 
       // Parse JSON strings back to arrays
       if (typeof productData.sizes === "string") {
@@ -421,7 +421,7 @@ export default function AdminPage() {
     }
   }
 
-  const handleEditProduct = (product) => {
+  const handleEditProduct = (product:any) => {
     setEditingProduct(product)
     setShowAddProductModal(true)
   }
@@ -451,7 +451,7 @@ export default function AdminPage() {
     }
   }
 
-  const handleToggleGamePause = async (gameId) => {
+  const handleToggleGamePause = async (gameId:any) => {
     try {
       const { data, error } = await supabase
         .from("games")
@@ -475,13 +475,13 @@ export default function AdminPage() {
     }
   }
 
-  const handleUpdateGameFees = async (gameId) => {
+  const handleUpdateGameFees = async (gameId:any) => {
     try {
-      await updateGameFees(gameId)
-      toast({
-        title: "Success",
-        description: "Game fees updated successfully",
-      })
+      // await updateGameFees(gameId)
+      // toast({
+      //   title: "Success",
+      //   description: "Game fees updated successfully",
+      // })
       fetchData()
     } catch (error) {
       console.error("Error updating game fees:", error)
@@ -493,7 +493,7 @@ export default function AdminPage() {
     }
   }
 
-  const handleResponseSubmit = async (ticketId) => {
+  const handleResponseSubmit = async (ticketId:any) => {
     try {
       const { error } = await supabase
         .from("support_tickets")
@@ -538,7 +538,7 @@ export default function AdminPage() {
 
   const fetchApprovedTokens = async () => {
     try {
-      const tokens = await getApprovedTokens()
+      const tokens:any = await getApprovedTokens()
       setApprovedTokens(tokens)
     } catch (error) {
       console.error("Error fetching approved tokens:", error)
@@ -1007,7 +1007,7 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {gameStats.map((game) => (
+                    {gameStats.map((game:any) => (
                       <TableRow key={game.id}>
                         <TableCell>{game.title}</TableCell>
                         <TableCell>{game.play_count}</TableCell>
@@ -1068,7 +1068,7 @@ export default function AdminPage() {
                       </TableRow>
                     </TableHeader>
                     <TableBody>
-                      {searchResults.map((user) => (
+                      {searchResults.map((user:any) => (
                         <TableRow key={user.wallet}>
                           <TableCell>{user.wallet}</TableCell>
                           <TableCell>{user.username}</TableCell>
@@ -1106,7 +1106,7 @@ export default function AdminPage() {
                           </TableRow>
                         </TableHeader>
                         <TableBody>
-                          {supportTickets.map((ticket) => (
+                          {supportTickets.map((ticket:any) => (
                             <TableRow key={ticket.id}>
                               <TableCell>{ticket.id}</TableCell>
                               <TableCell>{ticket.category}</TableCell>
@@ -1202,7 +1202,7 @@ export default function AdminPage() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {products.map((product) => (
+                    {products.map((product:any) => (
                       <TableRow key={product.id}>
                         <TableCell>
                           <img

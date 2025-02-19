@@ -2,20 +2,24 @@ import { PublicKey, LAMPORTS_PER_SOL, type Connection, Keypair } from "@solana/w
 import { supabase } from "@/lib/supabase"
 
 type PlatformSettings = {
-  platform_wallet_address: string
   boost_fee: number
-  dev_fee_percentage: number
-  platform_fee_percentage: number
-  top_player_percentage: number
   initial_super_admin_address: string
-  encrypted_private_key: string
-  iv: string
-  min_tokens_arcade: number
+  is_paused:boolean
   min_tokens_esports: number
+  min_tokens_arcade: number
   min_tokens_tournaments: number
   min_tokens_grabbit: number
-  fee_address: string
-  arcade_create_fee: number
+  wallet_fee: string
+  wallet_platform: string
+  fee_esports: number
+  fee_tournament: number
+  fee_arcade: number
+  fee_grabbit: number
+  fee_grabit_host:number
+  fee_arcade_create: number
+  wallet_platform_encrypted_key:string
+  wallet_platform_iv:string
+
 }
 
 const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL
@@ -51,11 +55,11 @@ export async function initializePlatformWallet(retries = 3): Promise<void> {
   }
 }
 
-export function getPlatformWalletPublicKey(): PublicKey {
+export function getPlatformWallet(): PublicKey {
   if (!platformSettings) {
     throw new Error("Platform settings not initialized")
   }
-  return new PublicKey(platformSettings.platform_wallet_address)
+  return new PublicKey(platformSettings.wallet_platform)
 }
 
 export function getBoostFee(): number {
@@ -114,7 +118,7 @@ export async function getFinancialStatistics() {
 }
 
 export async function getPlatformWalletBalance(connection: Connection): Promise<number> {
-  const platformWallet = getPlatformWalletPublicKey()
+  const platformWallet = getPlatformWallet()
   const balance = await connection.getBalance(platformWallet)
   return balance / LAMPORTS_PER_SOL
 }
@@ -143,7 +147,7 @@ export async function updatePlatformWallet(
   const { error } = await supabase
     .from("platform_settings")
     .update({
-      platform_wallet_address: newWalletAddress,
+      wallet_platform: newWalletAddress,
       encrypted_private_key: encryptedPrivateKey,
       iv: iv,
     })
@@ -153,9 +157,9 @@ export async function updatePlatformWallet(
 
   // Update the local platformSettings
   if (platformSettings) {
-    platformSettings.platform_wallet_address = newWalletAddress
-    platformSettings.encrypted_private_key = encryptedPrivateKey
-    platformSettings.iv = iv
+    platformSettings.wallet_platform = newWalletAddress
+    platformSettings.wallet_platform_encrypted_key = encryptedPrivateKey
+    platformSettings.wallet_platform_iv = iv
   }
 }
 
@@ -178,6 +182,7 @@ export async function updatePlatformFees(
   if (error) throw error
 }
 
+///change this
 export async function updateGameFees(
   gameId: string,
   devPlayFee: number,
