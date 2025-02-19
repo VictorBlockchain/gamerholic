@@ -346,6 +346,16 @@ export async function refreshWallet(walletId: string): Promise<void> {
   console.log(`Refreshing wallet with ID: ${walletId}`)
 }
 
+export async function generateDepositWallet(user:any): Promise<any>{
+  const response = await fetch("/api/generate_address", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ user: user, type: 1 }),
+  })
+  const result = await response.json()
+  if (!result.success) throw new Error("Encryption failed")
+    return { success:true, address:result.address }
+  }
 export async function encryptWalletKey(walletKey: string): Promise<{ encrypted: string; iv: string }> {
   const response = await fetch("/api/crypto", {
     method: "POST",

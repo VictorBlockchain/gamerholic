@@ -236,56 +236,44 @@ export default function CreateGamePage() {
   
   
   const fetchUser = async () => {
-    if (isFetching) return; // Skip if a fetch is already in progress
-    isFetching = true;
+    if (!publicKey) return
     
     try {
-      const { data, error } = await supabase
-        .from("users")
-        .select("*")
-        .eq("publicKey", publicKey)
-        .single();
+      const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
       
-      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
-        console.error("Select Error:", error);
-        return;
+      if (error) {
+        console.error("Select Error:", error)
+        return
       }
       
       if (!data) {
-        if(publicKey){
-        
-          const { error: insertError } = await supabase
-          .from("users")
-          .insert([{ publicKey }]);
-        
-              if (insertError) {
-                console.error("Insert Error:", insertError);
-              } else {
-                setShowUserNameModal(true)
-                console.log("New publicKey inserted into the database.");
-              }
-            } else {
-                setUserId(data.id)
-                if(!data.username){
-                    setShowUserNameModal(true)
-                }else{
-                    setUserName(data.username)
-                    setUserAvatar(data.avatar_url)
-                    setUserData({
-                        userid: data.id,
-                        username: data.username,
-                        deposit_wallet: data.deposit_wallet,
-                        avatar: data.avatar,
-                      });
-                }
-            //   console.log("publicKey already exists:", data);
-            }
+        const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
+
+        if (insertError) {
+          console.error("Insert Error:", insertError)
+        } else {
+          setShowUserNameModal(true)
+          console.log("New publicKey inserted into the database.")
         }
-    
-    } finally {
-      isFetching = false;
+      } else {
+        setUserId(data.id)
+        if (!data.username) {
+          setShowUserNameModal(true)
+        } else {
+          setUserName(data.username)
+          setUserAvatar(data.avatar_url)
+          setUserData({
+            userid: data.id,
+            username: data.username,
+            deposit_wallet: data.deposit_wallet,
+            avatar: data.avatar,
+          })
+        }
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error)
     }
-  };
+  }
 
   const handleGameCodeChange = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
     setGameCode(e.target.value)
@@ -474,29 +462,23 @@ export default function CreateGamePage() {
     const handleSetUserName = async () =>{
     
       let name = userData.name
-      
-      let data_wallet:any = await generateDepositWallet(publicKey)
-      if(data_wallet.success){
-      
-          const { data, error } = await supabase
-          .from("users")
-          .update({ username: name }) // Updating the username
-          .eq("publicKey", publicKey);       // Condition to match the publicKey
-          
-          if (error) {
-              // console.error("Update Error:", error);
-              handleErrorNotification("theres an error " + error)
-          } else {
-              // console.log("Username updated successfully:", data);
-              setShowUserNameModal(false)
-              handleSuccessNotification("user name updated")
-          }
-      
-      }else{
-          handleErrorNotification("theres an error " + data_wallet.message)
-      
+      if(!userData.deposit_wallet){
+        let data_wallet:any = await generateDepositWallet(publicKey)
       }
-    
+      const { data, error } = await supabase
+      .from("users")
+      .update({ username: name }) // Updating the username
+      .eq("publicKey", publicKey);       // Condition to match the publicKey
+      
+      if (error) {
+          // console.error("Update Error:", error);
+          handleErrorNotification("theres an error " + error)
+      } else {
+          // console.log("Username updated successfully:", data);
+          setShowUserNameModal(false)
+          handleSuccessNotification("user name updated")
+      }
+      fetchUser()    
     }
   
     const handleSuccessNotification = (message: string) => {

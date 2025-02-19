@@ -78,7 +78,7 @@ export async function POST(request: Request) {
    }
   }
   console.log(gameId, userId, sessionId, encryptedScore, gameToken)
-
+  
   if (!gameId || !userId || !sessionId || !encryptedScore || !gameToken) {
     return NextResponse.json({success: false, message: "Missing required fields" }, { status: 400 })
   }
