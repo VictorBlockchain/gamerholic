@@ -4,7 +4,7 @@ import moment from "moment";
 import "moment-timezone";
 const setPracticeGame = async (): Promise<any> => {
   try {
-    const randomPageNumber = Math.floor(Math.random() * 6) + 1;
+    const randomPageNumber = Math.floor(Math.random() * 11) + 3;
     const imagePath = `/grab${randomPageNumber}.jpg`;
     const { data, error } = await supabase
       .from("grabbit")

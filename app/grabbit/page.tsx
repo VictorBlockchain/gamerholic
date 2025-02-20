@@ -181,7 +181,7 @@ const fetchUser = async () => {
         .eq("title", "practice")
         .eq('status', 1)
         
-        if(count<1){
+        if(count<2){
             setShowCreatePractice(true)
         }
 

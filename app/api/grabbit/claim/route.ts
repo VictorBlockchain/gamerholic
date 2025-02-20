@@ -242,7 +242,7 @@ export async function POST(req: Request) {
     // Update Grabbit game status
     const { error: updateError } = await supabase
       .from("grabbit")
-      .update({ prize_claimed: true, prize_claim_tx: signatureWinner })
+      .update({ prize_claimed: true, prize_amount: totalAmount, prize_claim_tx: signatureWinner })
       .eq("game_id", gameId)
 
     if (updateError) {

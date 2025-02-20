@@ -626,7 +626,7 @@ export default function GrabbitGame() {
                   Prize: {gameWalletBalance} SOL
                 </Badge>
               </div>
-              {gameData.status === 4 && gameData.winner === publicKey.toString() && (
+              {gameData.status === 4 && gameData.winner === publicKey.toString() && !gameData.prize_claimed && (
                               <div className="text-center mb-6">
                 
                 <Button
@@ -635,6 +635,23 @@ export default function GrabbitGame() {
                 >
                   Claim Your Prize
                 </Button>
+                </div>
+              )}
+              {gameData.status === 4 && gameData.prize_claimed && (
+              <div className="text-center mb-6">
+                
+                <Button
+                    asChild // This allows the Button component to wrap around an <a> tag
+                  >
+                    <a
+                      href={`https://solscan.io/tx/${gameData.prize_claim_tx}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="w-full px-6 py-3 bg-gradient-to-r from-blue-500 to-orange-500 hover:from-blue-600 hover:to-orange-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                      >
+                      Prize Claimed
+                    </a>
+                  </Button>
                 </div>
               )}
               {gameData.players.length > 0 &&
