@@ -52,6 +52,7 @@ import {
 // Add this import at the top of the file
 import { ChatPopup } from "@/components/chat-popup"
 const solana = new balanceManager()
+const GAMER = process.env.NEXT_PUBLIC_GAMER
 // Define types for chat messages, chatrooms, and esports challenges
 interface ChatMessage {
   id: string
@@ -75,6 +76,7 @@ interface EsportsChallenge {
   game: string
   console: string
   amount: number
+  money:number
   rules: string
   player1: string
   player2: string
@@ -512,24 +514,85 @@ const EsportsPage: React.FC = () => {
   };
 
   const fetchPendingChallenges = async () => {
-    const { data, error } = await supabase
+    const publicKeyStr = publicKey.toString();
+  
+    // Step 1: Fetch data from the `esports` table
+    const { data: esportsData, error: esportsError } = await supabase
       .from("esports")
       .select("*")
-      .or(`player1.eq.${publicKey.toString()},player2.eq.${publicKey.toString()}`)
-      .in("status", [1, 2, 3, 4, 5, 6])
-
-    if (error) {
-      console.error("Error fetching pending challenges:", error)
+      .or(`player1.eq.${publicKeyStr},player2.eq.${publicKeyStr}`)
+      .in("status", [1, 2, 3, 4, 5, 6]);
+  
+    if (esportsError) {
+      console.error("Error fetching esports data:", esportsError);
       toast({
-        title: "Failed to fetch pending challenges",
-        description: "An error occurred while fetching pending challenges.",
+        title: "Failed to fetch esports data",
+        description: "An error occurred while fetching esports data.",
         variant: "destructive",
-      })
-    } else {
-      console.log(data)
-      setPendingChallenges(data || [])
+      });
+      return;
     }
-  }
+  
+    // Step 2: Fetch data from the `esports_records` table
+    const games = esportsData.map((esport) => esport.game);
+    const { data: esportsRecordsData, error: esportsRecordsError } = await supabase
+      .from("esports_records")
+      .select("*")
+      .in("game", games)
+      .or(`public_key.eq.${publicKeyStr}`);
+  
+    if (esportsRecordsError) {
+      console.error("Error fetching esports records data:", esportsRecordsError);
+      toast({
+        title: "Failed to fetch esports records data",
+        description: "An error occurred while fetching esports records data.",
+        variant: "destructive",
+      });
+      return;
+    }
+  
+    // Step 3: Combine the results and handle empty `esports_records`
+    const combinedData = esportsData.map((esport) => {
+      // Initialize default values for player1 and player2
+      const defaultRecord = {
+        wins: 0,
+        losses: 0,
+        win_streak: 0,
+        loss_streak: 0,
+        total_earnings: 0,
+      };
+  
+      // Find records for player1 and player2
+      const player1Records = esportsRecordsData.find(
+        (record) => record.game === esport.game && record.public_key === esport.player1
+      ) || defaultRecord;
+  
+      const player2Records = esportsRecordsData.find(
+        (record) => record.game === esport.game && record.public_key === esport.player2
+      ) || defaultRecord;
+  
+      return {
+        ...esport,
+        player1_records: {
+          wins: player1Records.wins,
+          losses: player1Records.losses,
+          win_streak: player1Records.win_streak,
+          loss_streak: player1Records.loss_streak,
+          total_earnings: player1Records.total_earnings,
+        },
+        player2_records: {
+          wins: player2Records.wins,
+          losses: player2Records.losses,
+          win_streak: player2Records.win_streak,
+          loss_streak: player2Records.loss_streak,
+          total_earnings: player2Records.total_earnings,
+        },
+      };
+    });
+  
+    console.log(combinedData);
+    setPendingChallenges(combinedData || []);
+  };
 
   const fetchGameHistory = async () => {
     const { data, error } = await supabase
@@ -555,6 +618,7 @@ const EsportsPage: React.FC = () => {
       !challengeData.player2 ||
       !challengeData.game ||
       !challengeData.console ||
+      !challengeData.money ||
       (!challengeData.amount && challengeData.amount != 0) ||
       !challengeData.rules
     ) {
@@ -565,6 +629,9 @@ const EsportsPage: React.FC = () => {
         message = "what game?"
       } else if (!challengeData.console) {
         message = "what console?"
+
+      }else if (!challengeData.money){
+        message = "are you playing for solana or gamer tokens?"
       } else if (!challengeData.amount && challengeData.amount != 0) {
         message = "how mach in GAME tokens is this game for?"
       } else if (!challengeData.rules) {
@@ -576,20 +643,38 @@ const EsportsPage: React.FC = () => {
         challengeData.player2,
         challengeData.game,
         challengeData.console,
+        challengeData.money,
         challengeData.amount,
         challengeData.rules,
       )
       return
     }
 
-    //check user balance
-    const GAME = ""
-    let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+    //check players balance
+    let p1balance = 0;
+    let p2balance = 0;
+    let feeAmount = (challengeData.amount / 10 ** 9) * 0.03
+    const { data:opp, error:oppError } = await supabase.from("users").select("*").eq("publicKey", challengeData.player2).single()
+
+    if(challengeData.money==1){
+      //game is for solana
+      p1balance = await solana.getBalance(userData.deposit_wallet)
+      p2balance = await solana.getBalance(opp.deposit_wallet)
+
+    }else{
+      p1balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
+      p2balance = await solana.getTokenBalance(opp.deposit_wallet, GAMER)
+      feeAmount = 0
+    }
+    
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
-    const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
+    const totalAmount = gameAmount + feeAmount
     challengeData.fee = feeAmount
-    balance = balance / 10 ** 9
-    if (balance >= gameAmount) {
+    p1balance = p1balance / 10 ** 9
+    p2balance = p2balance / 10 ** 9
+
+    if (p1balance >= totalAmount && p2balance>=totalAmount) {
+      
       const { error } = await supabase.from("esports").insert({
         ...challengeData,
         player1: publicKey!.toString(),
@@ -628,8 +713,7 @@ const EsportsPage: React.FC = () => {
       player1_avatar: user_avater,
       player2: data.publicKey,
       player2_name: username,
-      player2_avatar: data.avatar_url,
-      player2_username: data.username,
+      player2_avatar: data.avatar_url
     })
     setQuery(username)
     setShowDropdown(false)
@@ -1272,14 +1356,14 @@ const EsportsPage: React.FC = () => {
                               <Avatar className="w-16 h-16 border-2 border-primary">
                                 <AvatarImage src={challenge.player2_avatar} />
                                 <AvatarFallback className="bg-primary/20 text-primary">
-                                  {challenge.player2_username}
+                                  {challenge.player2_name}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <h3 className="text-lg font-bold text-primary">{challenge.player2_username}</h3>
+                                <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
                                 <div className="flex items-center space-x-2 text-sm text-primary/80">
                                   <Trophy className="w-4 h-4" />
-                                  <span>Rank: #123</span>
+                                  <span>Rank: #</span>
                                 </div>
                               </div>
                             </div>
@@ -1296,21 +1380,50 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="w-4 h-4 text-primary" />
-                                  <span className="text-sm font-medium text-primary">{challenge.amount} GAME</span>
+                                  <span className="text-sm font-medium text-primary">{challenge.amount} {challenge.money==1 && (
+                                    <span>SOL</span>
+                                  )} {challenge.money==2 && (
+                                    <span>GAMER</span>
+                                  )}</span>
                                 </div>
-                                <Badge className="bg-primary/20 text-primary">W: 7 - L: 3</Badge>
+                                {challenge.player1==publicKey && (
+                                <Badge className="bg-primary/20 text-primary">W:{challenge.player2_records.wins}  - L:{challenge.player2_records.losses} </Badge>
+                                )}
+                              {challenge.player2==publicKey && (
+                                <Badge className="bg-primary/20 text-primary">W:{challenge.player1_records.wins}  - L:{challenge.player1_records.losses} </Badge>
+                                )}
                               </div>
                             </div>
-                            <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
-                              <div className="flex items-center space-x-1">
-                                <Zap className="w-3 h-3" />
-                                <span>Win Streak: </span>
+                            {challenge.player1==publicKey && (
+                            <>
+                              <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
+                                <div className="flex items-center space-x-1">
+                                  <Zap className="w-3 h-3" />
+                                  <span>Win Streak: {challenge.player2_records.win_streak} </span>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <Swords className="w-3 h-3" />
+                                  <span>Loss Streak: {challenge.player2_records.loss_streak} </span>
+                                </div>
                               </div>
-                              <div className="flex items-center space-x-1">
-                                <Swords className="w-3 h-3" />
-                                <span>Loss Streak: </span>
+                            </>
+                            )}
+
+                          {challenge.player2==publicKey && (
+                            <>
+                              <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
+                                <div className="flex items-center space-x-1">
+                                  <Zap className="w-3 h-3" />
+                                  <span>Win Streak: {challenge.player1_records.win_streak} </span>
+                                </div>
+                                <div className="flex items-center space-x-1">
+                                  <Swords className="w-3 h-3" />
+                                  <span>Loss Streak: {challenge.player1_records.loss_streak} </span>
+                                </div>
                               </div>
-                            </div>
+                            </>
+                            )}
+                            
                             <div className="flex space-x-2">
                               {challenge.player2 == publicKey && challenge.status == 1 && (
                                 <Button
@@ -1596,6 +1709,24 @@ const EsportsPage: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="console" className="text-right">
+                  Sol or Token
+                </Label>
+                <Select
+                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
+                  value={challengeData.money || ""}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select Money" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Solana</SelectItem>
+                    <SelectItem value="2">GAMER</SelectItem>
+                    {/* Add more consoles as needed */}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-4 items-center gap-4 w-full">
                 <Label htmlFor="amount" className="text-right">
                   Amount
@@ -1610,7 +1741,7 @@ const EsportsPage: React.FC = () => {
                       amount: e.target.value === "" ? "" : Number.parseFloat(e.target.value),
                     })
                   }
-                  placeholder="Amount in GAME"
+                  placeholder="Amount"
                   style={{ width: "272px" }}
                 />
               </div>
