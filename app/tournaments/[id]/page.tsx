@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Gamepad, Calendar, Users, Trophy, User, Book, Swords, Zap } from "lucide-react"
+import { Gamepad, Calendar, Users, Trophy, User, Book, Swords, Zap, Crown } from "lucide-react"
 import { ReportScoreModal } from "@/components/report-score-modal"
 import { Header } from "@/components/header"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -17,9 +17,8 @@ import { updateTournamentBracket } from "@/lib/tournament-utils"
 import { EditTournamentModal } from "@/components/tournament-edit-modal"
 import { CancelTournamentModal } from "@/components/tournament-cancel-modal"
 import { JoinTournamentModal } from "@/components/tournament-join-modal"
-const moment = require("moment")
-// Add this function after the existing imports
 import { shuffle } from "lodash"
+const moment = require("moment")
 
 interface Tournament {
   game_id: number
@@ -79,10 +78,8 @@ interface Payment {
   transaction_hash: string | null
 }
 
-// Add this function before the TournamentPage component
 async function startTournament(tournamentId: number) {
   try {
-    // Fetch all players in the tournament
     const { data: players, error: playersError } = await supabase
       .from("tournament_players")
       .select("player_id")
@@ -90,19 +87,14 @@ async function startTournament(tournamentId: number) {
 
     if (playersError) throw playersError
 
-    // Check if the number of players is a power of 2
     const playerCount = players.length
     if (playerCount < 2 || (playerCount & (playerCount - 1)) !== 0) {
       throw new Error("Invalid number of players. Must be a power of 2 (2, 4, 8, 16, etc.)")
     }
 
-    // Shuffle players to randomize matchups
     const shuffledPlayers = shuffle(players.map((p) => p.player_id))
-
-    // Calculate the number of rounds based on the number of players
     const numRounds = Math.ceil(Math.log2(shuffledPlayers.length))
 
-    // Create matches for the first round
     const matches = []
     for (let i = 0; i < shuffledPlayers.length; i += 2) {
       matches.push({
@@ -110,17 +102,15 @@ async function startTournament(tournamentId: number) {
         round: 1,
         match_order: Math.floor(i / 2) + 1,
         player1_id: shuffledPlayers[i],
-        player2_id: shuffledPlayers[i + 1] || null, // Handle odd number of players
+        player2_id: shuffledPlayers[i + 1] || null,
         match_date: new Date().toISOString(),
       })
     }
 
-    // Insert matches into the tournament_matches table
     const { error: matchesError } = await supabase.from("tournament_matches").insert(matches)
 
     if (matchesError) throw matchesError
 
-    // Update tournament status to "in-progress"
     const { error: updateError } = await supabase
       .from("tournaments")
       .update({ status: "in-progress" })
@@ -162,6 +152,8 @@ export default function TournamentPage() {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [winner, setWinner] = useState<Player | null>(null)
+
   useEffect(() => {
     fetchTournamentData()
   }, [])
@@ -208,14 +200,13 @@ export default function TournamentPage() {
         .select("publicKey, username, avatar_url")
         .in("publicKey", playerIds)
 
-      console.log(playerDetails)
       if (playerDetailsError) throw playerDetailsError
 
       const { data: esportsRecordsData, error: esportsRecordsError } = await supabase
         .from("esports_records")
         .select("public_key, wins, losses, win_streak, loss_streak")
         .in("public_key", playerIds)
-        .eq("game", tournamentData.game) // Filter by the game from tournamentData
+        .eq("game", tournamentData.game)
 
       if (esportsRecordsError) {
         throw esportsRecordsError
@@ -258,6 +249,19 @@ export default function TournamentPage() {
 
         if (paymentsError) throw paymentsError
         setPayments(paymentsData)
+
+        // Fetch winner data
+        const winnerResult = resultsData.find((result) => result.position === 1)
+        if (winnerResult) {
+          const { data: winnerData, error: winnerError } = await supabase
+            .from("users")
+            .select("publicKey, username, avatar_url")
+            .eq("publicKey", winnerResult.player_id)
+            .single()
+
+          if (winnerError) throw winnerError
+          setWinner(winnerData)
+        }
       }
 
       if (publicKey) {
@@ -300,7 +304,7 @@ export default function TournamentPage() {
       }
 
       setIsUpdating(true)
-      const winnerId:any = player1Score > player2Score ? selectedMatch.player1_id : selectedMatch.player2_id
+      const winnerId: any = player1Score > player2Score ? selectedMatch.player1_id : selectedMatch.player2_id
       try {
         const { error: updateError } = await supabase
           .from("tournament_matches")
@@ -377,7 +381,6 @@ export default function TournamentPage() {
   const confirmJoinTournament = async () => {
     if (!publicKey || !tournament) return
 
-    // setIsUpdating(true)
     setIsJoining(true)
     try {
       const response = await fetch("/api/esports/tournament/join", {
@@ -399,7 +402,7 @@ export default function TournamentPage() {
         setIsJoinModalOpen(false)
         setSuccessMessage("You have successfully joined the tournament!")
         setShowSuccessModal(true)
-        
+
         await fetchTournamentData()
       }
     } catch (error) {
@@ -407,13 +410,11 @@ export default function TournamentPage() {
       setErrorMessage("Failed to join the tournament. Please try again.")
       setShowErrorModal(true)
     } finally {
-      // setIsUpdating(false)
       setIsJoining(false)
     }
   }
 
   const handleEditTournament = async (data: any) => {
-    // Replace any with the correct type if available
     setIsUpdating(true)
     try {
       const response = await fetch(`/api/esports/tournament/edit`, {
@@ -481,7 +482,6 @@ export default function TournamentPage() {
     }
   }
 
-  // Add this function inside the TournamentPage component
   const handleStartTournament = async () => {
     if (tournament && tournament.status === "upcoming") {
       setIsUpdating(true)
@@ -556,16 +556,14 @@ export default function TournamentPage() {
   if (isLoading) {
     return (
       <>
-            <Header />
-            <main className="container mx-auto px-4 py-8">
-
-            <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
+        <Header />
+        <main className="container mx-auto px-4 py-8">
+          <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
             <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
             <p className="text-2xl font-bold ml-4">Loading tournament...</p>
-          </div>      
-          </main>
+          </div>
+        </main>
       </>
-    
     )
   }
 
@@ -618,24 +616,30 @@ export default function TournamentPage() {
             </div>
           </div>
         </div>
-
+        
         <div className="grid grid-cols-1 md:grid-cols-3 gap-8 mb-12">
           {/* Prize Pool Column */}
           <Card className="bg-gradient-to-r from-purple-600 to-indigo-600 rounded-lg p-8 shadow-2xl">
             <CardContent>
-              <h2 className="text-3xl font-bold mb-4 flex items-center">
-                {/* <Trophy className="w-8 h-8 mr-2" /> */}
-                Prize Pool
-              </h2>
+              <h2 className="text-3xl font-bold mb-4 flex items-center">Prize Pool</h2>
               <div className="text-6xl font-bold flex items-center">
-                {/* <DollarSign className="w-12 h-12 mr-2" /> */}
                 {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)).toLocaleString()}{" "}
-                {tournament.prize_type == "GAMEr" && "GAMEr"} {tournament.prize_type == "Solana" && "SOL"}
+                {tournament.money == 1 && "SOL"} {tournament.money == 2 && "GAMER"}
               </div>
               <div className="mt-4">
-                <p>1st Place: {tournament.first_place_percentage}%</p>
-                <p>2nd Place: {tournament.second_place_percentage}%</p>
-                <p>3rd Place: {tournament.third_place_percentage}%</p>
+                {tournament.max_players == 2 && (
+                  <>
+                    <p>1st Place: 70%</p>
+                    <p>2nd Place: 30%</p>
+                  </>
+                )}
+                {tournament.max_players > 2 && (
+                  <>
+                    <p>1st Place: {tournament.first_place_percentage}%</p>
+                    <p>2nd Place: {tournament.second_place_percentage}%</p>
+                    <p>3rd Place: {tournament.third_place_percentage}%</p>
+                  </>
+                )}
                 <p>
                   wallet:{" "}
                   <b>
@@ -741,6 +745,24 @@ export default function TournamentPage() {
           </Card>
         </div>
 
+        {tournament.status === "completed" && winner && (
+          <Card className="bg-gradient-to-r from-yellow-400 to-yellow-600 mb-12 p-8 rounded-lg shadow-2xl">
+            <CardContent className="flex items-center justify-between">
+              <div className="flex items-center space-x-4">
+                <Crown className="w-12 h-12 text-white" />
+                <div>
+                  <h2 className="text-3xl font-bold text-white">Tournament Winner</h2>
+                  <p className="text-xl text-white">{winner.username}</p>
+                </div>
+              </div>
+              <Avatar className="w-24 h-24 border-4 border-white">
+                <AvatarImage src={winner.avatar_url} alt={winner.username} />
+                <AvatarFallback>{winner.username.slice(0, 2).toUpperCase()}</AvatarFallback>
+              </Avatar>
+            </CardContent>
+          </Card>
+        )}
+
         {tournament.status === "upcoming" &&
           players.length < tournament.max_players &&
           publicKey &&
@@ -778,58 +800,58 @@ export default function TournamentPage() {
           </>
         )}
 
-      {players.length > 0 ? (
-        <>
-        <h2 className="text-3xl font-bold mb-8">Players</h2>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-            {players.map((player: any) => (
-              <Card
-                key={player.publicKey}
-                className="bg-black/50 border-primary/30 overflow-hidden transform transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-primary/20"
-              >
-                <div className="relative">
-                  <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 z-0"></div>
-                  <CardContent className="relative z-10 p-6">
-                    <>
-                      <div className="flex items-center space-x-4 mb-4">
-                        <Avatar className="w-16 h-16 border-2 border-primary">
-                          <AvatarImage src={player.avatar_url} />
-                          <AvatarFallback className="bg-primary/20 text-primary">{player.username}</AvatarFallback>
-                        </Avatar>
-                        <div>
-                          <h3 className="text-lg font-bold text-primary">{player.username}</h3>
-                          <div className="flex items-center space-x-2 text-sm text-primary/80">
-                            <Trophy className="w-4 h-4" />
-                            <span>Rank: #</span>
+        {players.length > 0 ? (
+          <>
+            <h2 className="text-3xl font-bold mb-8">Players</h2>
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+              {players.map((player: any) => (
+                <Card
+                  key={player.publicKey}
+                  className="bg-black/50 border-primary/30 overflow-hidden transform transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-primary/20"
+                >
+                  <div className="relative">
+                    <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 z-0"></div>
+                    <CardContent className="relative z-10 p-6">
+                      <>
+                        <div className="flex items-center space-x-4 mb-4">
+                          <Avatar className="w-16 h-16 border-2 border-primary">
+                            <AvatarImage src={player.avatar_url} />
+                            <AvatarFallback className="bg-primary/20 text-primary">{player.username}</AvatarFallback>
+                          </Avatar>
+                          <div>
+                            <h3 className="text-lg font-bold text-primary">{player.username}</h3>
+                            <div className="flex items-center space-x-2 text-sm text-primary/80">
+                              <Trophy className="w-4 h-4" />
+                              <span>Rank: #</span>
+                            </div>
                           </div>
                         </div>
-                      </div>
-                    </>
+                      </>
 
-                    <div className="space-y-2 mb-4">
-                      <div className="flex justify-between items-center">
-                        <Badge className="bg-primary/20 text-primary">
-                          W: {player.wins} - L: {player.losses}{" "}
-                        </Badge>
-                      </div>
-                    </div>
-                    <>
-                      <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
-                        <div className="flex items-center space-x-1">
-                          <Zap className="w-3 h-3" />
-                          <span>Win Streak: {player.win_streak} </span>
-                        </div>
-                        <div className="flex items-center space-x-1">
-                          <Swords className="w-3 h-3" />
-                          <span>Loss Streak: {player.loss_streak} </span>
+                      <div className="space-y-2 mb-4">
+                        <div className="flex justify-between items-center">
+                          <Badge className="bg-primary/20 text-primary">
+                            W: {player.wins} - L: {player.losses}{" "}
+                          </Badge>
                         </div>
                       </div>
-                    </>
-                  </CardContent>
-                </div>
-              </Card>
-            ))}
-          </div>
+                      <>
+                        <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
+                          <div className="flex items-center space-x-1">
+                            <Zap className="w-3 h-3" />
+                            <span>Win Streak: {player.win_streak} </span>
+                          </div>
+                          <div className="flex items-center space-x-1">
+                            <Swords className="w-3 h-3" />
+                            <span>Loss Streak: {player.loss_streak} </span>
+                          </div>
+                        </div>
+                      </>
+                    </CardContent>
+                  </div>
+                </Card>
+              ))}
+            </div>
           </>
         ) : (
           <div className="text-center py-12">
@@ -837,7 +859,6 @@ export default function TournamentPage() {
             <p className="text-muted-foreground mb-8">Take The Lead, Be The 1st To Join</p>
           </div>
         )}
-
 
         <ReportScoreModal
           isOpen={isReportScoreModalOpen}

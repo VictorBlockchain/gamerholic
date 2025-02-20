@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -211,7 +211,8 @@ const EsportsPage: React.FC = () => {
   const [showConfirmScoreModal, setShowConfirmScoreModal] = useState(false)
   const [showDisputeScoreModal, setShowDisputeScoreModal] = useState(false)
   const [showMutualCancelModal, setShowMutualCancelModal] = useState(false)
-
+  const scrollAreaRef = useRef<HTMLDivElement>(null)
+  
   const popularGames: any = [
     "Madden NFL",
     "NBA 2K",
@@ -1011,6 +1012,19 @@ const EsportsPage: React.FC = () => {
     }
   }, [])
 
+    useEffect(() => {
+      scrollToBottom();
+    }, [messages]);
+    
+    const scrollToBottom = () => {
+      if (scrollAreaRef.current) {
+        const scrollContainer = scrollAreaRef.current.querySelector("[data-radix-scroll-area-viewport]");
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+      }
+    };
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
       <Header />
@@ -1079,7 +1093,7 @@ const EsportsPage: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[400px] mb-4">
+                  <ScrollArea className="h-[400px] mb-4" ref={scrollAreaRef}>
                     {selectedChatRoom ? (
                       <ul className="space-y-4">
                         {messages.map((message: any) => (
