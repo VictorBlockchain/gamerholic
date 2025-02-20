@@ -1,6 +1,8 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import type React from "react"
+
+import { useState, useEffect, useRef } from "react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -37,12 +39,27 @@ import { MutualCancelModal } from "@/components/mutual-cancel-modal"
 import { balanceManager } from "@/lib/balance"
 import { TournamentForm } from "@/components/tournament-form"
 import { TournamentList } from "@/components/tournament-list"
-const BALANCE = new balanceManager()
+import {
+  Info,
+  Wallet,
+  MessageSquare,
+  Send,
+  Check,
+  GamepadIcon as GameController,
+  ThumbsUp,
+  AlertTriangle,
+} from "lucide-react"
+// Add this import at the top of the file
+import { ChatPopup } from "@/components/chat-popup"
+const solana = new balanceManager()
 // Define types for chat messages, chatrooms, and esports challenges
 interface ChatMessage {
   id: string
   chatroom_id: string
   sender_id: string
+  sender_name: string
+  sender_public_key: string
+  sender_avatar: string
   content: string
   created_at: string
 }
@@ -57,7 +74,6 @@ interface EsportsChallenge {
   id: string
   game: string
   console: string
-  money: number
   amount: number
   rules: string
   player1: string
@@ -98,6 +114,57 @@ interface User {
 //8 = dispute resolved
 //9 = completed
 
+// Add this new component after the existing imports and before the EsportsPage component
+const HowItWorksSection = () => {
+  return (
+    <Card className="bg-card/50 backdrop-blur-sm border-primary/20 mt-8">
+      <CardHeader>
+        <CardTitle className="text-2xl text-primary flex items-center">
+          <Info className="mr-2" /> How It Works
+        </CardTitle>
+      </CardHeader>
+      <CardContent>
+        <ol className="space-y-4">
+          {[
+            { icon: Wallet, text: "Deposit Solana into your deposit wallet" },
+            {
+              icon: MessageSquare,
+              text: "Communicate with your opponent in the chatroom and agree to the rules of your match",
+            },
+            {
+              icon: Send,
+              text: "Send challenge to your opponent (you must both have the game amount + 5% service fee in your deposit wallet)",
+            },
+            { icon: Check, text: "Your opponent must accept the challenge" },
+            { icon: GameController, text: "Play your game and report the score" },
+            { icon: ThumbsUp, text: "Confirm the score" },
+          ].map((step, index) => (
+            <li key={index} className="flex items-start">
+              <span className="flex items-center justify-center w-8 h-8 rounded-full bg-primary text-primary-foreground font-bold mr-3">
+                {index + 1}
+              </span>
+              <div className="flex items-center">
+                <step.icon className="w-5 h-5 mr-2 text-primary" />
+                <span>{step.text}</span>
+              </div>
+            </li>
+          ))}
+        </ol>
+        <div className="mt-4 text-sm text-muted-foreground">
+          Funds are transferred from the losing player's wallet to the winner. You will not be able to withdraw funds
+          from your deposit wallet while you have an active esports game.
+        </div>
+        <div className="mt-4 flex items-start">
+          <AlertTriangle className="w-5 h-5 mr-2 text-yellow-500 flex-shrink-0" />
+          <p className="text-sm">
+            Disputes require video evidence. If you lose 3 disputes within 7 days, you will be banned from the platform.
+          </p>
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 const EsportsPage: React.FC = () => {
   const { publicKey }: any = useWallet()
   const { toast } = useToast()
@@ -111,6 +178,10 @@ const EsportsPage: React.FC = () => {
   const [showChallengeModal, setShowChallengeModal] = useState(false)
   const [challengeData, setChallengeData]: any = useState<Partial<EsportsChallenge>>({})
   const [userData, setUserData]: any = useState<Partial<User>>({})
+  // Add this state variable inside the EsportsPage component
+  const [activeChats, setActiveChats] = useState<{
+    [key: string]: { name: string; avatar: string }
+  }>({})
 
   const [availableGames, setAvailableGames] = useState([])
   const [userProfiles, setUserProfiles] = useState<Record<string, UserEsportsProfile>>({})
@@ -131,7 +202,7 @@ const EsportsPage: React.FC = () => {
   const [query, setQuery] = useState("")
   const [suggestions, setSuggestions] = useState([])
   const [showDropdown, setShowDropdown] = useState(false)
-  const [isScoring, setIsScoring] = useState(false)
+
   const [selectedChallenge, setSelectedChallenge]: any = useState(null)
   const [showCancelModal, setShowCancelModal] = useState(false)
   const [showAcceptModal, setShowAcceptModal] = useState(false)
@@ -140,7 +211,9 @@ const EsportsPage: React.FC = () => {
   const [showConfirmScoreModal, setShowConfirmScoreModal] = useState(false)
   const [showDisputeScoreModal, setShowDisputeScoreModal] = useState(false)
   const [showMutualCancelModal, setShowMutualCancelModal] = useState(false)
-
+  
+  const [isSending, setIsSending] = useState(false);
+  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const popularGames: any = [
     "Madden NFL",
@@ -167,15 +240,15 @@ const EsportsPage: React.FC = () => {
 
   useEffect(() => {
     if (publicKey) {
-      fetchUser()
       fetchChatRooms()
       fetchPendingChallenges()
       fetchGameHistory()
       fetchAvailableGames()
+      fetchUser()
     }
   }, [publicKey])
-  let isFetching = false
-
+  const isFetching = false
+  
   useEffect(() => {
     if (selectedChatRoom) {
       const chatRoomSubscription = supabase
@@ -189,16 +262,25 @@ const EsportsPage: React.FC = () => {
             filter: `chatroom_id=eq.${selectedChatRoom.id}`,
           },
           (payload) => {
-            setMessages((prevMessages) => [...prevMessages, payload.new as ChatMessage])
+            const newMessage = payload.new as ChatMessage;
+  
+            // Check if the message already exists
+            setMessages((prevMessages) => {
+              const isDuplicate = prevMessages.some((msg) => msg.id === newMessage.id);
+              if (isDuplicate) {
+                return prevMessages; // Skip adding duplicate messages
+              }
+              return [...prevMessages, newMessage]; // Add the new message
+            });
           },
         )
-        .subscribe()
-
+        .subscribe();
+  
       return () => {
-        supabase.removeChannel(chatRoomSubscription)
-      }
+        supabase.removeChannel(chatRoomSubscription);
+      };
     }
-  }, [selectedChatRoom])
+  }, [selectedChatRoom]);
 
   //auto complete
   useEffect(() => {
@@ -264,56 +346,49 @@ const EsportsPage: React.FC = () => {
       console.log("Avatar updated successfully!")
     }
   }
-  
+
   const fetchUser = async () => {
-    if (isFetching) return // Skip if a fetch is already in progress
-    isFetching = true
-    
+    if (!publicKey) return
+
     try {
-      
-      const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-        
-        if (error && error.code !== "PGRST116") {
-          // Ignore "no rows" error
-          console.error("Select Error:", error)
-          return
+      const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
+
+      if (error) {
+        console.error("Select Error:", error)
+        return
+      }
+
+      if (!data) {
+        const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
+
+        if (insertError) {
+          console.error("Insert Error:", insertError)
+        } else {
+          setShowUserNameModal(true)
+          console.log("New publicKey inserted into the database.")
         }
-        
-        if (!data) {
-            
-            const { error: insertError } = await supabase.from("users").insert([{ publicKey }])
-            
-            if (insertError) {
-              console.error("Insert Error:", insertError)
-            } else {
-              setShowUserNameModal(true)
-              console.log("New publicKey inserted into the database.")
-            }
-        
-        }else{
-          // console.log(data)
-          setUserId(data.id)
-          if (!data.username) {
-            setShowUserNameModal(true)
-          } else {
-            setUserName(data.username)
-            setUserAvatar(data.avatar_url)
-            setUserData({
-              userid: data.id,
-              username: data.username,
-              deposit_wallet: data.deposit_wallet,
-              avatar: data.avatar,
-            })
-          }
+      } else {
+        setUserId(data.id)
+        if (!data.username) {
+          setShowUserNameModal(true)
+        } else {
+          setUserName(data.username)
+          setUserAvatar(data.avatar_url)
+          setUserData({
+            userid: data.id,
+            username: data.username,
+            deposit_wallet: data.deposit_wallet,
+            avatar: data.avatar,
+          })
         }
-    
-    } finally {
-      isFetching = false
+      }
+    } catch (error) {
+      console.error("Error fetching user:", error)
     }
   }
 
   const fetchEsportsRecords = async () => {
-    const { data, error }: any = await supabase.from("esports_records").select("*").eq("public_key", user_id)
+    const { data, error }: any = await supabase.from("esports_records").select("*").eq("user_id", user_id)
 
     if (error) {
       console.error("Error fetching esports records:", error)
@@ -321,8 +396,6 @@ const EsportsPage: React.FC = () => {
       setEsportsRecords(data)
     }
   }
-
-  const fetchOrCreateDepositAddress = async () => {}
 
   const handleSetUserName = async () => {
     const name = userData.name
@@ -365,10 +438,11 @@ const EsportsPage: React.FC = () => {
     fetchMessages(chatRoom.id)
   }
 
+  // Update the fetchMessages function to include the sender's avatar
   const fetchMessages = async (chatRoomId: string) => {
     const { data, error } = await supabase
       .from("chat_messages")
-      .select("*")
+      .select("*, users:sender_public_key(avatar_url)")
       .eq("chatroom_id", chatRoomId)
       .order("created_at", { ascending: true })
     if (error) {
@@ -379,7 +453,12 @@ const EsportsPage: React.FC = () => {
         variant: "destructive",
       })
     } else {
-      setMessages(data || [])
+      setMessages(
+        data.map((message) => ({
+          ...message,
+          sender_avatar: message.users?.avatar_url,
+        })) || [],
+      )
     }
   }
 
@@ -399,29 +478,38 @@ const EsportsPage: React.FC = () => {
       setNewChatRoomName("")
     }
   }
-
+  
   const handleSendMessage = async () => {
-    if (newMessage.trim() === "" || !selectedChatRoom) return
 
+    if (newMessage.trim() === "" || !selectedChatRoom) return;
+  
+    // Disable further submissions until this one completes
+    setIsSending(true);
+  
     const { error } = await supabase.from("chat_messages").insert({
       chatroom_id: selectedChatRoom.id,
       sender_id: user_id,
       sender_name: user_name,
       sender_public_key: publicKey,
+      sender_avatar: user_avater,
       content: newMessage,
-    })
+    });
+  
     if (error) {
-      console.error("Error sending message:", error)
+      console.error("Error sending message:", error);
       toast({
         title: "Failed to send message",
         description: "An error occurred while sending the message.",
         variant: "destructive",
-      })
+      });
     } else {
-      setNewMessage("")
-      fetchMessages(selectedChatRoom.id)
+      setNewMessage("");
+      fetchMessages(selectedChatRoom.id);
     }
-  }
+  
+    // Re-enable submission after completion
+    setIsSending(false);
+  };
 
   const fetchPendingChallenges = async () => {
     const { data, error } = await supabase
@@ -493,29 +581,21 @@ const EsportsPage: React.FC = () => {
       )
       return
     }
-    
+
     //check user balance
     const GAME = ""
-    let balance = 0
-    if(challengeData.money == 1){
-      balance = await BALANCE.getBalance(userData.deposit_wallet)
-    }else{
-      balance = await BALANCE.getTokenBalance(userData.deposit_wallet, GAME)
-    }
-
+    let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
     const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
     challengeData.fee = feeAmount
     balance = balance / 10 ** 9
-    console.log(balance, gameAmount)
-    
     if (balance >= gameAmount) {
       const { error } = await supabase.from("esports").insert({
         ...challengeData,
         player1: publicKey!.toString(),
         status: 1, // Initial status for a new challenge
       })
-    
+
       if (error) {
         console.error("Error sending challenge:", error)
         setShowErrorModal(true)
@@ -523,7 +603,7 @@ const EsportsPage: React.FC = () => {
       } else {
         setShowSuccessModal(true)
         setSuccessMessage("Your challenge has been sent successfully.")
-    
+
         setShowChallengeModal(false)
         fetchPendingChallenges()
       }
@@ -547,8 +627,9 @@ const EsportsPage: React.FC = () => {
       player1_name: user_name,
       player1_avatar: user_avater,
       player2: data.publicKey,
+      player2_name: username,
       player2_avatar: data.avatar_url,
-      player2_name: data.username,
+      player2_username: data.username,
     })
     setQuery(username)
     setShowDropdown(false)
@@ -557,6 +638,23 @@ const EsportsPage: React.FC = () => {
   const handleCancelChallenge = (challenge: any) => {
     setSelectedChallenge(challenge)
     setShowCancelModal(true)
+  }
+
+  // Replace the existing handleUserClick function with this new one
+  const handleUserClick = (userId: string, userName: string, userAvatar: string) => {
+    setActiveChats((prev) => ({
+      ...prev,
+      [userId]: { name: userName, avatar: userAvatar },
+    }))
+  }
+
+  // Add this function to close chat windows
+  const handleCloseChat = (userId: string) => {
+    setActiveChats((prev) => {
+      const newActiveChats = { ...prev }
+      delete newActiveChats[userId]
+      return newActiveChats
+    })
   }
 
   const handleAcceptChallenge = (challenge: any) => {
@@ -617,14 +715,7 @@ const EsportsPage: React.FC = () => {
     if (selectedChallenge) {
       //check user balance
       const GAME = ""
-      let balance = 0
-      if(selectedChallenge.money==1){
-        balance = await BALANCE.getBalance(userData.deposit_wallet)
-
-      }else{
-        balance = await BALANCE.getTokenBalance(userData.deposit_wallet, GAME)
-
-      }
+      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
       const gameAmount = selectedChallenge.amount / 10 ** 9
       balance = balance / 10 ** 9
       if (balance >= gameAmount) {
@@ -696,50 +787,53 @@ const EsportsPage: React.FC = () => {
 
   const handleConfirmScore = async () => {
     if (selectedChallenge) {
-    setIsScoring(true)
-            
-      const response = await fetch("/api/esports/score/confirm", {
+      //get game
+      const { data, error: fetchError } = await supabase
+        .from("esports")
+        .select("*")
+        .eq("id", selectedChallenge.id)
+        .single()
+
+      const player1score = data.player1score
+      const player2score = data.player2score
+      const player1 = data.player1
+      const player2 = data.player2
+      const amount = data.amount
+      const fee = data.fee
+
+      const response = await fetch("/api/esports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          game_id: selectedChallenge.id
+          player1: player1,
+          player2: player2,
+          player1score: player1score,
+          player2score: player2score,
+          amount: amount,
+          fee: fee,
         }),
       })
-      const resp = await response.json()
 
-      if(resp.success){
-        const { error } = await supabase
+      const { error } = await supabase
         .from("esports")
         .update({
           status: 9,
           score_confirmed_at: new Date().toISOString(),
         })
         .eq("id", selectedChallenge.id)
-      
-      if (error) {
 
-        // console.error("Error confirming score:", error)
-        setErrorMessage("error confirming score")
+      if (error) {
+        console.error("Error confirming score:", error)
+        setErrorMessage("error confirm score error")
         setShowErrorModal(true)
-      
       } else {
-        setIsScoring(false)
         fetchPendingChallenges()
         fetchEsportsRecords()
         setSuccessMessage("score confirmed")
         setShowSuccessModal(true)
-
       }
-
-        setShowConfirmScoreModal(false)
-        setSelectedChallenge(null)
-      
-      }
-
-    }else{
-      setErrorMessage("error confirming score")
-      setShowErrorModal(true)
-
+      setShowConfirmScoreModal(false)
+      setSelectedChallenge(null)
     }
   }
 
@@ -844,7 +938,7 @@ const EsportsPage: React.FC = () => {
     setUserProfiles((prev) => ({ ...prev, [userId]: mockProfile }))
   }
 
-  const handleUserClick = (userId: string) => {
+  const handleUserClickOld = (userId: string) => {
     setSelectedUser(userId)
     if (!userProfiles[userId]) {
       fetchUserProfile(userId)
@@ -862,6 +956,9 @@ const EsportsPage: React.FC = () => {
       id: Date.now().toString(),
       chatroom_id: selectedUser,
       sender_id: publicKey!.toString(),
+      sender_name: user_name,
+      sender_public_key: publicKey!.toString(),
+      sender_avatar: user_avater,
       content: newOneOnOneMessage,
       created_at: new Date().toISOString(),
     }
@@ -873,6 +970,64 @@ const EsportsPage: React.FC = () => {
     setNewOneOnOneMessage("")
 
     // In a real application, you would save this message to your database
+  }
+
+  // Add this effect for real-time updates
+  useEffect(() => {
+    if (!publicKey) return
+
+    const chatSubscription = supabase
+      .channel("chat_1on1")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "chat_1on1", filter: `receiver_id=eq.${publicKey.toString()}` },
+        (payload) => {
+          const senderId = payload.new.sender_id
+          // Fetch sender info and open chat window
+          fetchUserInfo(senderId).then((userInfo) => {
+            if (userInfo) {
+              setActiveChats((prev) => ({
+                ...prev,
+                [senderId]: { name: userInfo.username, avatar: userInfo.avatar_url },
+              }))
+            }
+          })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      supabase.removeChannel(chatSubscription)
+    }
+  }, [publicKey])
+  
+    useEffect(() => {
+      scrollToBottom();
+    }, [messages]);
+    
+    const scrollToBottom = () => {
+      if (scrollRef.current) {
+        const scrollContainer = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
+        if (scrollContainer) {
+          scrollContainer.scrollTop = scrollContainer.scrollHeight;
+        }
+      }
+    };
+
+  // Add this function to fetch user info
+  const fetchUserInfo = async (publicKey: string) => {
+    const { data, error } = await supabase
+      .from("users")
+      .select("username, avatar_url")
+      .eq("publicKey", publicKey)
+      .single()
+
+    if (error) {
+      console.error("Error fetching user info:", error)
+      return null
+    }
+
+    return data
   }
 
   return (
@@ -943,7 +1098,7 @@ const EsportsPage: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[400px] mb-4">
+                  <ScrollArea className="h-[400px] mb-4 overflow-y-auto" ref={scrollRef}>
                     {selectedChatRoom ? (
                       <ul className="space-y-4">
                         {messages.map((message: any) => (
@@ -951,11 +1106,16 @@ const EsportsPage: React.FC = () => {
                             <div>
                               <p className="font-semibold">
                                 <span className="text-primary">
+                                  {/* Update the onClick handler for user names in the chat messages */}
                                   <a
                                     href="#"
                                     onClick={(e) => {
                                       e.preventDefault()
-                                      handleUserClick(message.sender_public_key)
+                                      handleUserClick(
+                                        message.sender_public_key,
+                                        message.sender_name,
+                                        message.sender_avatar || "/placeholder.svg",
+                                      )
                                     }}
                                   >
                                     {message.sender_name}
@@ -971,6 +1131,7 @@ const EsportsPage: React.FC = () => {
                       <p className="text-center text-muted-foreground">Select a chat room to view messages.</p>
                     )}
                   </ScrollArea>
+                  
                 </CardContent>
                 <CardFooter>
                   <div className="flex items-center w-full space-x-2">
@@ -979,14 +1140,18 @@ const EsportsPage: React.FC = () => {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter") {
-                          e.preventDefault() // Prevents default form submission behavior
-                          handleSendMessage()
+                        if (e.key === "Enter" && !isSending) {
+                          console.log(e.key)
+
+                          e.preventDefault(); // Prevents default form submission behavior
+                          handleSendMessage();
                         }
                       }}
                       className="flex-grow"
                     />
-                    <Button onClick={handleSendMessage}>Send</Button>
+                    {/* <Button onClick={() => !isSending && handleSendMessage()} disabled={isSending}>
+                      Send
+                    </Button> */}
                   </div>
                 </CardFooter>
               </Card>
@@ -1260,8 +1425,6 @@ const EsportsPage: React.FC = () => {
                   onSubmit={submitScore}
                   player1Name={selectedChallenge?.player1_name || "Player 1"}
                   player2Name={selectedChallenge?.player2_name || "Player 2"}
-                  isTournamentMatch={false}
-                  matchId="0"
                 />
                 <ConfirmScoreModal
                   isOpen={showConfirmScoreModal}
@@ -1275,7 +1438,6 @@ const EsportsPage: React.FC = () => {
                   player2Name={selectedChallenge?.player2_name}
                   initialPlayer1Score={selectedChallenge?.player1score}
                   initialPlayer2Score={selectedChallenge?.player2score}
-                  isScoring = {isScoring}
                 />
 
                 <DisputeScoreModal
@@ -1358,6 +1520,7 @@ const EsportsPage: React.FC = () => {
             </Card>
           </TabsContent>
         </Tabs>
+        <HowItWorksSection />
 
         <Dialog open={showChallengeModal} onOpenChange={() => setShowChallengeModal(false)}>
           <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
@@ -1429,24 +1592,6 @@ const EsportsPage: React.FC = () => {
                     <SelectItem value="PC">PC</SelectItem>
                     <SelectItem value="PS5">PS5</SelectItem>
                     <SelectItem value="Xbox Series X">Xbox Series X</SelectItem>
-                    {/* Add more consoles as needed */}
-                  </SelectContent>
-                </Select>
-              </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="money" className="text-right">
-                  SOL/GAMER
-                </Label>
-                <Select
-                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
-                  value={challengeData.money || ""}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select a console" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Solana</SelectItem>
-                    <SelectItem value="2">GAMER</SelectItem>
                     {/* Add more consoles as needed */}
                   </SelectContent>
                 </Select>
@@ -1576,6 +1721,18 @@ const EsportsPage: React.FC = () => {
         {showErrorModal && (
           <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
         )}
+        <div className="fixed bottom-4 right-4 flex flex-row-reverse space-x-4 space-x-reverse">
+          {Object.entries(activeChats).map(([userId, { name, avatar }]) => (
+            <ChatPopup
+              key={userId}
+              senderId={publicKey?.toString() || ""}
+              receiverId={userId}
+              receiverName={name}
+              receiverAvatar={avatar}
+              onClose={() => handleCloseChat(userId)}
+            />
+          ))}
+        </div>
       </main>
     </div>
   )
