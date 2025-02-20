@@ -1,33 +1,44 @@
 "use client"
 
-import { useEffect, useState, useRef } from "react";
-import { useRouter } from "next/router";
-import { Header } from '@/components/header'
-import { useWallet } from '@solana/wallet-adapter-react'
+import { useEffect, useState, useRef } from "react"
+import { Header } from "@/components/header"
+import { useWallet } from "@solana/wallet-adapter-react"
 import { useParams } from "next/navigation"
-import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Card, CardContent } from "@/components/ui/card"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { PrizeAvatar } from "@/components/prize-avatar"
 import { ActionButtons } from "@/components/action-buttons"
 import { createClientComponentClient } from "@supabase/auth-helpers-nextjs"
 import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
-import { Sparkles, Users, Clock, Trophy, Coins, Hand, Grab, Footprints, AlertTriangle, Loader2 } from "lucide-react"
+import {
+  Sparkles,
+  Users,
+  Clock,
+  Trophy,
+  Coins,
+  Hand,
+  Grab,
+  Footprints,
+  AlertTriangle,
+  Loader2,
+  Wallet,
+} from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { JoinGameModal } from "@/components/join-grabbt-modal"
-import { SuccessModal } from '@/components/success-modal'
-import { ErrorModal } from '@/components/error-modal'
-import { CreateGrabbitModal } from '@/components/create-grabbit-modal'
-import { balanceManager } from '@/lib/balance'
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+import { SuccessModal } from "@/components/success-modal"
+import { ErrorModal } from "@/components/error-modal"
+import { CreateGrabbitModal } from "@/components/create-grabbit-modal"
+import { GrabbitClaimModal } from "@/components/grabbit-claim-modal"
+import { balanceManager } from "@/lib/balance"
 import { PlusCircle } from "lucide-react"
-import moment from "moment";
-import "moment-timezone";
+import moment from "moment"
+import "moment-timezone"
+import { useCallback } from "react"
 
-const solana = new balanceManager();
-const GAME = ''
+const Balance = new balanceManager()
+const GAME = ""
 interface Player {
   id: string
   name: string
@@ -41,198 +52,183 @@ interface Prize {
 }
 
 interface GameData {
-  create_date: any,
-  created_by: string,
-  details: string,
-  end_time: any,
-  free_grabs: number,
-  free_slaps: number,
-  free_sneaks: number,
-  game_id: number,
-  grabs_to_join: number,
-  id: any,
-  image: string,
-  last_grab: any,
-  players: any,
-  players_max: number,
-  players_min: number,
-  players_ready: number,
-  prize_amount: number,
-  prize_token: string,
-  prize_token_name:string,
-  slapper: string,
-  start_time: any,
-  status:number,
-  title: string,
-  token_amount_to_join: number,
-  token_to_join: string,
-  wallet: string,
-  winner: string,
-  winner_avatar:string,
-  winner_name: string 
+  create_date: any
+  created_by: string
+  details: string
+  end_time: any
+  free_grabs: number
+  free_slaps: number
+  free_sneaks: number
+  game_id: number
+  grabs_to_join: number
+  id: any
+  image: string
+  last_grab: any
+  players: any
+  players_max: number
+  players_min: number
+  players_ready: number
+  prize_amount: number
+  prize_token: string
+  prize_token_name: string
+  slapper: string
+  start_time: any
+  status: number
+  title: string
+  token_amount_to_join: number
+  token_to_join: string
+  wallet: string
+  winner: string
+  winner_avatar: string
+  winner_name: string
 }
 
 export default function GrabbitGame() {
-  const { publicKey }:any = useWallet()
-  const [gameData, setGameData]:any = useState<GameData | null>(null)
-  const [playerData, setPlayerData]:any = useState(null)
+  const { publicKey }: any = useWallet()
+  const [gameData, setGameData]: any = useState<GameData | null>(null)
+  const [playerData, setPlayerData]: any = useState(null)
   const [activeTab, setActiveTab] = useState("players")
   const [holdProgress, setHoldProgress] = useState(0)
   const [isHolding, setIsHolding] = useState(false)
-  const [remainingGrabs, setRemainingGrabs]:any = useState(0)
-  const [remainingSlaps, setRemainingSlaps]:any = useState(0)
-  const [remainingSneaks, setRemainingSneaks]:any = useState(0)
-  const [gamesData, setGamesData]:any = useState([])
+  const [remainingGrabs, setRemainingGrabs]: any = useState(0)
+  const [remainingSlaps, setRemainingSlaps]: any = useState(0)
+  const [remainingSneaks, setRemainingSneaks]: any = useState(0)
+  const [gamesData, setGamesData]: any = useState([])
   const params = useParams()
   const gameId = params.id as string
   const supabase = createClientComponentClient()
-  // const intervalRef:any = useRef(null);
   const [showJoinModal, setShowJoinModal] = useState(false)
   const [hasJoined, setHasJoined] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
   const [showCreateModal, setShowCreateModal] = useState(false)
+  const [showClaimModal, setShowClaimModal] = useState(false)
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
-  const [userData, setUserData]:any = useState<Partial<User>>({})
+  const [userData, setUserData]: any = useState<Partial<User>>({})
   const [showUserNameModal, setShowUserNameModal] = useState(false)
-  const [user_id, setUserId]:any = useState('')
-  const [user_name, setUserName]:any = useState('')
-  const [user_avatar, setUserAvatar]:any = useState('')
-  const [actionMessage, setActionMessage]:any = useState('')
-  const [timeLeft, setTimeLeft] = useState("");
-  const [payloads, setPayload] = useState<any | null>(null);
-
+  const [user_id, setUserId]: any = useState("")
+  const [user_name, setUserName]: any = useState("")
+  const [user_avatar, setUserAvatar]: any = useState("")
+  const [actionMessage, setActionMessage]: any = useState("")
+  const [timeLeft, setTimeLeft] = useState("")
+  const [payloads, setPayload] = useState<any | null>(null)
+  const [gameWalletBalance, setGameWalletBalance]: any = useState(0)
+  const [isClaiming, setIsClaiming] = useState(false)
   //polling
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const isLeaderRef = useRef(false);
+  const intervalRef = useRef<NodeJS.Timeout | null>(null)
+  const isLeaderRef = useRef(false)
 
   useEffect(() => {
     if (publicKey) {
-      
       fetchUser()
     }
   }, [publicKey])
-  let isFetching = false; 
+  let isFetching = false
 
-const fetchUser = async () => {
-  if (isFetching) return; // Skip if a fetch is already in progress
-  isFetching = true;
-  
-  try {
-    const { data, error } = await supabase
-      .from("users")
-      .select("*")
-      .eq("publicKey", publicKey)
-      .single();
+  const fetchUser = async () => {
+    if (isFetching) return // Skip if a fetch is already in progress
+    isFetching = true
 
-      if (error && error.code !== 'PGRST116') { // Ignore "no rows" error
-      console.error("Select Error:", error);
-      return;
-    }
-    
-    if (!data) {
-      const { error: insertError } = await supabase
-        .from("users")
-        .insert([{ publicKey }]);
-      
-      if (insertError) {
-        console.error("Insert Error:", insertError);
-      } else {
-        setShowUserNameModal(true)
-        console.log("New publicKey inserted into the database.");
+    try {
+      const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+
+      if (error && error.code !== "PGRST116") {
+        // Ignore "no rows" error
+        console.error("Select Error:", error)
+        return
       }
-    } else {
-        setUserId(data.id)
-        if(!data.username){
-            setShowUserNameModal(true)
-        }else{
-            setUserName(data.username)
-            setUserAvatar(data.avatar_url)
-            // alert(data.username)
-            setUserData({
-                userid: data.id,
-                username: data.username,
-                deposit_wallet: data.deposit_wallet,
-                avatar: data.avatar_url,
-              });
+
+      if (!data) {
+        const { error: insertError } = await supabase.from("users").insert([{ publicKey }])
+
+        if (insertError) {
+          console.error("Insert Error:", insertError)
+        } else {
+          setShowUserNameModal(true)
+          console.log("New publicKey inserted into the database.")
         }
-    //   console.log("publicKey already exists:", data);
-    }
-  } finally {
-    isFetching = false;
-  }
-};
-
-const fetchNSetGame = async ()=>{
-  console.log("fetching")
-  const { data, error } = await supabase
-  .from("grabbit")
-  .select("*")
-  .eq("game_id", gameId)
-  .maybeSingle();
-  
-  setGameData(data)
-  setPlayerData([])
-}
-useEffect(()=>{
-  fetchNSetGame()
-},[gameId])
-
-useEffect(() => { 
-  const channel = supabase
-    .channel("table-db-changes")
-    .on(
-      "postgres_changes",
-      {
-        event: "*", // Listen to all events (INSERT, UPDATE, DELETE)
-        schema: "public", // Schema name
-        table: "grabbit", // Table name
-        filter: `game_id=eq.${gameId}`, // Filter by game_id
-      },
-      (payload: any) => {
-        const data = payload.new;
-        // console.log(data)
-        // Filter out null or undefined values
-        const filteredData = Object.fromEntries(
-          Object.entries(data).filter(([_, value]) => value !== null && value !== undefined)
-        );
-
-        // Update gameData using a functional update
-        setGameData((prevGameData: any) => {
-          const updatedData = { ...prevGameData, ...filteredData };
-          let timeL: any;
-
-          if (updatedData.status === 2) {
-            timeL = calculateTimeDifference(moment(updatedData.start_time));
-            setTimeLeft(timeL);
-          }
-          if (updatedData.status === 3) {
-            timeL = calculateTimeDifference(moment(updatedData.end_time));
-            setTimeLeft(timeL);
-          }
-
-          const playerObj = updatedData.players.find(
-            (player: any) => player.player === publicKey.toString()
-          );
-          if (playerObj) {
-            setPlayerData(playerObj);
-          }
-
-          return updatedData;
-        });
+      } else {
+        setUserId(data.id)
+        if (!data.username) {
+          setShowUserNameModal(true)
+        } else {
+          setUserName(data.username)
+          setUserAvatar(data.avatar_url)
+          setUserData({
+            userid: data.id,
+            username: data.username,
+            deposit_wallet: data.deposit_wallet,
+            avatar: data.avatar_url,
+          })
+        }
       }
-    )
-    .subscribe();
+    } finally {
+      isFetching = false
+    }
+  }
 
-  return () => {
-    channel.unsubscribe(); // Unsubscribe when the component unmounts
-  };
-}, [gameId, publicKey]); // Add gameId and publicKey as dependencies
-
+  const fetchNSetGame = async () => {
+    // console.log("fetching")
+    const { data, error } = await supabase.from("grabbit").select("*").eq("game_id", gameId).maybeSingle()
+    // console.log(data)
+    const balance = await Balance.getBalance(data.wallet)
+    setGameData(data)
+    setGameWalletBalance(balance / 10 ** 9)
+    setPlayerData([])
+  }
+  useEffect(() => {
+    fetchNSetGame()
+  }, [gameId])
   
+  useEffect(() => {
+    const channel = supabase
+      .channel("table-db-changes")
+      .on(
+        "postgres_changes",
+        {
+          event: "*", // Listen to all events (INSERT, UPDATE, DELETE)
+          schema: "public", // Schema name
+          table: "grabbit", // Table name
+          filter: `game_id=eq.${gameId}`, // Filter by game_id
+        },
+        (payload: any) => {
+          const data = payload.new
+          const filteredData = Object.fromEntries(
+            Object.entries(data).filter(([_, value]) => value !== null && value !== undefined),
+          )
+
+          setGameData((prevGameData: any) => {
+            const updatedData = { ...prevGameData, ...filteredData }
+            let timeL: any
+
+            if (updatedData.status === 2) {
+              timeL = calculateTimeDifference(moment(updatedData.start_time))
+              setTimeLeft(timeL)
+            }
+            if (updatedData.status === 3) {
+              timeL = calculateTimeDifference(moment(updatedData.end_time))
+              setTimeLeft(timeL)
+            }
+
+            const playerObj = updatedData.players.find((player: any) => player.player === publicKey.toString())
+            if (playerObj) {
+              setPlayerData(playerObj)
+            }
+
+            return updatedData
+          })
+        },
+      )
+      .subscribe()
+
+    return () => {
+      channel.unsubscribe() // Unsubscribe when the component unmounts
+    }
+  }, [gameId, publicKey, supabase])
+
   const fetchGameData = async () => {
-        try {
+    try {
       const response = await fetch("/api/grabbit", {
         method: "POST",
         headers: {
@@ -242,207 +238,156 @@ useEffect(() => {
         },
         body: JSON.stringify({
           gameId: gameId,
-          userId: publicKey
-        
-        })
+          userId: publicKey,
+        }),
       })
-    
     } catch (err) {
-      console.error("Error fetching game data:", err);
+      console.error("Error fetching game data:", err)
     }
-  };
-  
+  }
+
   const tryBecomeLeader = async () => {
-    const now = moment.utc();
-    const threeSecondsAgo = moment.utc(now).subtract(3, "seconds");
-  
-    // Fetch the current leader
-    const { data, error } = await supabase
-      .from("poll_leader")
-      .select("*")
-      .maybeSingle();
-  
+    const now = moment.utc()
+    const threeSecondsAgo = moment.utc(now).subtract(3, "seconds")
+
+    const { data, error } = await supabase.from("poll_leader").select("*").maybeSingle()
+
     if (error && error.message !== "No rows found") {
-      console.error("Error fetching leader:", error.message);
-      return;
+      console.error("Error fetching leader:", error.message)
+      return
     }
-  
+
     if (data) {
-      const lastActive = moment.utc(data.last_active);
-      // console.log("Last Active (UTC):", lastActive.toISOString());
-      // console.log("Three Seconds Ago (UTC):", threeSecondsAgo.toISOString());
-  
+      const lastActive = moment.utc(data.last_active)
+
       if (!data || lastActive.isBefore(threeSecondsAgo)) {
-        // console.log("Becoming the leader...");
-  
-        // If a leader exists, update their record; otherwise, insert a new one
-        const leaderId = data.id; // Use the existing leader's ID
+        const leaderId = data.id
         const { error: updateError } = await supabase
           .from("poll_leader")
           .update({
             public_key: publicKey,
             last_active: now.toISOString(),
           })
-          .eq("id", leaderId); // Update the row with the specific ID
-  
+          .eq("id", leaderId)
+
         if (updateError) {
-          console.error("Error updating leader:", updateError.message);
+          console.error("Error updating leader:", updateError.message)
         } else {
-          isLeaderRef.current = true; // Mark this user as the leader
-          // console.log("User is now the leader.");
-  
-          // Fetch game data immediately
-          fetchGameData();
-  
-          // Start polling
+          isLeaderRef.current = true
+          fetchGameData()
+
           if (!intervalRef.current) {
-            intervalRef.current = setInterval(fetchGameData, 1000);
+            intervalRef.current = setInterval(fetchGameData, 1000)
           }
         }
-      } else {
-        // console.log("Another user is already the leader.");
       }
     } else {
-      // console.log("No leader found. Becoming the leader...");
-  
-      // Insert a new leader if none exists
-      const { error: insertError } = await supabase
-        .from("poll_leader")
-        .insert({
-          public_key: publicKey,
-          last_active: now.toISOString(),
-        });
-  
+      const { error: insertError } = await supabase.from("poll_leader").insert({
+        public_key: publicKey,
+        last_active: now.toISOString(),
+      })
+
       if (insertError) {
-        console.error("Error inserting leader:", insertError.message);
+        console.error("Error inserting leader:", insertError.message)
       } else {
-        isLeaderRef.current = true; // Mark this user as the leader
-        // console.log("User is now the leader.");
-  
-        // Fetch game data immediately
-        fetchGameData();
-  
-        // Start polling
+        isLeaderRef.current = true
+        fetchGameData()
+
         if (!intervalRef.current) {
-          intervalRef.current = setInterval(fetchGameData, 1000);
+          intervalRef.current = setInterval(fetchGameData, 1000)
         }
       }
     }
-  };
-  
+  }
+
   const sendHeartbeat = async () => {
     if (isLeaderRef.current) {
       const { error } = await supabase
         .from("poll_leader")
         .update({ last_active: moment.utc().toISOString() })
-        .eq("public_key", publicKey);
+        .eq("public_key", publicKey)
 
       if (error) {
-        console.error("Error sending heartbeat:", error.message);
-      } else {
-        // console.log("Heartbeat sent at:", moment.utc().toISOString());
+        console.error("Error sending heartbeat:", error.message)
       }
     }
-  };
-  
+  }
+
   useEffect(() => {
-    // Attempt to become the leader immediately
-    tryBecomeLeader();
+    tryBecomeLeader()
 
-    // Set up periodic leader checks
-    const leaderCheckInterval = setInterval(tryBecomeLeader, 1000);
+    const leaderCheckInterval = setInterval(tryBecomeLeader, 1000)
 
-    // Listen for changes in the poll_leader table via Supabase Realtime
     const channel = supabase
       .channel("leader-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "poll_leader" },
-        (payload: any) => {
-          console.log("Leader change detected:", payload.new);
+      .on("postgres_changes", { event: "*", schema: "public", table: "poll_leader" }, (payload: any) => {
+        console.log("Leader change detected:", payload.new)
 
-          if (payload.new.public_key !== publicKey) {
-            console.log("Not the leader anymore.");
-            isLeaderRef.current = false; // Stop being the leader
-            if (intervalRef.current) {
-              clearInterval(intervalRef.current);
-              intervalRef.current = null;
-            }
-          } else {
-            console.log("Is the leader now.");
-            isLeaderRef.current = true; // Become the leader
-            if (!intervalRef.current) {
-              intervalRef.current = setInterval(fetchGameData, 1000);
-            }
+        if (payload.new.public_key !== publicKey) {
+          console.log("Not the leader anymore.")
+          isLeaderRef.current = false
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current)
+            intervalRef.current = null
+          }
+        } else {
+          console.log("Is the leader now.")
+          isLeaderRef.current = true
+          if (!intervalRef.current) {
+            intervalRef.current = setInterval(fetchGameData, 1000)
           }
         }
-      )
-      .subscribe();
+      })
+      .subscribe()
 
-    // Send a heartbeat every 1 second if the user is the leader
-    const heartbeatInterval = setInterval(sendHeartbeat, 1000);
+    const heartbeatInterval = setInterval(sendHeartbeat, 1000)
 
-    // Clean up intervals and subscriptions when the component unmounts
     return () => {
-      clearInterval(leaderCheckInterval);
-      channel.unsubscribe();
-      clearInterval(heartbeatInterval);
+      clearInterval(leaderCheckInterval)
+      channel.unsubscribe()
+      clearInterval(heartbeatInterval)
       if (intervalRef.current) {
-        clearInterval(intervalRef.current);
+        clearInterval(intervalRef.current)
       }
-    };
-  }, [publicKey]);
-  
+    }
+  }, [publicKey, supabase])
 
   const fetchGames = async () => {
-  
-    const { data, error } = await supabase
-    .from("grabbit")
-    .select(`*`)
-    .eq("status", 1)
-    // console.log(data)
+    const { data, error } = await supabase.from("grabbit").select(`*`).eq("status", 1)
     setGamesData(data)
   }
-  
+
   const handleSlap = async () => {
-    if(gameData.status==1 || gameData.status==2){
+    if (gameData.status == 1 || gameData.status == 2) {
       console.log(gameData)
-      setErrorMessage('game hasn\'t started')
+      setErrorMessage("game hasn't started")
       setShowErrorModal(true)
-    
-    }else if(gameData.status==3){
+    } else if (gameData.status == 3) {
       const response = await fetch("/api/grabbit/slap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId: gameId,
-          userId: publicKey
-        
-        })
+          userId: publicKey,
+        }),
       })
-    
-      const data = await response.json();
-      setActionMessage(data.message)
-      setTimeout(()=>{
-        setActionMessage('')
-      },3000)
-    }else if(gameData.status == 4){
-      setErrorMessage('game cover')
-      setShowErrorModal(true)
-    
-    }
 
+      const data = await response.json()
+      setActionMessage(data.message)
+      setTimeout(() => {
+        setActionMessage("")
+      }, 3000)
+    } else if (gameData.status == 4) {
+      setErrorMessage("game cover")
+      setShowErrorModal(true)
+    }
   }
 
   const handleGrab = async () => {
-    // console.log('grab')
-    if(gameData.status==1 || gameData.status==2){
-      // console.log(gameData)
-      setErrorMessage('game hasn\'t started')
+    if (gameData.status == 1 || gameData.status == 2) {
+      setErrorMessage("game hasn't started")
       setShowErrorModal(true)
-    
-    }else if(gameData.status==3){
-
+    } else if (gameData.status == 3) {
       const response = await fetch("/api/grabbit/grab", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -450,185 +395,190 @@ useEffect(() => {
           gameId: gameId,
           userId: publicKey,
           username: user_name,
-          avatar:user_avatar
-        
-        })
+          avatar: user_avatar,
+        }),
       })
-      const data = await response.json();
+      const data = await response.json()
       console.log(data)
-      if(data.success){
+      if (data.success) {
         fetchGameData()
       }
       setActionMessage(data.message)
-      setTimeout(()=>{
-        setActionMessage('')
-      },3000)
-
-    }else if(gameData.status == 4){
-      setErrorMessage('game cover')
+      setTimeout(() => {
+        setActionMessage("")
+      }, 3000)
+    } else if (gameData.status == 4) {
+      setErrorMessage("game over")
       setShowErrorModal(true)
-    
     }
-
   }
 
   const handleSneak = async () => {
-    if(gameData.status==1 || gameData.status==2){
+    if (gameData.status == 1 || gameData.status == 2) {
       console.log(gameData)
-      setErrorMessage('game hasn\'t started')
+      setErrorMessage("game hasn't started")
       setShowErrorModal(true)
-    
-    }else if(gameData.status==3){
+    } else if (gameData.status == 3) {
       const response = await fetch("/api/grabbit/sneak", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           gameId: gameId,
-          userId: publicKey
-        
-        })
+          userId: publicKey,
+        }),
       })
-    
-      const data = await response.json();
+
+      const data = await response.json()
       setActionMessage(data.message)
-      setTimeout(()=>{
-        setActionMessage('')
-      },3000)
-    }else if(gameData.status == 4){
-      setErrorMessage('game cover')
+      setTimeout(() => {
+        setActionMessage("")
+      }, 3000)
+    } else if (gameData.status == 4) {
+      setErrorMessage("game over")
       setShowErrorModal(true)
-    
     }
   }
-  
+
   const handleJoinGame = () => {
     setShowJoinModal(true)
   }
-  
-  //status
-  //1 still seating
-  //2 game start pending
-  //3 game started
-  //4 game completed
 
   const handleConfirmJoin = async () => {
-
     setHasJoined(true)
     setShowJoinModal(false)
-    // Implement logic to join the game (e.g., API call, update database, etc.)
     console.log(gameData)
-    if((gameData.playersReady+1)==gameData.playersMax){
-      setErrorMessage('max players reached here')
+    if (gameData.playersReady + 1 == gameData.playersMax) {
+      setErrorMessage("max players reached")
       setShowErrorModal(true)
-    }else if (gameData.status==3){
-      setErrorMessage('game started')
+    } else if (gameData.status == 3) {
+      setErrorMessage("game started")
       setShowErrorModal(true)
-    }else if (gameData.status == 4){
-      setErrorMessage('game over')
+    } else if (gameData.status == 4) {
+      setErrorMessage("game over")
       setShowErrorModal(true)
-    }else{
-      
-      let pass = 1;
-      //check if player is already in this game
+    } else {
+      let pass = 1
       const { data, error } = await supabase
-      .from("grabbit_players")
-      .select("*")
-      .eq("game_id", gameId) // Match game_id
-      .eq("player", publicKey) // Match player
-      .eq("status", 1) // Match status
-      .maybeSingle(); // Ensure only one record is returned
+        .from("grabbit_players")
+        .select("*")
+        .eq("game_id", gameId)
+        .eq("player", publicKey)
+        .eq("status", 1)
+        .maybeSingle()
 
-      if(data){
-        setErrorMessage('you are already in this game')
+      if (data) {
+        setErrorMessage("you are already in this game")
         setShowErrorModal(true)
         pass = 0
       }
-      if(error){
+      if (error) {
         console.log(error)
       }
-      
-      if(pass>0){
-          //insert player in to grabbit players table
-          const response = await fetch("/api/grabbit/join", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              gameId: gameId,
-              publicKey: publicKey
-            })
-           })
-        
-            const resp = await response.json();
-            if(resp.success){
-              setSuccessMessage('you are in')
-              setShowSuccessModal(true)
-            }else{
-              setErrorMessage(resp.message)
-              setShowErrorModal(true)
-            }
-          }  
+
+      if (pass > 0) {
+        const response = await fetch("/api/grabbit/join", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            gameId: gameId,
+            publicKey: publicKey,
+          }),
+        })
+
+        const resp = await response.json()
+        if (resp.success) {
+          setSuccessMessage("you are in")
+          setShowSuccessModal(true)
+        } else {
+          setErrorMessage(resp.message)
+          setShowErrorModal(true)
         }
+      }
     }
-  
+  }
+
   const handleCreateGame = async (gData: any) => {
-    console.log(gData)
-    if(gData){
+    // console.log(gData)
+    if (gData) {
       const response = await fetch("/api/grabbit/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          gData
-        })
+          gData,
+        }),
       })
-    
-      const resp:any = await response.json();
-      if(resp.success){
-        setSuccessMessage('game created')
-        setShowSuccessModal(true)
-      
-      }else{
-        setErrorMessage('error creating game')
-        setShowErrorModal(true)
-      
-      }
-    }else{
-      setErrorMessage('error creating game')
-      setShowErrorModal(true)
 
+      const resp: any = await response.json()
+      if (resp.success) {
+        setSuccessMessage("game created")
+        setShowSuccessModal(true)
+      } else {
+        setErrorMessage("error creating game")
+        setShowErrorModal(true)
+      }
+    } else {
+      setErrorMessage("error creating game")
+      setShowErrorModal(true)
     }
-    
-    // setShowCreateModal(false)
   }
-  
+
+  const handleClaimPrize = async () => {
+    setIsClaiming(true)
+    try {
+      console.log(gameId)
+      const response = await fetch("/api/grabbit/claim", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          gameId: gameId,
+          user: publicKey,
+        }),
+      })
+
+      const data = await response.json()
+      if (data.success) {
+        setSuccessMessage("Prize claimed successfully!")
+        setShowSuccessModal(true)
+        fetchNSetGame() // Refresh game data
+      } else {
+        setErrorMessage(data.message || "Error claiming prize")
+        setShowErrorModal(true)
+      }
+    } catch (error) {
+      console.error("Error claiming prize:", error)
+      setErrorMessage("An error occurred while claiming the prize")
+      setShowErrorModal(true)
+    }
+    setShowClaimModal(false)
+    setIsClaiming(false)
+
+  }
+
   const calculateTimeDifference = (time: any) => {
     try {
-      // Parse the current time in UTC
-      const timeNow = moment.utc();
-      
-      // Parse the start_time from the database with its timezone
-      const startTime = moment.tz(time, "UTC"); // Adjust "UTC" to the actual timezone if needed
-      
-      // Calculate the difference in seconds
-      const differenceInSeconds = startTime.diff(timeNow, "seconds");
-  
-      // console.log("Time difference in seconds:", differenceInSeconds);
-  
-      return differenceInSeconds;
+      const timeNow = moment.utc()
+      const startTime = moment.tz(time, "UTC")
+      const differenceInSeconds = startTime.diff(timeNow, "seconds")
+      return differenceInSeconds
     } catch (error) {
-      console.error("Error calculating time difference:", error);
-      return null; // Return null or handle the error as needed
+      console.error("Error calculating time difference:", error)
+      return null
     }
-  };
+  }
 
   const handleSuccessNotification = (message: string) => {
     setSuccessMessage(message)
     setShowSuccessModal(true)
   }
-  
-  const handleErrorNotification = (message:string) => {
+
+  const handleErrorNotification = (message: string) => {
     setErrorMessage(message)
     setShowErrorModal(true)
   }
+
+  const memoizedFetchGameData = useCallback(fetchGameData, [gameId, publicKey])
+  const memoizedSendHeartbeat = useCallback(sendHeartbeat, [publicKey, supabase])
+
   if (!gameData) {
     return (
       <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -645,19 +595,21 @@ useEffect(() => {
       </div>
     )
   }
-  
+
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
-    <Header />
-    <main className="container mx-auto px-4 py-8">
-    <h1 className="text-4xl font-bold text-center text-primary mb-2"><a href="/grabbit">Grabbit</a></h1>
+      <Header />
+      <main className="container mx-auto px-4 py-8">
+        <h1 className="text-4xl font-bold text-center text-primary mb-2">
+          <a href="/grabbit">Grabbit</a>
+        </h1>
         <h2 className="text-2xl font-semibold text-center text-secondary mb-8 animate-pulse">
           <Sparkles className="inline-block mr-2" />
           Win Crypto Prizes!
           <Sparkles className="inline-block ml-2" />
         </h2>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-      <Card className="bg-gradient-to-br from-purple-900/50 to-indigo-900/50 backdrop-blur-sm border-primary/20 overflow-hidden">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
+          <Card className="bg-gradient-to-br from-purple-900/50 to-indigo-900/50 backdrop-blur-sm border-primary/20 overflow-hidden">
             <CardContent className="p-6">
               <div className="relative mb-6">
                 <PrizeAvatar
@@ -665,46 +617,57 @@ useEffect(() => {
                   prizeName={gameData.title}
                   timeLeft={timeLeft}
                   winner={gameData.winner_name || "No winner yet"}
-                  status = {gameData.status}
+                  status={gameData.status}
                 />
               </div>
               <div className="text-center mb-6">
                 <Badge variant="secondary" className="text-lg px-3 py-1">
                   <Trophy className="inline-block mr-2" />
-                  Prize: {gameData.prize_amount} {gameData.prize_token_name}
+                  Prize: {gameWalletBalance} SOL
                 </Badge>
               </div>
-              {gameData.players.length>0 && gameData.players.some((playerObj:any) => playerObj.player == publicKey.toString()) && (
-                <>
-                <div className="col-span-4">
-                  <ActionButtons
-                    onSlap={handleSlap}
-                    onGrab={handleGrab}
-                    onSneak={handleSneak}
-                    grabs={playerData.grabs}
-                    slaps={playerData.slaps}
-                    sneaks={playerData.sneaks}
-                  />
+              {gameData.status === 4 && gameData.winner === publicKey.toString() && (
+                              <div className="text-center mb-6">
+                
+                <Button
+                  onClick={() => setShowClaimModal(true)}
+                  className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-yellow-500 hover:from-green-600 hover:to-yellow-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                >
+                  Claim Your Prize
+                </Button>
                 </div>
-                <div className="col-span-4 mt-3">
-                  <p className="text-center text-white p3">{actionMessage}</p>
-                </div>
-                </>
               )}
-                {gameData.players &&
-                      Array.isArray(gameData.players) &&
-                      !gameData.players.some((playerObj:any) => playerObj.player === publicKey.toString()) && (
-                      <div className="col-span-12">
-                            <Button
-                              onClick={handleJoinGame}
-                              className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-yellow-500 hover:from-green-600 hover:to-yellow-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-                            >
-                              Join Game
-                            </Button>
-                        
-                      </div> 
-                  )}
-              
+              {gameData.players.length > 0 &&
+                gameData.players.some((playerObj: any) => playerObj.player == publicKey.toString()) && (
+                  <>
+                    <div className="col-span-4">
+                      <ActionButtons
+                        onSlap={handleSlap}
+                        onGrab={handleGrab}
+                        onSneak={handleSneak}
+                        grabs={playerData.grabs}
+                        slaps={playerData.slaps}
+                        sneaks={playerData.sneaks}
+                      />
+                    </div>
+                    <div className="col-span-4 mt-3">
+                      <p className="text-center text-white p3">{actionMessage}</p>
+                    </div>
+                  </>
+                )}
+              {gameData.players &&
+                Array.isArray(gameData.players) &&
+                !gameData.players.some((playerObj: any) => playerObj.player === publicKey.toString()) && (
+                  <div className="col-span-12">
+                    <Button
+                      onClick={handleJoinGame}
+                      className="w-full px-6 py-3 bg-gradient-to-r from-green-500 to-yellow-500 hover:from-green-600 hover:to-yellow-600 text-white font-bold rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                    >
+                      Join Game
+                    </Button>
+                  </div>
+                )}
+
               <JoinGameModal
                 isOpen={showJoinModal}
                 onClose={() => setShowJoinModal(false)}
@@ -713,7 +676,7 @@ useEffect(() => {
               />
             </CardContent>
           </Card>
-        
+
           <Card className="bg-gradient-to-br from-blue-900/50 to-cyan-900/50 backdrop-blur-sm border-primary/20">
             <CardContent className="p-6">
               <Tabs defaultValue="players" className="w-full">
@@ -735,43 +698,36 @@ useEffect(() => {
                   <ScrollArea className="h-[300px] w-full rounded-md border p-4">
                     <div className="space-y-4">
                       <p className="text-primary text-lg text-center">
-                        Players: {gameData.players_ready} / {gameData.players_min} | <small>{gameData.players_max} max</small>
+                        Players: {gameData.players_ready} / {gameData.players_min} |{" "}
+                        <small>{gameData.players_max} max</small>
                       </p>
                       <Progress value={(gameData.players_ready / gameData.players_min) * 100} className="w-full h-2" />
-                      {/* Add a list of players here when available */}
                       {gameData && Array.isArray(gameData.players) && gameData.players.length > 0 ? (
                         <div className="overflow-x-auto">
-                      <table className="w-full border-collapse text-left">
-                          {/* Table Header */}
-                          <thead>
-                            <tr>
-                              <th className="p-2 text-center"></th>
-                              <th className="p-2 text-center">Grabs</th>
-                              <th className="p-2 text-center">Slaps</th>
-                              <th className="p-2 text-center">Sneaks</th>
-                            </tr>
-                          </thead>
-                          
-                          {/* Table Body */}
-                          <tbody>
-                          {gameData.players.map((data: any, index: number) => (
-                              <tr key={index} className="border-b border-black-200 hover:bg-black-50">
-                                                              
-                                {/* Player Name */}
-                                <td className="p-2 font-medium text-center">{data.player_name}</td>
-                                
-                                {/* Grabs Used */}
-                                <td className="p-2 text-center">{data.grabs_used || 0}</td>
-
-                                {/* Slaps Used */}
-                                <td className="p-2 text-center">{data.slaps_used || 0}</td>
-                                
-                                {/* Sneaks Used */}
-                                <td className="p-2 text-center">{data.sneaks_used || 0}</td>
+                          <table className="w-full border-collapse text-left">
+                            <thead>
+                              <tr>
+                                <th className="p-2 text-center"></th>
+                                <th className="p-2 text-center">Grabs</th>
+                                <th className="p-2 text-center">Slaps</th>
+                                <th className="p-2 text-center">Sneaks</th>
                               </tr>
-                            ))}
-                          </tbody>
-                        </table>
+                            </thead>
+
+                            <tbody>
+                              {gameData.players.map((data: any, index: number) => (
+                                <tr key={index} className="border-b border-black-200 hover:bg-black-50">
+                                  <td className="p-2 font-medium text-center">{data.player_name}</td>
+
+                                  <td className="p-2 text-center">{data.grabs_used || 0}</td>
+
+                                  <td className="p-2 text-center">{data.slaps_used || 0}</td>
+
+                                  <td className="p-2 text-center">{data.sneaks_used || 0}</td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
                         </div>
                       ) : (
                         <div className="text-center text-primary h2">no players yet</div>
@@ -784,7 +740,7 @@ useEffect(() => {
                     <h3 className="text-xl font-semibold text-primary">{gameData.title}</h3>
                     <p className="text-primary/80 flex items-center">
                       <Coins className="mr-2 h-5 w-5" />
-                      Value: {gameData.prize_amount} {gameData.prize_token}
+                      Prize Value: {gameWalletBalance}
                     </p>
                     <p className="text-primary/80 flex items-center">
                       <Clock className="mr-2 h-5 w-5" />
@@ -793,6 +749,10 @@ useEffect(() => {
                     <p className="text-primary/80 flex items-center">
                       <Users className="mr-2 h-5 w-5" />
                       Players: {gameData.players_ready} / {gameData.players_max} (Min: {gameData.players_min})
+                    </p>
+                    <p className="text-primary/80 flex items-center">
+                      <Wallet className="mr-2 h-5 w-5" />
+                      wallet: {gameData.wallet}
                     </p>
                     <div className="space-y-2">
                       <p className="text-primary/80">Free Actions:</p>
@@ -845,41 +805,51 @@ useEffect(() => {
               </Tabs>
             </CardContent>
           </Card>
-      </div>
+        </div>
 
-      <Card className="bg-gradient-to-br from-green-900/50 to-teal-900/50 backdrop-blur-sm border-primary/20 my-12">
-        <CardContent className="p-8 text-center">
-          <h2 className="text-3xl font-bold text-primary mb-4">Create Your Own Grabbit Game</h2>
-          <p className="text-xl text-primary/80 mb-6">
-            create multi player games to win solana or other token prizes<br/>
-            earn a 10% of entry fee collected for solana prizes<br/>
-            players must hold 1,000,000 or more of GAME <br/>tokens to play or create games
-          </p>
-          <Button
-            onClick={() => setShowCreateModal(true)}
-            className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
-          >
-            <PlusCircle className="mr-2 h-6 w-6" />
-            Create Grabbit Game
-          </Button>
-        </CardContent>
-      </Card>
-       
-      {showSuccessModal && (
-        <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
-      )}
-      {showErrorModal && (
-        <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
-      )}
-      <CreateGrabbitModal
-        isOpen={showCreateModal}
-        onClose={() => setShowCreateModal(false)}
-        onSubmit={handleCreateGame}
-        publicKey={publicKey}
-      />
-    </main>
-  </div>
-  
+        <Card className="bg-gradient-to-br from-green-900/50 to-teal-900/50 backdrop-blur-sm border-primary/20 my-12">
+          <CardContent className="p-8 text-center">
+            <h2 className="text-3xl font-bold text-primary mb-4">Create Your Own Grabbit Game</h2>
+            <p className="text-xl text-primary/80 mb-6">
+              create multi player games to win solana or other token prizes
+              <br />
+              earn a 10% of entry fee collected for solana prizes
+              <br />
+              players must hold 1,000,000 or more of GAME <br />
+              tokens to play or create games
+            </p>
+            <Button
+              onClick={() => setShowCreateModal(true)}
+              className="bg-gradient-to-r from-green-500 to-teal-500 hover:from-green-600 hover:to-teal-600 text-white font-bold py-4 px-8 rounded-full text-lg transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+            >
+              <PlusCircle className="mr-2 h-6 w-6" />
+              Create Grabbit Game
+            </Button>
+          </CardContent>
+        </Card>
+        
+        {showSuccessModal && (
+          <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
+        )}
+        {showErrorModal && (
+          <ErrorModal isOpen={showErrorModal} onClose={() => setShowErrorModal(false)} message={errorMessage} />
+        )}
+        <CreateGrabbitModal
+          isOpen={showCreateModal}
+          onClose={() => setShowCreateModal(false)}
+          onSubmit={handleCreateGame}
+          publicKey={publicKey}
+        />
+        <GrabbitClaimModal
+          isOpen={showClaimModal}
+          onClose={() => setShowClaimModal(false)}
+          onConfirm={handleClaimPrize}
+          userName={user_name}
+          prizeAmount={gameWalletBalance}
+          isClaiming={isClaiming}
+        />
+      </main>
+    </div>
   )
 }
 

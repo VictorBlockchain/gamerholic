@@ -170,7 +170,7 @@ export async function POST(req: Request) {
     if (!platformSettings) {
       return NextResponse.json({ success: false, message: "Failed to fetch platform settings" })
     }
-
+    
     const { wallet_fee, fee_esports }:any = platformSettings
     const gameFee = parseFloat(gameData.fee)
     console.log(gameFee)

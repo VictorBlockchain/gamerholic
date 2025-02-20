@@ -20,7 +20,7 @@ const formSchema = z.object({
   tokenAddress: z.any().optional(),
   minPlayers: z.number().min(2, { message: "Minimum 2 players required" }),
   maxPlayers: z.number().max(25, { message: "Maximum 25 players allowed" }),
-  entryFee: z.number().min(0.001, { message: "Entry fee must be 0.001 or greater" }),
+  entryFee: z.number().min(0, { message: "Entry fee must be 0 or greater" }),
 
 })
 
@@ -57,7 +57,7 @@ const handleImageUpload = async (event:any) => {
         console.error("Upload Error:", error);
     } else {
         console.log("File uploaded successfully:", data);
-        let url:any = 'https://eixihegqhsgpxgoavnzw.supabase.co/storage/v1/object/public/'+data.fullPath
+        let url:any = 'https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/'+data.fullPath
         setImageFile(url)
     }
     }

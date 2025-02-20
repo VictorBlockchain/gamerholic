@@ -15,7 +15,6 @@ const fetchRandom = async (): Promise<number> => {
 };
 
 const setWallet = async (gameId:any, wallet:any, wallet_key:any, iv:any) =>{
-    console.log(gameId, wallet)
     const { error } = await supabase.from("grabbit_wallet").insert({
       game_id:gameId,
       wallet: wallet,
@@ -37,7 +36,7 @@ export async function POST(req: Request) {
     const body = await req.json();
     const { gData } = body;
     const currentTime:any = new Date().toISOString();
-     console.log(gData)
+    //  console.log(gData)
     //generate address for this game
     const keypair = Keypair.generate();
     const privateKeyHex = Buffer.from(keypair.secretKey).toString("hex");
@@ -61,7 +60,8 @@ export async function POST(req: Request) {
         players_min: gData.minPlayers,
         players_ready: 0,
         prize_amount: 0,
-        prize_token: gData.tokenAddress,
+        prize_token: 'solana',
+        play_money: 1,
         prize_token_name: gData.tokenName,
         slapper: null,
         start_time: null,
@@ -79,7 +79,6 @@ export async function POST(req: Request) {
       if(data){
         console.log(data[0])
         if(data[0].game_id>0){
-          console.log('we here 2')
 
           let gameId = data[0].game_id
           let resp = await setWallet(gameId,keypair.publicKey.toString(),encrypted, iv)

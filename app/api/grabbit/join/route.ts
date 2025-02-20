@@ -10,10 +10,7 @@ import { CryptoManager } from "@/lib/server/cryptoManager"
 CryptoManager.initialize()
 
 const IV_LENGTH = 16; // AES block size
-const connection = new Connection("https://api.mainnet-beta.solana.com"); // Replace with appropriate RPC endpoint
-const FEE_ADDRESS:any = process.env.FEE_ADDRESS;
-
-
+const connection: any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 
 const fetchGameData = async (gameid:any) => {
   const { data, error: fetchError } = await supabase
@@ -98,67 +95,63 @@ const updateGameData = async (gameid:any, userId:any, userName:any, userAvatar:a
     ;
   };
   
-  async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
-    try {
-      const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
-      const senderKeypair = Keypair.fromSecretKey(secretKey);
-      const receiverPubKey = new PublicKey(toAddress);
-          
-      const transaction = new Transaction().add(
-          SystemProgram.transfer({
-              fromPubkey: senderKeypair.publicKey,
-              toPubkey: receiverPubKey,
-              lamports: amount * 1e9, // Convert SOL to lamports
-          }),
-      )
-      
-      const signature = await sendAndConfirmTransaction(
-          connection,
-          transaction,
-          [senderKeypair]
-      );
-      console.log(signature)
-      return signature
+async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
+  try {
+    const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"))
+    const senderKeypair = Keypair.fromSecretKey(secretKey)
+    const receiverPubKey = new PublicKey(toAddress)
     
-    } catch (error) {
-      console.error("Error transferring SOL:", error)
-      throw error
-    }
-  }
+    const lamports = Math.round(amount * 10 ** 9)
+    const transaction = new Transaction().add(
+      SystemProgram.transfer({
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: receiverPubKey,
+        lamports: lamports, // Convert SOL to lamports
+      }),
+    )
 
-  const sendTokenTransactions = async (
-    recipientAddress: string,
-    amount: number,
-    privateKey: Uint8Array
-  ): Promise<any> => {
-    try {
-      const senderKeypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
+    const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair])
+    // console.log(signature)
+    return signature
+  } catch (error) {
+    console.error("Error transferring SOL:", error)
+    throw error
+  }
+}
+
+  // const sendTokenTransactions = async (
+  //   recipientAddress: string,
+  //   amount: number,
+  //   privateKey: Uint8Array
+  // ): Promise<any> => {
+  //   try {
+  //     const senderKeypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
   
-      const feeAmount = amount * 0.03;
-      const recipientAmount = amount - feeAmount;
+  //     const feeAmount = amount * 0.03;
+  //     const recipientAmount = amount - feeAmount;
   
-      const transaction = new Transaction().add(
-        SystemProgram.transfer({
-          fromPubkey: senderKeypair.publicKey,
-          toPubkey: new PublicKey(recipientAddress),
-          lamports: recipientAmount * 10 ** 9,
-        }),
-        SystemProgram.transfer({
-          fromPubkey: senderKeypair.publicKey,
-          toPubkey: new PublicKey(FEE_ADDRESS),
-          lamports: feeAmount * 10 ** 9,
-        })
-      );
+  //     const transaction = new Transaction().add(
+  //       SystemProgram.transfer({
+  //         fromPubkey: senderKeypair.publicKey,
+  //         toPubkey: new PublicKey(recipientAddress),
+  //         lamports: recipientAmount * 10 ** 9,
+  //       }),
+  //       SystemProgram.transfer({
+  //         fromPubkey: senderKeypair.publicKey,
+  //         toPubkey: new PublicKey(FEE_ADDRESS),
+  //         lamports: feeAmount * 10 ** 9,
+  //       })
+  //     );
   
-      const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
-      console.log("Transaction successful with signature:", signature);
+  //     const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
+  //     console.log("Transaction successful with signature:", signature);
   
-      return Promise.resolve({success:true, message: signature});
-    } catch (error:any) {
-      console.error("Transaction failed:", error);
-      return Promise.reject({success:false, message: error.message});
-    }
-  };
+  //     return Promise.resolve({success:true, message: signature});
+  //   } catch (error:any) {
+  //     console.error("Transaction failed:", error);
+  //     return Promise.reject({success:false, message: error.message});
+  //   }
+  // };
 
 export async function POST(req: Request) {
   try {
@@ -190,9 +183,9 @@ export async function POST(req: Request) {
     
         //collect entry fee and send it to game wallet
         if(gameData.entry_fee>0){
-            
+            console.log(gameData.entry_fee)
           let userKey:any = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
-          let fee_entry = gameData.entry_fee / 10 ** 9
+          let fee_entry = gameData.entry_fee
             if(gameData.play_money==1){
               //entry fee is in solana
                   txid_play = await transferSOL(userKey, gameData.wallet, fee_entry)
@@ -201,6 +194,8 @@ export async function POST(req: Request) {
                   }
             
             }
+        }else{
+          console.log("no entry fee")
         }
         // Calculate the expiration time (now + 3 minutes)
         const seatExpire = timeNow.add(180, "seconds");

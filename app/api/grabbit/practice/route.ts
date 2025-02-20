@@ -4,6 +4,8 @@ import moment from "moment";
 import "moment-timezone";
 const setPracticeGame = async (): Promise<any> => {
   try {
+    const randomPageNumber = Math.floor(Math.random() * 6) + 1;
+    const imagePath = `/grab${randomPageNumber}.jpg`;
     const { data, error } = await supabase
       .from("grabbit")
       .insert({
@@ -14,7 +16,7 @@ const setPracticeGame = async (): Promise<any> => {
         free_slaps: 25,
         free_sneaks: 25,
         grabs_to_join: 0,
-        image: '/practice.jpg',
+        image: imagePath,
         last_grab: null,
         players: [],
         players_max: 25,

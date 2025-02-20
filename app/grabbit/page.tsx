@@ -44,6 +44,8 @@ const GrabbitGameCard = ({ game }:any) => {
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
   const [avatarFile, setAvatarFile]:any = useState('')
+  const randomPageNumber = Math.floor(Math.random() * 6) + 1;
+  const imagePath = `/grab${randomPageNumber}.jpg`;
 
   return (
     
@@ -53,7 +55,7 @@ const GrabbitGameCard = ({ game }:any) => {
     >
       <CardHeader className="p-0">
         <img
-          src={game.image || "/placeholder.svg"}
+          src={game.image || imagePath}
           alt={game.title}
           className="w-full h-40 object-cover rounded-t-lg"
         />

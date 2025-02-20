@@ -52,17 +52,17 @@ export function JoinGameModal({ isOpen, onClose, onJoin, gameData }:any) {
             <div>
               <p className="font-semibold">Players</p>
               <p className="text-sm text-primary/70">
-                {gameData.players_ready} / {gameData.players_max}
+                {gameData.players_ready} / {gameData.players_max} ({gameData.players_min} min)
               </p>
             </div>
           </div>
-          {gameData.entryFee && (
+          {gameData.entry_fee && (
             <div className="flex items-center gap-4">
               <Coins className="h-5 w-5 text-green-500" />
               <div>
                 <p className="font-semibold">Entry Fee</p>
                 <p className="text-sm text-primary/70">
-                  {gameData.entryFee} {gameData.prizeToken}
+                  {gameData.entry_fee} SOL
                 </p>
               </div>
             </div>
