@@ -175,7 +175,7 @@ const EsportsPage: React.FC = () => {
   const [newChatRoomName, setNewChatRoomName] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
-  const [pendingChallenges, setPendingChallenges] = useState<EsportsChallenge[]>([])
+  const [pendingChallenges, setPendingChallenges]:any = useState<EsportsChallenge[]>([])
   const [gameHistory, setGameHistory] = useState<EsportsChallenge[]>([])
   const [showChallengeModal, setShowChallengeModal] = useState(false)
   const [challengeData, setChallengeData]: any = useState<Partial<EsportsChallenge>>({})
@@ -215,6 +215,7 @@ const EsportsPage: React.FC = () => {
   const [showMutualCancelModal, setShowMutualCancelModal] = useState(false)
   
   const [isSending, setIsSending] = useState(false);
+  const [isScoring, setIsScoring] = useState(false)
   const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const popularGames: any = [
@@ -388,9 +389,9 @@ const EsportsPage: React.FC = () => {
       console.error("Error fetching user:", error)
     }
   }
-
+  
   const fetchEsportsRecords = async () => {
-    const { data, error }: any = await supabase.from("esports_records").select("*").eq("user_id", user_id)
+    const { data, error }: any = await supabase.from("esports_records").select("*").eq("public_key", user_id)
 
     if (error) {
       console.error("Error fetching esports records:", error)
@@ -512,7 +513,7 @@ const EsportsPage: React.FC = () => {
     // Re-enable submission after completion
     setIsSending(false);
   };
-
+  
   const fetchPendingChallenges = async () => {
     const publicKeyStr = publicKey.toString();
   
@@ -533,13 +534,19 @@ const EsportsPage: React.FC = () => {
       return;
     }
   
-    // Step 2: Fetch data from the `esports_records` table
+    // Step 2: Determine opponents and fetch their records
+    const opponentKeys = esportsData.map((esport) => {
+      return esport.player1 === publicKeyStr ? esport.player2 : esport.player1;
+    });
+  
     const games = esportsData.map((esport) => esport.game);
+  
+    // Fetch records for the current user and opponents
     const { data: esportsRecordsData, error: esportsRecordsError } = await supabase
       .from("esports_records")
       .select("*")
       .in("game", games)
-      .or(`public_key.eq.${publicKeyStr}`);
+      .in("public_key", [publicKeyStr, ...opponentKeys]); // Fetch records for both the user and opponents
   
     if (esportsRecordsError) {
       console.error("Error fetching esports records data:", esportsRecordsError);
@@ -553,7 +560,7 @@ const EsportsPage: React.FC = () => {
   
     // Step 3: Combine the results and handle empty `esports_records`
     const combinedData = esportsData.map((esport) => {
-      // Initialize default values for player1 and player2
+      // Initialize default values
       const defaultRecord = {
         wins: 0,
         losses: 0,
@@ -562,30 +569,33 @@ const EsportsPage: React.FC = () => {
         total_earnings: 0,
       };
   
-      // Find records for player1 and player2
-      const player1Records = esportsRecordsData.find(
-        (record) => record.game === esport.game && record.public_key === esport.player1
+      // Determine the opponent
+      const opponentKey = esport.player1 === publicKeyStr ? esport.player2 : esport.player1;
+  
+      // Find records for the current user and opponent
+      const userRecords = esportsRecordsData.find(
+        (record) => record.game === esport.game && record.public_key === publicKeyStr
       ) || defaultRecord;
   
-      const player2Records = esportsRecordsData.find(
-        (record) => record.game === esport.game && record.public_key === esport.player2
+      const opponentRecords = esportsRecordsData.find(
+        (record) => record.game === esport.game && record.public_key === opponentKey
       ) || defaultRecord;
   
       return {
         ...esport,
-        player1_records: {
-          wins: player1Records.wins,
-          losses: player1Records.losses,
-          win_streak: player1Records.win_streak,
-          loss_streak: player1Records.loss_streak,
-          total_earnings: player1Records.total_earnings,
+        user_records: {
+          wins: userRecords.wins,
+          losses: userRecords.losses,
+          win_streak: userRecords.win_streak,
+          loss_streak: userRecords.loss_streak,
+          total_earnings: userRecords.total_earnings,
         },
-        player2_records: {
-          wins: player2Records.wins,
-          losses: player2Records.losses,
-          win_streak: player2Records.win_streak,
-          loss_streak: player2Records.loss_streak,
-          total_earnings: player2Records.total_earnings,
+        opponent_records: {
+          wins: opponentRecords.wins,
+          losses: opponentRecords.losses,
+          win_streak: opponentRecords.win_streak,
+          loss_streak: opponentRecords.loss_streak,
+          total_earnings: opponentRecords.total_earnings,
         },
       };
     });
@@ -599,7 +609,7 @@ const EsportsPage: React.FC = () => {
       .from("esports")
       .select("*")
       .or(`player1.eq.${publicKey!.toString()},player2.eq.${publicKey!.toString()}`)
-      .eq("status", 4) // Status 4 represents completed games
+      .eq("status", 9) // Status 4 represents completed games
 
     if (error) {
       console.error("Error fetching game history:", error)
@@ -653,7 +663,7 @@ const EsportsPage: React.FC = () => {
     //check players balance
     let p1balance = 0;
     let p2balance = 0;
-    let feeAmount = (challengeData.amount / 10 ** 9) * 0.03
+    let feeAmount = challengeData.amount * 0.03
     const { data:opp, error:oppError } = await supabase.from("users").select("*").eq("publicKey", challengeData.player2).single()
 
     if(challengeData.money==1){
@@ -798,11 +808,29 @@ const EsportsPage: React.FC = () => {
   const confirmAcceptChallenge = async () => {
     if (selectedChallenge) {
       //check user balance
-      const GAME = ""
-      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
-      const gameAmount = selectedChallenge.amount / 10 ** 9
-      balance = balance / 10 ** 9
-      if (balance >= gameAmount) {
+      let p1balance = 0;
+      let p2balance = 0;
+      let feeAmount = (selectedChallenge.amount / 10 ** 9) * 0.03
+      const { data:opp, error:oppError } = await supabase.from("users").select("*").eq("publicKey", selectedChallenge.player1).single()
+      if(selectedChallenge.money==1){
+        //game is for solana
+        p2balance = await solana.getBalance(userData.deposit_wallet)
+        p1balance = await solana.getBalance(opp.deposit_wallet)
+  
+      }else{
+        p2balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
+        p1balance = await solana.getTokenBalance(opp.deposit_wallet, GAMER)
+        feeAmount = 0
+      }
+      
+      const gameAmount = (selectedChallenge.amount / 10 ** 9) * 1.03
+      const totalAmount = gameAmount + feeAmount
+      p1balance = p1balance / 10 ** 9
+      p2balance = p2balance / 10 ** 9
+  
+      console.log(p1balance, p2balance, totalAmount, feeAmount)
+      if (p1balance >= totalAmount && p2balance>=totalAmount) {
+  
         const { error } = await supabase.from("esports").update({ status: 2 }).eq("id", selectedChallenge.id)
 
         if (error) {
@@ -810,6 +838,10 @@ const EsportsPage: React.FC = () => {
         } else {
           fetchPendingChallenges()
         }
+      }else{
+        setErrorMessage("funds low")
+        setShowErrorModal(true)
+
       }
     }
     setShowAcceptModal(false)
@@ -871,44 +903,35 @@ const EsportsPage: React.FC = () => {
 
   const handleConfirmScore = async () => {
     if (selectedChallenge) {
+      setIsScoring(true)
+      console.log(selectedChallenge)
       //get game
-      const { data, error: fetchError } = await supabase
-        .from("esports")
-        .select("*")
-        .eq("id", selectedChallenge.id)
-        .single()
-
-      const player1score = data.player1score
-      const player2score = data.player2score
-      const player1 = data.player1
-      const player2 = data.player2
-      const amount = data.amount
-      const fee = data.fee
-
-      const response = await fetch("/api/esports", {
+      // const { data, error: fetchError } = await supabase
+      //   .from("esports")
+      //   .select("*")
+      //   .eq("id", selectedChallenge.id)
+      //   .single()
+      
+      const response = await fetch("/api/esports/score/confirm", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          player1: player1,
-          player2: player2,
-          player1score: player1score,
-          player2score: player2score,
-          amount: amount,
-          fee: fee,
+          game_id: selectedChallenge.game_id
         }),
       })
+      const result = await response.json()
 
-      const { error } = await supabase
-        .from("esports")
-        .update({
-          status: 9,
-          score_confirmed_at: new Date().toISOString(),
-        })
-        .eq("id", selectedChallenge.id)
-
-      if (error) {
-        console.error("Error confirming score:", error)
-        setErrorMessage("error confirm score error")
+      // const { error } = await supabase
+      //   .from("esports")
+      //   .update({
+      //     status: 9,
+      //     score_confirmed_at: new Date().toISOString(),
+      //   })
+      //   .eq("id", selectedChallenge.id)
+      
+      if (!result.success) {
+        console.error("Error confirming score:", result.message)
+        setErrorMessage(result.message)
         setShowErrorModal(true)
       } else {
         fetchPendingChallenges()
@@ -918,6 +941,7 @@ const EsportsPage: React.FC = () => {
       }
       setShowConfirmScoreModal(false)
       setSelectedChallenge(null)
+      setIsScoring(false)
     }
   }
 
@@ -1352,21 +1376,46 @@ const EsportsPage: React.FC = () => {
                         <div className="relative">
                           <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 z-0"></div>
                           <CardContent className="relative z-10 p-6">
-                            <div className="flex items-center space-x-4 mb-4">
-                              <Avatar className="w-16 h-16 border-2 border-primary">
-                                <AvatarImage src={challenge.player2_avatar} />
-                                <AvatarFallback className="bg-primary/20 text-primary">
-                                  {challenge.player2_name}
-                                </AvatarFallback>
-                              </Avatar>
-                              <div>
-                                <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
-                                <div className="flex items-center space-x-2 text-sm text-primary/80">
-                                  <Trophy className="w-4 h-4" />
-                                  <span>Rank: #</span>
+                          {challenge.player1==publicKey && ( 
+                            <>
+                              <div className="flex items-center space-x-4 mb-4">
+                                <Avatar className="w-16 h-16 border-2 border-primary">
+                                  <AvatarImage src={challenge.player2_avatar} />
+                                  <AvatarFallback className="bg-primary/20 text-primary">
+                                    {challenge.player2_name}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
+                                  <div className="flex items-center space-x-2 text-sm text-primary/80">
+                                    <Trophy className="w-4 h-4" />
+                                    <span>Rank: #</span>
+                                  </div>
                                 </div>
                               </div>
-                            </div>
+                            </>
+                          )}
+                          {challenge.player2==publicKey && ( 
+                            <>
+                              <div className="flex items-center space-x-4 mb-4">
+                                <Avatar className="w-16 h-16 border-2 border-primary">
+                                  <AvatarImage src={challenge.player1_avatar} />
+                                  <AvatarFallback className="bg-primary/20 text-primary">
+                                    {challenge.player1_name}
+                                  </AvatarFallback>
+                                </Avatar>
+                                <div>
+                                  <h3 className="text-lg font-bold text-primary">{challenge.player1_name}</h3>
+                                  <div className="flex items-center space-x-2 text-sm text-primary/80">
+                                    <Trophy className="w-4 h-4" />
+                                    <span>Rank: #</span>
+                                  </div>
+                                </div>
+                              </div>
+                            </>
+                          )}
+                            
+
                             <div className="space-y-2 mb-4">
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
@@ -1387,10 +1436,10 @@ const EsportsPage: React.FC = () => {
                                   )}</span>
                                 </div>
                                 {challenge.player1==publicKey && (
-                                <Badge className="bg-primary/20 text-primary">W:{challenge.player2_records.wins}  - L:{challenge.player2_records.losses} </Badge>
+                                <Badge className="bg-primary/20 text-primary">W: {challenge.opponent_records.wins}  - L: {challenge.opponent_records.losses} </Badge>
                                 )}
                               {challenge.player2==publicKey && (
-                                <Badge className="bg-primary/20 text-primary">W:{challenge.player1_records.wins}  - L:{challenge.player1_records.losses} </Badge>
+                                <Badge className="bg-primary/20 text-primary">W: {challenge.opponent_records.wins}  - L: {challenge.opponent_records.losses} </Badge>
                                 )}
                               </div>
                             </div>
@@ -1399,11 +1448,11 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
                                 <div className="flex items-center space-x-1">
                                   <Zap className="w-3 h-3" />
-                                  <span>Win Streak: {challenge.player2_records.win_streak} </span>
+                                  <span>Win Streak: {challenge.opponent_records.win_streak} </span>
                                 </div>
                                 <div className="flex items-center space-x-1">
                                   <Swords className="w-3 h-3" />
-                                  <span>Loss Streak: {challenge.player2_records.loss_streak} </span>
+                                  <span>Loss Streak: {challenge.opponent_records.loss_streak} </span>
                                 </div>
                               </div>
                             </>
@@ -1414,11 +1463,11 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
                                 <div className="flex items-center space-x-1">
                                   <Zap className="w-3 h-3" />
-                                  <span>Win Streak: {challenge.player1_records.win_streak} </span>
+                                  <span>Win Streak: {challenge.opponent_records.win_streak} </span>
                                 </div>
                                 <div className="flex items-center space-x-1">
                                   <Swords className="w-3 h-3" />
-                                  <span>Loss Streak: {challenge.player1_records.loss_streak} </span>
+                                  <span>Loss Streak: {challenge.opponent_records.loss_streak} </span>
                                 </div>
                               </div>
                             </>
@@ -1538,6 +1587,7 @@ const EsportsPage: React.FC = () => {
                   onSubmit={submitScore}
                   player1Name={selectedChallenge?.player1_name || "Player 1"}
                   player2Name={selectedChallenge?.player2_name || "Player 2"}
+                  
                 />
                 <ConfirmScoreModal
                   isOpen={showConfirmScoreModal}
@@ -1551,6 +1601,7 @@ const EsportsPage: React.FC = () => {
                   player2Name={selectedChallenge?.player2_name}
                   initialPlayer1Score={selectedChallenge?.player1score}
                   initialPlayer2Score={selectedChallenge?.player2score}
+                  isScoring = {isScoring}
                 />
 
                 <DisputeScoreModal
@@ -1590,7 +1641,7 @@ const EsportsPage: React.FC = () => {
                           <div className="text-right">
                             <p className="font-semibold">{game.amount} SOL</p>
                             <p className="text-sm text-muted-foreground">
-                              Opponent: {game.player1 === publicKey!.toString() ? game.player2 : game.player1}
+                              Opponent: {game.player1 === publicKey!.toString() ? game.player2_name : game.player1_name}
                             </p>
                           </div>
                         </div>
@@ -1601,6 +1652,16 @@ const EsportsPage: React.FC = () => {
                           <Badge variant={game.player1score > game.player2score ? "success" : "destructive"}>
                             {game.player1score > game.player2score ? "Won" : "Lost"}
                           </Badge>
+                        </div>
+                        <div className="mt-2 flex justify-between items-center">
+                          <a
+                            href={`https://solscan.io/tx/${game.txid}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:underline"
+                          >
+                            proof of payment
+                          </a>
                         </div>
                       </li>
                     ))}

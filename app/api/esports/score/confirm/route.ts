@@ -21,8 +21,8 @@ const fetchUserData = async (publicKey: string) => {
   return data
 }
 
-const fetchGameData = async (id: string) => {
-  const { data, error: fetchError } = await supabase.from("esports").select("*").eq("id", id).single()
+const fetchGameData = async (game_id: string) => {
+  const { data, error: fetchError } = await supabase.from("esports").select("*").eq("game_id", game_id).single()
   
   if (fetchError) {
     console.error(`Error fetching game data`)
@@ -52,12 +52,14 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
     const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
     const senderKeypair = Keypair.fromSecretKey(secretKey);
     const receiverPubKey = new PublicKey(toAddress);
-        
+    
+    const lamports = Math.round(amount * 10 ** 9);
+    console.log(lamports)
     const transaction = new Transaction().add(
         SystemProgram.transfer({
             fromPubkey: senderKeypair.publicKey,
             toPubkey: receiverPubKey,
-            lamports: amount * 1e9, // Convert SOL to lamports
+            lamports: lamports, // Convert SOL to lamports
         }),
     )
     
@@ -66,7 +68,7 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
         transaction,
         [senderKeypair]
     );
-    console.log(signature)
+    // console.log(signature)
     return signature
 
   } catch (error) {
@@ -92,7 +94,9 @@ const transferToken = async (fromPrivateKey: string, toAddress: string, amount: 
   return signature
 }
 
-const updateEsportsRecord = async (publicKey: string, game: string, isWinner: boolean) => {
+const updateEsportsRecord = async (publicKey: string, game: string, isWinner: boolean, amount:number) => {
+  
+  let earnings = 0;
   const { data, error } = await supabase
     .from("esports_records")
     .select("*")
@@ -106,13 +110,20 @@ const updateEsportsRecord = async (publicKey: string, game: string, isWinner: bo
   }
 
   if (data) {
+    if(isWinner){
+      earnings = data.total_earnings + amount
+    }else{
+      earnings = data.total_earnings - amount
+
+    }
     const { error: updateError } = await supabase
       .from("esports_records")
       .update({
         wins: isWinner ? data.wins + 1 : data.wins,
         losses: isWinner ? data.losses : data.losses + 1,
         win_streak: isWinner ? data.win_streak + 1 : 0,
-        loss_streak: isWinner ? data.loss_streak + 1 : 0
+        loss_streak: isWinner ? 0 : data.loss_streak + 1,
+        total_earnings: earnings
       })
       .eq("public_key", publicKey)
       .eq("game", game)
@@ -127,7 +138,8 @@ const updateEsportsRecord = async (publicKey: string, game: string, isWinner: bo
       wins: isWinner ? 1 : 0,
       losses: isWinner ? 0 : 1,
       win_streak: isWinner ? 1 : 0,
-      loss_streak: isWinner ? 1 : 0
+      loss_streak: isWinner ? 0 : 1,
+      total_earnings: isWinner ? amount : - amount
     })
 
     if (insertError) {
@@ -139,6 +151,7 @@ const updateEsportsRecord = async (publicKey: string, game: string, isWinner: bo
 export async function POST(req: Request) {
   try {
     const { game_id } = await req.json()
+    // console.log(game_id)
     const gameData = await fetchGameData(game_id)
     let signature:any;
 
@@ -159,8 +172,8 @@ export async function POST(req: Request) {
     }
 
     const { wallet_fee, fee_esports }:any = platformSettings
-    let fee = fee_esports/100
-    const gameFee = gameData.amount * fee
+    const gameFee = parseFloat(gameData.fee)
+    console.log(gameFee)
     const player1Data = await fetchUserData(gameData.player1)
     const player2Data = await fetchUserData(gameData.player2)
 
@@ -169,8 +182,9 @@ export async function POST(req: Request) {
     }
 
     const winner = gameData.player1score > gameData.player2score ? gameData.player1 : gameData.player2
+    console.log(winner)
     const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1
-
+    const winnerWallet = gameData.player1score > gameData.player2score ? player1Data.deposit_wallet : player2Data.deposit_wallet
     // Deduct fees from both players
     const player1PrivateKey = CryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
     const player2PrivateKey = CryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
@@ -180,26 +194,28 @@ export async function POST(req: Request) {
       
      let p1_fee_txid = await transferSOL(player1PrivateKey, wallet_fee, gameFee)
      if(p1_fee_txid){
-        const { error: updateError } = await supabase.from("esports").update({ player1_fee_txid: p1_fee_txid}).eq("id", game_id)
+        const { error: updateError } = await supabase.from("esports").update({ player1_fee_txid: p1_fee_txid}).eq("game_id", game_id)
         if(!updateError){
             let p2_fee_txid =  await transferSOL(player2PrivateKey, wallet_fee, gameFee)
-            const { error: updateError } = await supabase.from("esports").update({ player2_fee_txid: p2_fee_txid}).eq("id", game_id)
+            const { error: updateError } = await supabase.from("esports").update({ player2_fee_txid: p2_fee_txid}).eq("game_id", game_id)
             if(updateError){
                 return NextResponse.json({ success: false, message: "error collecting player 2 fee" })
-
+    
             }
         }else{
             return NextResponse.json({ success: false, message: "error collecting player 1 fee" })
-
+        
         }
      }
    
       // Transfer the game amount to the winner
-      const winnerPrivateKey = winner === gameData.player1 ? player1PrivateKey : player2PrivateKey
+      let finalAmount = parseFloat(gameData.amount)
+      // console.log(finalAmount, gameData.amount)
+      const loserPrivateKey = winner === gameData.player1 ? player2PrivateKey : player1PrivateKey
       signature =  await transferSOL(
-        winner === gameData.player1 ? player2PrivateKey : player1PrivateKey,
-        winner,
-        gameData.amount - gameFee
+        loserPrivateKey,
+        winnerWallet,
+        gameData.amount
       )
       if(!signature){
         return NextResponse.json({ success: false, message: "error paying winner" })
@@ -221,11 +237,11 @@ export async function POST(req: Request) {
     }
     // console.log(signature)
     // // Update esports records
-    await updateEsportsRecord(winner, gameData.game, true)
-    await updateEsportsRecord(loser, gameData.game, false)
+    await updateEsportsRecord(winner, gameData.game, true, gameData.amount)
+    await updateEsportsRecord(loser, gameData.game, false, gameData.amount)
     
     // Update game status to completed
-    const { error: updateError } = await supabase.from("esports").update({ txid: signature, status: 4 }).eq("id", game_id)
+    const { error: updateError } = await supabase.from("esports").update({ txid: signature, status: 9 }).eq("game_id", game_id)
     
     if (updateError) {
       console.error("Error updating game status:", updateError)

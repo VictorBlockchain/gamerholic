@@ -22,14 +22,16 @@ export function WalletDisplay() {
 
   const fetchBalances = async () => {
     try {
+      const { data:user, error:userError } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+      
       // Fetch SOL balance
-      let solBalance = await BALANCE.getBalance(publicKey);
+      let solBalance = await BALANCE.getBalance(user.deposit_wallet);
       if (solBalance > 0) {
         setSolBalance(solBalance / 1_000_000_000);
       }
 
       // Fetch GAMER token balance
-      let gamerBalance = await BALANCE.getTokenBalance(publicKey, GAMER);
+      let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
       if (gamerBalance > 0) {
         setGamerBalance(gamerBalance / 1_000_000_000);
       }
@@ -39,6 +41,7 @@ export function WalletDisplay() {
   };
 
   const toggleBalance = () => {
+    fetchBalances()
     setShowSol((prev) => !prev); // Toggle between showing SOL and GAMER balance
   };
 

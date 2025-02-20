@@ -36,7 +36,7 @@ import {
 
     const [player1Score, setPlayer1Score] = useState<number>(initialPlayer1Score)
     const [player2Score, setPlayer2Score] = useState<number>(initialPlayer2Score)
-      console.log(player1Name, player2Name, initialPlayer1Score, initialPlayer2Score)
+      // console.log(player1Name, player2Name, initialPlayer1Score, initialPlayer2Score)
     return (
     
       <Dialog open={isOpen} onOpenChange={onClose}>
@@ -47,7 +47,16 @@ import {
               Confirm Match Score
             </DialogTitle>
             <DialogDescription className="text-primary/70">
-              Please confirm the reported score for your match.
+             <div className="flex justify-centre items-center mb-4">
+              <div className="text-2xl font-bold text-green-400 text-center">Winner:  
+                {player1Score>player2Score && (
+                  <span>{player1Name}</span>
+                )}
+                {player2Score>player1Score && (
+                  <span>{player2Name}</span>
+                )}
+              </div>
+             </div>
             </DialogDescription>
           </DialogHeader>
           <div className="py-4">
@@ -61,21 +70,14 @@ import {
             </div>
           </div>
           <DialogFooter className="flex flex-col sm:flex-row gap-2">
-            {/* {alert(player1Name)} */}
-            {/* <Button
-              type="button"
-              variant="outline"
-              onClick={onClose}
-              className="bg-background/50 border-primary/20 text-primary hover:bg-primary/20"
-            >
-              <X className="w-4 h-4 mr-2" />
-              Close
-            </Button> */}
+
             {isScoring && (
               <>
-                <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
-                <p className="text-2xl font-bold ml-4">confirming score...</p>
-              </>
+                  <div className="flex flex-col items-center justify-center py-4">
+                    <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
+                    {/* <p className="text-2xl font-bold mt-4">confirming score...</p> */}
+                  </div>              
+                  </>
             )}
             {!isScoring && (
               <>
