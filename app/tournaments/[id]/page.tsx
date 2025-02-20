@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Gamepad, Calendar, Users, Trophy, DollarSign, User, Book } from "lucide-react"
+import { Gamepad, Calendar, Users, Trophy, User, Book, Swords, Zap } from "lucide-react"
 import { ReportScoreModal } from "@/components/report-score-modal"
 import { Header } from "@/components/header"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -17,7 +17,9 @@ import { updateTournamentBracket } from "@/lib/tournament-utils"
 import { EditTournamentModal } from "@/components/tournament-edit-modal"
 import { CancelTournamentModal } from "@/components/tournament-cancel-modal"
 import { JoinTournamentModal } from "@/components/tournament-join-modal"
-const moment = require("moment");
+const moment = require("moment")
+// Add this function after the existing imports
+import { shuffle } from "lodash"
 
 interface Tournament {
   game_id: number
@@ -32,7 +34,7 @@ interface Tournament {
   rules: string
   start_date: string
   start_time: string
-  prize_type: string
+  money: number
   max_players: number
   image_url: string
   status: "upcoming" | "in-progress" | "completed" | "paid"
@@ -77,11 +79,68 @@ interface Payment {
   transaction_hash: string | null
 }
 
+// Add this function before the TournamentPage component
+async function startTournament(tournamentId: number) {
+  try {
+    // Fetch all players in the tournament
+    const { data: players, error: playersError } = await supabase
+      .from("tournament_players")
+      .select("player_id")
+      .eq("tournament_id", tournamentId)
+
+    if (playersError) throw playersError
+
+    // Check if the number of players is a power of 2
+    const playerCount = players.length
+    if (playerCount < 2 || (playerCount & (playerCount - 1)) !== 0) {
+      throw new Error("Invalid number of players. Must be a power of 2 (2, 4, 8, 16, etc.)")
+    }
+
+    // Shuffle players to randomize matchups
+    const shuffledPlayers = shuffle(players.map((p) => p.player_id))
+
+    // Calculate the number of rounds based on the number of players
+    const numRounds = Math.ceil(Math.log2(shuffledPlayers.length))
+
+    // Create matches for the first round
+    const matches = []
+    for (let i = 0; i < shuffledPlayers.length; i += 2) {
+      matches.push({
+        tournament_id: tournamentId,
+        round: 1,
+        match_order: Math.floor(i / 2) + 1,
+        player1_id: shuffledPlayers[i],
+        player2_id: shuffledPlayers[i + 1] || null, // Handle odd number of players
+        match_date: new Date().toISOString(),
+      })
+    }
+
+    // Insert matches into the tournament_matches table
+    const { error: matchesError } = await supabase.from("tournament_matches").insert(matches)
+
+    if (matchesError) throw matchesError
+
+    // Update tournament status to "in-progress"
+    const { error: updateError } = await supabase
+      .from("tournaments")
+      .update({ status: "in-progress" })
+      .eq("game_id", tournamentId)
+
+    if (updateError) throw updateError
+
+    console.log("Tournament started successfully")
+    return true
+  } catch (error) {
+    console.error("Error starting tournament:", error)
+    return false
+  }
+}
+
 export default function TournamentPage() {
   const params = useParams()
   const { publicKey } = useWallet()
   const [tournament, setTournament] = useState<Tournament | null>(null)
-  const [tournamentWallet, setTournamentWallet]:any = useState(null)
+  const [tournamentWallet, setTournamentWallet]: any = useState(null)
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [results, setResults] = useState<TournamentResult[]>([])
@@ -101,7 +160,8 @@ export default function TournamentPage() {
   const [isEditModalOpen, setIsEditModalOpen] = useState(false)
   const [isCancelModalOpen, setIsCancelModalOpen] = useState(false)
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
-  const [isDropdownOpen, setIsDropdownOpen] = useState(false);
+  const [isJoining, setIsJoining] = useState(false)
+  const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   useEffect(() => {
     fetchTournamentData()
   }, [])
@@ -115,7 +175,7 @@ export default function TournamentPage() {
         .select("*")
         .eq("game_id", params.id)
         .single()
-      
+
       if (tournamentError) throw tournamentError
 
       const { data: tournamentWallet, error: tournamentWalletError } = await supabase
@@ -123,7 +183,7 @@ export default function TournamentPage() {
         .select("*")
         .eq("tournament_id", params.id)
         .single()
-      
+
       if (tournamentWalletError) throw tournamentWalletError
 
       const { data: matchesData, error: matchesError } = await supabase
@@ -148,7 +208,29 @@ export default function TournamentPage() {
         .select("publicKey, username, avatar_url")
         .in("publicKey", playerIds)
 
+      console.log(playerDetails)
       if (playerDetailsError) throw playerDetailsError
+
+      const { data: esportsRecordsData, error: esportsRecordsError } = await supabase
+        .from("esports_records")
+        .select("public_key, wins, losses, win_streak, loss_streak")
+        .in("public_key", playerIds)
+        .eq("game", tournamentData.game) // Filter by the game from tournamentData
+
+      if (esportsRecordsError) {
+        throw esportsRecordsError
+      }
+      const playersWithRecords = playerDetails.map((player) => {
+        const playerRecord = esportsRecordsData.find((record) => record.public_key === player.publicKey)
+
+        return {
+          ...player,
+          wins: playerRecord?.wins || 0,
+          losses: playerRecord?.losses || 0,
+          win_streak: playerRecord?.win_streak || 0,
+          loss_streak: playerRecord?.loss_streak || 0,
+        }
+      })
 
       const { data: hostData, error: hostError } = await supabase
         .from("users")
@@ -193,7 +275,7 @@ export default function TournamentPage() {
 
       setTournament(tournamentData)
       setMatches(matchesData)
-      setPlayers(playerDetails)
+      setPlayers(playersWithRecords)
       setHost(hostData)
       setTournamentWallet(tournamentWallet)
     } catch (error) {
@@ -218,7 +300,7 @@ export default function TournamentPage() {
       }
 
       setIsUpdating(true)
-      const winnerId = player1Score > player2Score ? selectedMatch.player1_id : selectedMatch.player2_id
+      const winnerId:any = player1Score > player2Score ? selectedMatch.player1_id : selectedMatch.player2_id
       try {
         const { error: updateError } = await supabase
           .from("tournament_matches")
@@ -294,8 +376,9 @@ export default function TournamentPage() {
 
   const confirmJoinTournament = async () => {
     if (!publicKey || !tournament) return
-    
-    setIsUpdating(true)
+
+    // setIsUpdating(true)
+    setIsJoining(true)
     try {
       const response = await fetch("/api/esports/tournament/join", {
         method: "POST",
@@ -308,23 +391,24 @@ export default function TournamentPage() {
         }),
       })
       const data = await response.json()
-      
+
       if (!data.success) {
         setErrorMessage(data.message)
         setShowErrorModal(true)
-      }else{
+      } else {
+        setIsJoinModalOpen(false)
         setSuccessMessage("You have successfully joined the tournament!")
         setShowSuccessModal(true)
+        
         await fetchTournamentData()
-      
       }
-
     } catch (error) {
-      // console.error("Error joining tournament:", error)
-      // setErrorMessage("Failed to join the tournament. Please try again.")
-      // setShowErrorModal(true)
+      console.error("Error joining tournament:", error)
+      setErrorMessage("Failed to join the tournament. Please try again.")
+      setShowErrorModal(true)
     } finally {
-      setIsUpdating(false)
+      // setIsUpdating(false)
+      setIsJoining(false)
     }
   }
 
@@ -358,14 +442,12 @@ export default function TournamentPage() {
       setIsUpdating(false)
     }
   }
-  
+
   const handleCancelTournament = async () => {
-    
     setIsCancelModalOpen(true)
   }
 
   const handleJoinTournament = async () => {
-    
     setIsJoinModalOpen(true)
   }
 
@@ -396,6 +478,28 @@ export default function TournamentPage() {
     } finally {
       setIsUpdating(false)
       setIsCancelModalOpen(false)
+    }
+  }
+
+  // Add this function inside the TournamentPage component
+  const handleStartTournament = async () => {
+    if (tournament && tournament.status === "upcoming") {
+      setIsUpdating(true)
+      try {
+        const success = await startTournament(tournament.game_id)
+        if (success) {
+          setSuccessMessage("Tournament started successfully!")
+          setShowSuccessModal(true)
+          await fetchTournamentData()
+        } else {
+          throw new Error("Failed to start the tournament")
+        }
+      } catch (error) {
+        setErrorMessage(error.message || "Failed to start the tournament. Please try again.")
+        setShowErrorModal(true)
+      } finally {
+        setIsUpdating(false)
+      }
     }
   }
 
@@ -451,10 +555,17 @@ export default function TournamentPage() {
 
   if (isLoading) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
-        <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
-        <p className="text-2xl font-bold ml-4">Loading tournament...</p>
-      </div>
+      <>
+            <Header />
+            <main className="container mx-auto px-4 py-8">
+
+            <div className="min-h-screen bg-gradient-to-br from-gray-900 to-black text-white flex items-center justify-center">
+            <div className="w-16 h-16 border-4 border-dashed rounded-full animate-spin border-violet-400"></div>
+            <p className="text-2xl font-bold ml-4">Loading tournament...</p>
+          </div>      
+          </main>
+      </>
+    
     )
   }
 
@@ -518,14 +629,23 @@ export default function TournamentPage() {
               </h2>
               <div className="text-6xl font-bold flex items-center">
                 {/* <DollarSign className="w-12 h-12 mr-2" /> */}
-                {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)).toLocaleString()} {tournament.prize_type=="GAMEr" && ('GAMEr')} {tournament.prize_type=="Solana" && ('SOL')}
+                {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)).toLocaleString()}{" "}
+                {tournament.prize_type == "GAMEr" && "GAMEr"} {tournament.prize_type == "Solana" && "SOL"}
               </div>
               <div className="mt-4">
                 <p>1st Place: {tournament.first_place_percentage}%</p>
                 <p>2nd Place: {tournament.second_place_percentage}%</p>
                 <p>3rd Place: {tournament.third_place_percentage}%</p>
-                <p>wallet: <b><a href={`https://solscan.io/account/${tournamentWallet.public_key}`} target="_blank" rel="noopener noreferrer">{`${tournamentWallet.public_key.slice(0, 4)}...${tournamentWallet.public_key.slice(-4)}`}</a></b></p>
-
+                <p>
+                  wallet:{" "}
+                  <b>
+                    <a
+                      href={`https://solscan.io/account/${tournamentWallet.public_key}`}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >{`${tournamentWallet.public_key.slice(0, 4)}...${tournamentWallet.public_key.slice(-4)}`}</a>
+                  </b>
+                </p>
               </div>
             </CardContent>
           </Card>
@@ -554,7 +674,8 @@ export default function TournamentPage() {
                   {/* Dropdown Button */}
                   <Button
                     onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-                   className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-black font-bold w-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl">
+                    className="px-6 py-3 bg-gradient-to-r from-yellow-400 to-orange-500 hover:from-yellow-500 hover:to-orange-600 text-black font-bold w-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+                  >
                     Actions
                     <svg
                       className="-mr-1 ml-2 h-5 w-5 text-white"
@@ -570,7 +691,7 @@ export default function TournamentPage() {
                       />
                     </svg>
                   </Button>
-                        
+
                   {/* Dropdown Menu */}
                   {isDropdownOpen && (
                     <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
@@ -578,20 +699,20 @@ export default function TournamentPage() {
                         {/* Edit Tournament Option */}
                         <button
                           onClick={() => {
-                            setIsEditModalOpen(true);
-                            setIsDropdownOpen(false); // Close the dropdown after selection
+                            setIsEditModalOpen(true)
+                            setIsDropdownOpen(false) // Close the dropdown after selection
                           }}
                           className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 w-full text-left"
                           role="menuitem"
                         >
                           Edit Tournament
                         </button>
-                        
+
                         {/* Cancel Tournament Option */}
                         <button
                           onClick={() => {
-                            handleCancelTournament();
-                            setIsDropdownOpen(false); // Close the dropdown after selection
+                            handleCancelTournament()
+                            setIsDropdownOpen(false) // Close the dropdown after selection
                           }}
                           className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 w-full text-left"
                           role="menuitem"
@@ -620,27 +741,103 @@ export default function TournamentPage() {
           </Card>
         </div>
 
-        {tournament.status === "upcoming" && players.length < tournament.max_players && publicKey && (
+        {tournament.status === "upcoming" &&
+          players.length < tournament.max_players &&
+          publicKey &&
+          !players.some((player) => player.publicKey === publicKey.toString()) && (
+            <Button
+              onClick={handleJoinTournament}
+              className="w-full mb-8 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-4 text-xl"
+              disabled={isUpdating}
+            >
+              {isUpdating ? "Joining..." : "Join Tournament"}
+            </Button>
+          )}
+        {tournament.status === "upcoming" && (isAdmin || isCreator) && (
           <Button
-            onClick={handleJoinTournament}
+            onClick={handleStartTournament}
             className="w-full mb-8 bg-gradient-to-r from-green-500 to-blue-500 hover:from-green-600 hover:to-blue-600 text-white font-bold py-4 text-xl"
-            disabled={isUpdating}
+            disabled={isUpdating || players.length < 2 || (players.length & (players.length - 1)) !== 0}
           >
-            {isUpdating ? "Joining..." : "Join Tournament"}
+            {isUpdating ? "Starting Tournament..." : "Start Tournament"}
           </Button>
         )}
-
-        <h2 className="text-3xl font-bold mb-8">Tournament Bracket</h2>
-        <div className="overflow-x-auto">
-          <div className="flex space-x-8 pb-8">
-            {Array.from({ length: Math.ceil(Math.log2(tournament.max_players)) }, (_, roundIndex) => (
-              <div key={roundIndex} className="flex flex-col space-y-4">
-                <h3 className="text-xl font-semibold mb-4">Round {roundIndex + 1}</h3>
-                {renderBracket(roundIndex + 1)}
+        {tournament.status != "upcoming" && (
+          <>
+            <h2 className="text-3xl font-bold mb-8">Tournament Bracket</h2>
+            <div className="overflow-x-auto">
+              <div className="flex space-x-8 pb-8">
+                {Array.from({ length: Math.ceil(Math.log2(tournament.max_players)) }, (_, roundIndex) => (
+                  <div key={roundIndex} className="flex flex-col space-y-4">
+                    <h3 className="text-xl font-semibold mb-4">Round {roundIndex + 1}</h3>
+                    {renderBracket(roundIndex + 1)}
+                  </div>
+                ))}
               </div>
+            </div>
+          </>
+        )}
+
+      {players.length > 0 ? (
+        <>
+        <h2 className="text-3xl font-bold mb-8">Players</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {players.map((player: any) => (
+              <Card
+                key={player.publicKey}
+                className="bg-black/50 border-primary/30 overflow-hidden transform transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-primary/20"
+              >
+                <div className="relative">
+                  <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 z-0"></div>
+                  <CardContent className="relative z-10 p-6">
+                    <>
+                      <div className="flex items-center space-x-4 mb-4">
+                        <Avatar className="w-16 h-16 border-2 border-primary">
+                          <AvatarImage src={player.avatar_url} />
+                          <AvatarFallback className="bg-primary/20 text-primary">{player.username}</AvatarFallback>
+                        </Avatar>
+                        <div>
+                          <h3 className="text-lg font-bold text-primary">{player.username}</h3>
+                          <div className="flex items-center space-x-2 text-sm text-primary/80">
+                            <Trophy className="w-4 h-4" />
+                            <span>Rank: #</span>
+                          </div>
+                        </div>
+                      </div>
+                    </>
+
+                    <div className="space-y-2 mb-4">
+                      <div className="flex justify-between items-center">
+                        <Badge className="bg-primary/20 text-primary">
+                          W: {player.wins} - L: {player.losses}{" "}
+                        </Badge>
+                      </div>
+                    </div>
+                    <>
+                      <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
+                        <div className="flex items-center space-x-1">
+                          <Zap className="w-3 h-3" />
+                          <span>Win Streak: {player.win_streak} </span>
+                        </div>
+                        <div className="flex items-center space-x-1">
+                          <Swords className="w-3 h-3" />
+                          <span>Loss Streak: {player.loss_streak} </span>
+                        </div>
+                      </div>
+                    </>
+                  </CardContent>
+                </div>
+              </Card>
             ))}
           </div>
-        </div>
+          </>
+        ) : (
+          <div className="text-center py-12">
+            <p className="text-2xl font-bold text-primary mb-4">No Players Joined</p>
+            <p className="text-muted-foreground mb-8">Take The Lead, Be The 1st To Join</p>
+          </div>
+        )}
+
 
         <ReportScoreModal
           isOpen={isReportScoreModalOpen}
@@ -672,6 +869,8 @@ export default function TournamentPage() {
           tournamentId={tournament.game_id}
           tournamentName={tournament?.title || ""}
           entryFee={tournament.entry_fee}
+          money={tournament.money}
+          isJoining={isJoining}
         />
       </main>
     </div>

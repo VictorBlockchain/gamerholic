@@ -27,7 +27,7 @@ export async function POST(req: Request) {
     if (!data) {
       const keypair = Keypair.generate();
       const privateKeyHex = Buffer.from(keypair.secretKey).toString("hex");
-
+      
       // Encrypt the private key using the unified encryption function
       const { iv, encrypted } = CryptoManager.encrypt(privateKeyHex);
 

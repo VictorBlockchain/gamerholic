@@ -20,6 +20,8 @@ interface JoinTournamentModalProps {
   tournamentId: number
   tournamentName: string
   entryFee: number
+  money:number
+  isJoining:boolean
 }
 
 export function JoinTournamentModal({
@@ -28,10 +30,11 @@ export function JoinTournamentModal({
   onConfirm,
   tournamentId,
   tournamentName,
-  entryFee
+  entryFee,
+  money,
+  isJoining
 }: JoinTournamentModalProps) {
   const { toast } = useToast()
-  const [isJoining, setIsJoining] = useState(false)
   const { publicKey }:any = useWallet()
 
 
@@ -43,8 +46,10 @@ export function JoinTournamentModal({
           <DialogDescription>Are you sure you want to join the tournament "{tournamentName}"?</DialogDescription>
         </DialogHeader>
         <div className="grid gap-4 py-4">
-          <p>Entry Fee: {entryFee} GAME tokens</p>
-          <p>Please ensure you have enough GAME tokens in your wallet before joining.</p>
+          <p>Entry Fee: {entryFee} {money==1 && (<span>SOL</span>)} {money==2 && (<span>GAMER</span>)}</p>
+          <p>Please ensure you have enough in your deposit wallet before joining.</p>
+          <p>By joining you agree to the rules of the tournament. Not playing a match will lead to your forfeit. Entry fee is not refundable unless the tournament is canceled.</p>
+
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>

@@ -71,7 +71,7 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({
   useEffect(() => {
     scrollToBottom();
   }, [messages]);
-
+  
   const scrollToBottom = () => {
     if (scrollAreaRef.current) {
       const scrollContainer = scrollAreaRef.current.querySelector("[data-radix-scroll-area-viewport]");

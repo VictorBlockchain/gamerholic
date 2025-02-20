@@ -6,11 +6,11 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
-import { Gamepad, Calendar, Users, Trophy } from "lucide-react"
+import { Gamepad, Calendar, Users, Trophy, PlusCircle } from "lucide-react"
 import { JoinTournamentModal } from "./tournament-join-modal"
 import Link from "next/link"
 import { supabase } from "@/lib/supabase"
-const moment = require("moment");
+import moment from "moment"
 
 interface Tournament {
   game_id: number
@@ -40,7 +40,11 @@ export function TournamentList() {
   const fetchTournaments = async () => {
     setIsLoading(true)
     try {
-      const { data, error } = await supabase.from("tournaments").select("*").order("start_date", { ascending: true })
+      const { data, error } = await supabase
+        .from("tournaments")
+        .select("*")
+        .neq("status", "completed") // Exclude tournaments with status 'completed'
+        .order("start_date", { ascending: true })
 
       if (error) throw error
 
@@ -67,7 +71,32 @@ export function TournamentList() {
   }
 
   if (isLoading) {
-    return <div>Loading tournaments...</div>
+    return <div className="text-center py-8">Loading tournaments...</div>
+  }
+
+  if (tournaments.length === 0) {
+    return (
+      <Card className="bg-card/50 backdrop-blur-sm border-primary/20 p-8 text-center">
+        <CardHeader>
+          <CardTitle className="text-3xl mb-4">No Tournaments Available</CardTitle>
+        </CardHeader>
+        <CardContent>
+          <p className="text-lg mb-6">
+            There are no tournaments at the moment, but you can create one! As a tournament host, you'll earn 18% of the
+            entry fees.
+          </p>
+          <p className="text-md mb-8">Create tournaments for Solana or GAMEr tokens and start earning today!</p>
+
+          <Button
+            className="text-lg px-6 py-3"
+            onClick={() => document.dispatchEvent(new CustomEvent("switchToCreateTournament"))}
+          >
+            <PlusCircle className="mr-2 h-5 w-5" />
+            Create a Tournament
+          </Button>
+        </CardContent>
+      </Card>
+    )
   }
 
   return (
@@ -109,7 +138,10 @@ export function TournamentList() {
               </div>
               <div className="flex items-center">
                 <Trophy className="w-4 h-4 mr-2" />
-                <span>Prize Pool: {calculatePrizePool(tournament).toFixed(2)} {tournament.prize_type=='Solana' && ('SOL')} {tournament.prize_type=='GAMEr' && ('GAMEr')}</span>
+                <span>
+                  Prize Pool: {calculatePrizePool(tournament).toFixed(2)}{" "}
+                  {tournament.prize_type === "Solana" ? "SOL" : "GAMEr"}
+                </span>
               </div>
             </div>
             <div className="flex space-x-2 mt-4">

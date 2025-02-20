@@ -1,46 +1,62 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
-import { Keypair, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
+import { Keypair, Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js"
 import { createTransferInstruction, getOrCreateAssociatedTokenAccount } from "@solana/spl-token"
-import { sendAndConfirmTransaction, createConnection } from "@/lib/solana"
+import { sendAndConfirmTransaction } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 
-const connection = createConnection("https://api.mainnet-beta.solana.com")
+const connection: any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
 const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
 
 CryptoManager.initialize()
 
-async function getWalletKeypair(tournamentId: number): Promise<Keypair> {
+async function getWalletKeypair(tournamentId: number): Promise<any> {
   const { data: wallet, error } = await supabase.from("wallets").select("*").eq("tournament_id", tournamentId).single()
 
   if (error) throw new Error(`Failed to fetch wallet for tournament ${tournamentId}: ${error.message}`)
   if (!wallet) throw new Error(`No wallet found for tournament ${tournamentId}`)
 
   const privateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
-  return Keypair.fromSecretKey(Buffer.from(JSON.parse(privateKey)))
+  return privateKey
 }
 
-async function transferSOL(fromKeypair: Keypair, toAddress: string, amount: number) {
+const fetchUserData = async (publicKey: string) => {
+  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+  
+  if (error) {
+    console.error(`Error fetching data for ${publicKey}:`, error)
+    return null
+  }
+  
+  return data
+}
+
+async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
   try {
-    const toPublicKey = new PublicKey(toAddress)
-    
+    console.log("trying to pay")
+    const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"))
+    const senderKeypair = Keypair.fromSecretKey(secretKey)
+    const receiverPubKey = new PublicKey(toAddress)
+
+    const lamports = Math.round(amount * 10 ** 9)
+    console.log(lamports)
     const transaction = new Transaction().add(
       SystemProgram.transfer({
-        fromPubkey: fromKeypair.publicKey,
-        toPubkey: toPublicKey,
-        lamports: Math.floor(amount * LAMPORTS_PER_SOL),
+        fromPubkey: senderKeypair.publicKey,
+        toPubkey: receiverPubKey,
+        lamports: lamports, // Convert SOL to lamports
       }),
     )
 
-    const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
+    const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair])
+    // console.log(signature)
     return signature
   } catch (error) {
     console.error("Error transferring SOL:", error)
     throw error
   }
 }
-
 async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: number) {
   try {
     if (!GAME_TOKEN_ADDRESS) {
@@ -49,7 +65,7 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
 
     const toPublicKey = new PublicKey(toAddress)
     const tokenMint = new PublicKey(GAME_TOKEN_ADDRESS)
-
+    
     const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
       connection,
       fromKeypair,
@@ -67,7 +83,7 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
         Math.floor(amount * Math.pow(10, 9)), // GAMEr has 9 decimals
       ),
     )
-
+    
     const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
     return signature
   } catch (error) {
@@ -76,85 +92,127 @@ async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: nu
   }
 }
 
+const fetchPlatformSettings = async () => {
+  const { data, error } = await supabase
+    .from("platform_settings")
+    .select("wallet_fee, fee_esports")
+    .eq("id", 1)
+    .single()
+  
+  if (error) {
+    console.error("Error fetching platform settings:", error)
+    return null
+  }
+  
+  return data
+}
+
 export async function POST(req: Request) {
   try {
-    const { tournamentId, winnerId } = await req.json()
-
+    const { tournamentId, winnerId } = await req.json();
+    
     // Fetch tournament details
     const { data: tournament, error: tournamentError } = await supabase
       .from("tournaments")
       .select("*")
       .eq("game_id", tournamentId)
-      .single()
-
-    if (tournamentError) throw tournamentError
-
+      .single();
+    
+    if (tournamentError) throw tournamentError;
+    
     // Get tournament wallet keypair
-    const tournamentKeypair = await getWalletKeypair(tournament.id)
-
+    const tournamentKeypair = await getWalletKeypair(tournamentId);
+    
     // Calculate prize pool and payouts
-    const totalPrizePool = tournament.entry_fee * tournament.max_players
-    const prizePool = totalPrizePool * (tournament.prize_percentage / 100)
-
-    const firstPlacePrize = prizePool * (tournament.first_place_percentage / 100)
-    const secondPlacePrize = prizePool * (tournament.second_place_percentage / 100)
-    const thirdPlacePrize = prizePool * (tournament.third_place_percentage / 100)
-    const hostPayout = totalPrizePool * 0.18 // 18% to host
-    const platformPayout = totalPrizePool * 0.07 // 7% to platform
-
+    const totalPrizePool = tournament.entry_fee * tournament.max_players;
+    const hostPayout = totalPrizePool * 0.18; // 18% to host
+    const platformPayout = totalPrizePool * 0.07; // 7% to platform
+    const remainingPrizePool = totalPrizePool - hostPayout - platformPayout;
+    
+    const numRounds = Math.log2(tournament.max_players);
+    let firstPlacePrize, secondPlacePrize, thirdPlacePrize;
+    
+    if (numRounds === 1) {
+      // Only 2 players, no third place
+      firstPlacePrize = remainingPrizePool * 0.7; // 70% to first place
+      secondPlacePrize = remainingPrizePool * 0.3; // 30% to second place
+      thirdPlacePrize = 0;
+    } else {
+      // More than 2 players, include third place
+      firstPlacePrize = remainingPrizePool * 0.5; // 50% to first place
+      secondPlacePrize = remainingPrizePool * 0.3; // 30% to second place
+      thirdPlacePrize = remainingPrizePool * 0.2; // 20% to third place
+    }
+    
+    const platformSettings = await fetchPlatformSettings();
+    if (!platformSettings) {
+      return NextResponse.json({ success: false, message: "Failed to fetch platform settings" });
+    }
+    const { wallet_fee, fee_esports }: any = platformSettings;
+    
     // Get final match details
     const { data: finalMatch, error: matchError } = await supabase
       .from("tournament_matches")
       .select("*")
       .eq("tournament_id", tournamentId)
       .eq("round", Math.log2(tournament.max_players))
-      .single()
-
-    if (matchError) throw matchError
-
+      .single();
+    
+    if (matchError) throw matchError;
+    
     // Verify winner
     if (finalMatch.winner_id !== winnerId) {
-      return NextResponse.json({ error: "Invalid winner or not the final match" }, { status: 400 })
+      return NextResponse.json({ error: "Invalid winner or not the final match" }, { status: 400 });
     }
-
+    
     // Get second and third place players
-    const secondPlaceId = finalMatch.player1_id === winnerId ? finalMatch.player2_id : finalMatch.player1_id
-
+    const secondPlaceId = finalMatch.player1_id === winnerId ? finalMatch.player2_id : finalMatch.player1_id;
+    
     const { data: semifinalMatches, error: semifinalError } = await supabase
       .from("tournament_matches")
       .select("*")
       .eq("tournament_id", tournamentId)
-      .eq("round", Math.log2(tournament.max_players) - 1)
+      .eq("round", Math.log2(tournament.max_players) - 1);
 
-    if (semifinalError) throw semifinalError
+    if (semifinalError) throw semifinalError;
 
     const thirdPlaceId = semifinalMatches
       .flatMap((match) => [match.player1_id, match.player2_id])
-      .find((id) => id !== winnerId && id !== secondPlaceId)
+      .find((id) => id !== winnerId && id !== secondPlaceId);
 
-    // Process payments based on token type
-    const transferFunction = tournament.prize_type === "GAMEr" ? transferGAMEr : transferSOL
-    const platformFeeAddress = process.env.PLATFORM_FEE_ADDRESS
-
-    if (!platformFeeAddress) {
-      throw new Error("Platform fee address not configured")
-    }
+    let winner = await fetchUserData(winnerId);
+    let winner2 = await fetchUserData(secondPlaceId);
+    let winner3;
 
     // Array of payments to process
-    const payments = [
-      { recipient: winnerId, amount: firstPlacePrize, position: 1 },
-      { recipient: secondPlaceId, amount: secondPlacePrize, position: 2 },
+    const payments: any = [
       { recipient: tournament.host_id, amount: hostPayout, position: null },
-      { recipient: platformFeeAddress, amount: platformPayout, position: null },
-    ]
+      { recipient: wallet_fee, amount: platformPayout, position: null },
+      { recipient: winner.deposit_wallet, amount: firstPlacePrize, position: 1 },
+      { recipient: winner2.deposit_wallet, amount: secondPlacePrize, position: 2 },
+    ];
 
-    if (thirdPlaceId) {
-      payments.push({ recipient: thirdPlaceId, amount: thirdPlacePrize, position: 3 })
+    if (numRounds > 1 && thirdPlaceId) {
+      winner3 = await fetchUserData(thirdPlaceId);
+      payments.push({ recipient: winner3.deposit_wallet, amount: thirdPlacePrize, position: 3 });
     }
+    
+    // Track remaining balance
+    let remainingBalance = totalPrizePool;
 
     // Process each payment
-    for (const payment of payments) {
+    for (let i = 0; i < payments.length; i++) {
+      const payment = payments[i];
+
       try {
+        // Deduct the payment amount from the remaining balance
+        remainingBalance -= payment.amount;
+
+        // If this is the last payment, adjust the amount to the remaining balance
+        if (i === payments.length - 1) {
+          payment.amount = remainingBalance;
+        }
+
         // Create payment record
         const { data: paymentRecord, error: insertError } = await supabase
           .from("payments")
@@ -163,33 +221,41 @@ export async function POST(req: Request) {
             payment_type: "tournament",
             game_id: tournamentId,
             amount: payment.amount,
-            token_type: tournament.prize_type,
-            token_address: tournament.prize_type === "GAMEr" ? GAME_TOKEN_ADDRESS : null,
+            token: tournament.money === "2" ? GAME_TOKEN_ADDRESS : '11111111111111111111111111111111',
             status: "pending",
             position: payment.position,
           })
           .select()
-          .single()
+          .single();
 
-        if (insertError) throw insertError
+        if (insertError) throw insertError;
 
         // Process the transfer
-        const signature = await transferFunction(tournamentKeypair, payment.recipient, payment.amount)
+        let signature;
+        if (tournament.money == 1) {
+          signature = await transferSOL(tournamentKeypair, payment.recipient, payment.amount);
+        } else {
+          signature = await transferGAMEr(tournamentKeypair, payment.recipient, payment.amount);
+        }
+
+        if (!signature) {
+          return NextResponse.json({ error: "Error paying winners" }, { status: 400 });
+        }
 
         // Update payment record
         const { error: updateError } = await supabase
           .from("payments")
           .update({
             status: "completed",
-            transaction_hash: signature,
-            completed_at: new Date().toISOString(),
+            txid: signature,
+            pay_date: new Date().toISOString(),
           })
-          .eq("id", paymentRecord.id)
-
-        if (updateError) throw updateError
-      } catch (error:any) {
-        console.error(`Error processing payment to ${payment.recipient}:`, error)
-
+          .eq("id", paymentRecord.id);
+        
+        if (updateError) throw updateError;
+      } catch (error: any) {
+        console.error(`Error processing payment to ${payment.recipient}:`, error);
+        
         // Update payment record with error
         await supabase
           .from("payments")
@@ -198,24 +264,16 @@ export async function POST(req: Request) {
             error_message: error.message,
           })
           .eq("user_id", payment.recipient)
-          .eq("game_id", tournamentId)
+          .eq("game_id", tournamentId);
       }
     }
-
-    // Update tournament status
-    const { error: updateError } = await supabase
-      .from("tournaments")
-      .update({ status: "completed" })
-      .eq("game_id", tournamentId)
-
-    if (updateError) throw updateError
-
+    
     return NextResponse.json({
       message: "Tournament payments processed successfully",
-    })
+    });
   } catch (error) {
-    console.error("Error processing tournament payments:", error)
-    return NextResponse.json({ error: "Failed to process tournament payments" }, { status: 500 })
+    console.error("Error processing tournament payments:", error);
+    return NextResponse.json({ error: "Failed to process tournament payments" }, { status: 500 });
   }
 }
 

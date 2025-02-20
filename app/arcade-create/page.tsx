@@ -248,7 +248,7 @@ export default function CreateGamePage() {
       
       if (!data) {
         const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
-
+        
         if (insertError) {
           console.error("Insert Error:", insertError)
         } else {

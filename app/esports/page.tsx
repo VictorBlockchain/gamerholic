@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect } from "react"
 import { Header } from "@/components/header"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription, CardFooter } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -52,7 +52,6 @@ import {
 // Add this import at the top of the file
 import { ChatPopup } from "@/components/chat-popup"
 const solana = new balanceManager()
-const GAMER = process.env.NEXT_PUBLIC_GAMER
 // Define types for chat messages, chatrooms, and esports challenges
 interface ChatMessage {
   id: string
@@ -76,7 +75,6 @@ interface EsportsChallenge {
   game: string
   console: string
   amount: number
-  money:number
   rules: string
   player1: string
   player2: string
@@ -175,7 +173,7 @@ const EsportsPage: React.FC = () => {
   const [newChatRoomName, setNewChatRoomName] = useState("")
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [newMessage, setNewMessage] = useState("")
-  const [pendingChallenges, setPendingChallenges]:any = useState<EsportsChallenge[]>([])
+  const [pendingChallenges, setPendingChallenges] = useState<EsportsChallenge[]>([])
   const [gameHistory, setGameHistory] = useState<EsportsChallenge[]>([])
   const [showChallengeModal, setShowChallengeModal] = useState(false)
   const [challengeData, setChallengeData]: any = useState<Partial<EsportsChallenge>>({})
@@ -213,10 +211,6 @@ const EsportsPage: React.FC = () => {
   const [showConfirmScoreModal, setShowConfirmScoreModal] = useState(false)
   const [showDisputeScoreModal, setShowDisputeScoreModal] = useState(false)
   const [showMutualCancelModal, setShowMutualCancelModal] = useState(false)
-  
-  const [isSending, setIsSending] = useState(false);
-  const [isScoring, setIsScoring] = useState(false)
-  const scrollRef = useRef<HTMLDivElement | null>(null);
 
   const popularGames: any = [
     "Madden NFL",
@@ -251,7 +245,7 @@ const EsportsPage: React.FC = () => {
     }
   }, [publicKey])
   const isFetching = false
-  
+
   useEffect(() => {
     if (selectedChatRoom) {
       const chatRoomSubscription = supabase
@@ -265,25 +259,16 @@ const EsportsPage: React.FC = () => {
             filter: `chatroom_id=eq.${selectedChatRoom.id}`,
           },
           (payload) => {
-            const newMessage = payload.new as ChatMessage;
-  
-            // Check if the message already exists
-            setMessages((prevMessages) => {
-              const isDuplicate = prevMessages.some((msg) => msg.id === newMessage.id);
-              if (isDuplicate) {
-                return prevMessages; // Skip adding duplicate messages
-              }
-              return [...prevMessages, newMessage]; // Add the new message
-            });
+            setMessages((prevMessages) => [...prevMessages, payload.new as ChatMessage])
           },
         )
-        .subscribe();
-  
+        .subscribe()
+
       return () => {
-        supabase.removeChannel(chatRoomSubscription);
-      };
+        supabase.removeChannel(chatRoomSubscription)
+      }
     }
-  }, [selectedChatRoom]);
+  }, [selectedChatRoom])
 
   //auto complete
   useEffect(() => {
@@ -389,9 +374,9 @@ const EsportsPage: React.FC = () => {
       console.error("Error fetching user:", error)
     }
   }
-  
+
   const fetchEsportsRecords = async () => {
-    const { data, error }: any = await supabase.from("esports_records").select("*").eq("public_key", user_id)
+    const { data, error }: any = await supabase.from("esports_records").select("*").eq("user_id", user_id)
 
     if (error) {
       console.error("Error fetching esports records:", error)
@@ -481,14 +466,10 @@ const EsportsPage: React.FC = () => {
       setNewChatRoomName("")
     }
   }
-  
-  const handleSendMessage = async () => {
 
-    if (newMessage.trim() === "" || !selectedChatRoom) return;
-  
-    // Disable further submissions until this one completes
-    setIsSending(true);
-  
+  const handleSendMessage = async () => {
+    if (newMessage.trim() === "" || !selectedChatRoom) return
+
     const { error } = await supabase.from("chat_messages").insert({
       chatroom_id: selectedChatRoom.id,
       sender_id: user_id,
@@ -496,120 +477,46 @@ const EsportsPage: React.FC = () => {
       sender_public_key: publicKey,
       sender_avatar: user_avater,
       content: newMessage,
-    });
-  
+    })
     if (error) {
-      console.error("Error sending message:", error);
+      console.error("Error sending message:", error)
       toast({
         title: "Failed to send message",
         description: "An error occurred while sending the message.",
         variant: "destructive",
-      });
+      })
     } else {
-      setNewMessage("");
-      fetchMessages(selectedChatRoom.id);
+      setNewMessage("")
+      fetchMessages(selectedChatRoom.id)
     }
-  
-    // Re-enable submission after completion
-    setIsSending(false);
-  };
-  
+  }
+
   const fetchPendingChallenges = async () => {
-    const publicKeyStr = publicKey.toString();
-  
-    // Step 1: Fetch data from the `esports` table
-    const { data: esportsData, error: esportsError } = await supabase
+    const { data, error } = await supabase
       .from("esports")
       .select("*")
-      .or(`player1.eq.${publicKeyStr},player2.eq.${publicKeyStr}`)
-      .in("status", [1, 2, 3, 4, 5, 6]);
-  
-    if (esportsError) {
-      console.error("Error fetching esports data:", esportsError);
+      .or(`player1.eq.${publicKey.toString()},player2.eq.${publicKey.toString()}`)
+      .in("status", [1, 2, 3, 4, 5, 6])
+
+    if (error) {
+      console.error("Error fetching pending challenges:", error)
       toast({
-        title: "Failed to fetch esports data",
-        description: "An error occurred while fetching esports data.",
+        title: "Failed to fetch pending challenges",
+        description: "An error occurred while fetching pending challenges.",
         variant: "destructive",
-      });
-      return;
+      })
+    } else {
+      console.log(data)
+      setPendingChallenges(data || [])
     }
-  
-    // Step 2: Determine opponents and fetch their records
-    const opponentKeys = esportsData.map((esport) => {
-      return esport.player1 === publicKeyStr ? esport.player2 : esport.player1;
-    });
-  
-    const games = esportsData.map((esport) => esport.game);
-  
-    // Fetch records for the current user and opponents
-    const { data: esportsRecordsData, error: esportsRecordsError } = await supabase
-      .from("esports_records")
-      .select("*")
-      .in("game", games)
-      .in("public_key", [publicKeyStr, ...opponentKeys]); // Fetch records for both the user and opponents
-  
-    if (esportsRecordsError) {
-      console.error("Error fetching esports records data:", esportsRecordsError);
-      toast({
-        title: "Failed to fetch esports records data",
-        description: "An error occurred while fetching esports records data.",
-        variant: "destructive",
-      });
-      return;
-    }
-  
-    // Step 3: Combine the results and handle empty `esports_records`
-    const combinedData = esportsData.map((esport) => {
-      // Initialize default values
-      const defaultRecord = {
-        wins: 0,
-        losses: 0,
-        win_streak: 0,
-        loss_streak: 0,
-        total_earnings: 0,
-      };
-  
-      // Determine the opponent
-      const opponentKey = esport.player1 === publicKeyStr ? esport.player2 : esport.player1;
-  
-      // Find records for the current user and opponent
-      const userRecords = esportsRecordsData.find(
-        (record) => record.game === esport.game && record.public_key === publicKeyStr
-      ) || defaultRecord;
-  
-      const opponentRecords = esportsRecordsData.find(
-        (record) => record.game === esport.game && record.public_key === opponentKey
-      ) || defaultRecord;
-  
-      return {
-        ...esport,
-        user_records: {
-          wins: userRecords.wins,
-          losses: userRecords.losses,
-          win_streak: userRecords.win_streak,
-          loss_streak: userRecords.loss_streak,
-          total_earnings: userRecords.total_earnings,
-        },
-        opponent_records: {
-          wins: opponentRecords.wins,
-          losses: opponentRecords.losses,
-          win_streak: opponentRecords.win_streak,
-          loss_streak: opponentRecords.loss_streak,
-          total_earnings: opponentRecords.total_earnings,
-        },
-      };
-    });
-  
-    console.log(combinedData);
-    setPendingChallenges(combinedData || []);
-  };
+  }
 
   const fetchGameHistory = async () => {
     const { data, error } = await supabase
       .from("esports")
       .select("*")
       .or(`player1.eq.${publicKey!.toString()},player2.eq.${publicKey!.toString()}`)
-      .eq("status", 9) // Status 4 represents completed games
+      .eq("status", 4) // Status 4 represents completed games
 
     if (error) {
       console.error("Error fetching game history:", error)
@@ -628,7 +535,6 @@ const EsportsPage: React.FC = () => {
       !challengeData.player2 ||
       !challengeData.game ||
       !challengeData.console ||
-      !challengeData.money ||
       (!challengeData.amount && challengeData.amount != 0) ||
       !challengeData.rules
     ) {
@@ -639,9 +545,6 @@ const EsportsPage: React.FC = () => {
         message = "what game?"
       } else if (!challengeData.console) {
         message = "what console?"
-
-      }else if (!challengeData.money){
-        message = "are you playing for solana or gamer tokens?"
       } else if (!challengeData.amount && challengeData.amount != 0) {
         message = "how mach in GAME tokens is this game for?"
       } else if (!challengeData.rules) {
@@ -653,38 +556,20 @@ const EsportsPage: React.FC = () => {
         challengeData.player2,
         challengeData.game,
         challengeData.console,
-        challengeData.money,
         challengeData.amount,
         challengeData.rules,
       )
       return
     }
 
-    //check players balance
-    let p1balance = 0;
-    let p2balance = 0;
-    let feeAmount = challengeData.amount * 0.03
-    const { data:opp, error:oppError } = await supabase.from("users").select("*").eq("publicKey", challengeData.player2).single()
-
-    if(challengeData.money==1){
-      //game is for solana
-      p1balance = await solana.getBalance(userData.deposit_wallet)
-      p2balance = await solana.getBalance(opp.deposit_wallet)
-
-    }else{
-      p1balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
-      p2balance = await solana.getTokenBalance(opp.deposit_wallet, GAMER)
-      feeAmount = 0
-    }
-    
+    //check user balance
+    const GAME = ""
+    let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
-    const totalAmount = gameAmount + feeAmount
+    const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
     challengeData.fee = feeAmount
-    p1balance = p1balance / 10 ** 9
-    p2balance = p2balance / 10 ** 9
-
-    if (p1balance >= totalAmount && p2balance>=totalAmount) {
-      
+    balance = balance / 10 ** 9
+    if (balance >= gameAmount) {
       const { error } = await supabase.from("esports").insert({
         ...challengeData,
         player1: publicKey!.toString(),
@@ -723,7 +608,8 @@ const EsportsPage: React.FC = () => {
       player1_avatar: user_avater,
       player2: data.publicKey,
       player2_name: username,
-      player2_avatar: data.avatar_url
+      player2_avatar: data.avatar_url,
+      player2_username: data.username,
     })
     setQuery(username)
     setShowDropdown(false)
@@ -808,29 +694,11 @@ const EsportsPage: React.FC = () => {
   const confirmAcceptChallenge = async () => {
     if (selectedChallenge) {
       //check user balance
-      let p1balance = 0;
-      let p2balance = 0;
-      let feeAmount = (selectedChallenge.amount / 10 ** 9) * 0.03
-      const { data:opp, error:oppError } = await supabase.from("users").select("*").eq("publicKey", selectedChallenge.player1).single()
-      if(selectedChallenge.money==1){
-        //game is for solana
-        p2balance = await solana.getBalance(userData.deposit_wallet)
-        p1balance = await solana.getBalance(opp.deposit_wallet)
-  
-      }else{
-        p2balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
-        p1balance = await solana.getTokenBalance(opp.deposit_wallet, GAMER)
-        feeAmount = 0
-      }
-      
-      const gameAmount = (selectedChallenge.amount / 10 ** 9) * 1.03
-      const totalAmount = gameAmount + feeAmount
-      p1balance = p1balance / 10 ** 9
-      p2balance = p2balance / 10 ** 9
-  
-      console.log(p1balance, p2balance, totalAmount, feeAmount)
-      if (p1balance >= totalAmount && p2balance>=totalAmount) {
-  
+      const GAME = ""
+      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+      const gameAmount = selectedChallenge.amount / 10 ** 9
+      balance = balance / 10 ** 9
+      if (balance >= gameAmount) {
         const { error } = await supabase.from("esports").update({ status: 2 }).eq("id", selectedChallenge.id)
 
         if (error) {
@@ -838,10 +706,6 @@ const EsportsPage: React.FC = () => {
         } else {
           fetchPendingChallenges()
         }
-      }else{
-        setErrorMessage("funds low")
-        setShowErrorModal(true)
-
       }
     }
     setShowAcceptModal(false)
@@ -903,35 +767,44 @@ const EsportsPage: React.FC = () => {
 
   const handleConfirmScore = async () => {
     if (selectedChallenge) {
-      setIsScoring(true)
-      console.log(selectedChallenge)
       //get game
-      // const { data, error: fetchError } = await supabase
-      //   .from("esports")
-      //   .select("*")
-      //   .eq("id", selectedChallenge.id)
-      //   .single()
-      
-      const response = await fetch("/api/esports/score/confirm", {
+      const { data, error: fetchError } = await supabase
+        .from("esports")
+        .select("*")
+        .eq("id", selectedChallenge.id)
+        .single()
+
+      const player1score = data.player1score
+      const player2score = data.player2score
+      const player1 = data.player1
+      const player2 = data.player2
+      const amount = data.amount
+      const fee = data.fee
+
+      const response = await fetch("/api/esports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          game_id: selectedChallenge.game_id
+          player1: player1,
+          player2: player2,
+          player1score: player1score,
+          player2score: player2score,
+          amount: amount,
+          fee: fee,
         }),
       })
-      const result = await response.json()
 
-      // const { error } = await supabase
-      //   .from("esports")
-      //   .update({
-      //     status: 9,
-      //     score_confirmed_at: new Date().toISOString(),
-      //   })
-      //   .eq("id", selectedChallenge.id)
-      
-      if (!result.success) {
-        console.error("Error confirming score:", result.message)
-        setErrorMessage(result.message)
+      const { error } = await supabase
+        .from("esports")
+        .update({
+          status: 9,
+          score_confirmed_at: new Date().toISOString(),
+        })
+        .eq("id", selectedChallenge.id)
+
+      if (error) {
+        console.error("Error confirming score:", error)
+        setErrorMessage("error confirm score error")
         setShowErrorModal(true)
       } else {
         fetchPendingChallenges()
@@ -941,7 +814,6 @@ const EsportsPage: React.FC = () => {
       }
       setShowConfirmScoreModal(false)
       setSelectedChallenge(null)
-      setIsScoring(false)
     }
   }
 
@@ -1108,19 +980,6 @@ const EsportsPage: React.FC = () => {
       supabase.removeChannel(chatSubscription)
     }
   }, [publicKey])
-  
-    useEffect(() => {
-      scrollToBottom();
-    }, [messages]);
-    
-    const scrollToBottom = () => {
-      if (scrollRef.current) {
-        const scrollContainer = scrollRef.current.querySelector("[data-radix-scroll-area-viewport]");
-        if (scrollContainer) {
-          scrollContainer.scrollTop = scrollContainer.scrollHeight;
-        }
-      }
-    };
 
   // Add this function to fetch user info
   const fetchUserInfo = async (publicKey: string) => {
@@ -1137,6 +996,20 @@ const EsportsPage: React.FC = () => {
 
     return data
   }
+
+  const [activeTab, setActiveTab] = useState("list")
+
+  useEffect(() => {
+    const handleSwitchToCreateTournament = () => {
+      setActiveTab("create")
+    }
+
+    document.addEventListener("switchToCreateTournament", handleSwitchToCreateTournament)
+
+    return () => {
+      document.removeEventListener("switchToCreateTournament", handleSwitchToCreateTournament)
+    }
+  }, [])
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -1206,7 +1079,7 @@ const EsportsPage: React.FC = () => {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <ScrollArea className="h-[400px] mb-4 overflow-y-auto" ref={scrollRef}>
+                  <ScrollArea className="h-[400px] mb-4">
                     {selectedChatRoom ? (
                       <ul className="space-y-4">
                         {messages.map((message: any) => (
@@ -1239,7 +1112,6 @@ const EsportsPage: React.FC = () => {
                       <p className="text-center text-muted-foreground">Select a chat room to view messages.</p>
                     )}
                   </ScrollArea>
-                  
                 </CardContent>
                 <CardFooter>
                   <div className="flex items-center w-full space-x-2">
@@ -1248,18 +1120,14 @@ const EsportsPage: React.FC = () => {
                       value={newMessage}
                       onChange={(e) => setNewMessage(e.target.value)}
                       onKeyDown={(e) => {
-                        if (e.key === "Enter" && !isSending) {
-                          console.log(e.key)
-
-                          e.preventDefault(); // Prevents default form submission behavior
-                          handleSendMessage();
+                        if (e.key === "Enter") {
+                          e.preventDefault() // Prevents default form submission behavior
+                          handleSendMessage()
                         }
                       }}
                       className="flex-grow"
                     />
-                    {/* <Button onClick={() => !isSending && handleSendMessage()} disabled={isSending}>
-                      Send
-                    </Button> */}
+                    <Button onClick={handleSendMessage}>Send</Button>
                   </div>
                 </CardFooter>
               </Card>
@@ -1376,46 +1244,21 @@ const EsportsPage: React.FC = () => {
                         <div className="relative">
                           <div className="absolute inset-0 bg-gradient-to-br from-purple-600/20 to-indigo-600/20 z-0"></div>
                           <CardContent className="relative z-10 p-6">
-                          {challenge.player1==publicKey && ( 
-                            <>
-                              <div className="flex items-center space-x-4 mb-4">
-                                <Avatar className="w-16 h-16 border-2 border-primary">
-                                  <AvatarImage src={challenge.player2_avatar} />
-                                  <AvatarFallback className="bg-primary/20 text-primary">
-                                    {challenge.player2_name}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
-                                  <div className="flex items-center space-x-2 text-sm text-primary/80">
-                                    <Trophy className="w-4 h-4" />
-                                    <span>Rank: #</span>
-                                  </div>
+                            <div className="flex items-center space-x-4 mb-4">
+                              <Avatar className="w-16 h-16 border-2 border-primary">
+                                <AvatarImage src={challenge.player2_avatar} />
+                                <AvatarFallback className="bg-primary/20 text-primary">
+                                  {challenge.player2_username}
+                                </AvatarFallback>
+                              </Avatar>
+                              <div>
+                                <h3 className="text-lg font-bold text-primary">{challenge.player2_username}</h3>
+                                <div className="flex items-center space-x-2 text-sm text-primary/80">
+                                  <Trophy className="w-4 h-4" />
+                                  <span>Rank: #123</span>
                                 </div>
                               </div>
-                            </>
-                          )}
-                          {challenge.player2==publicKey && ( 
-                            <>
-                              <div className="flex items-center space-x-4 mb-4">
-                                <Avatar className="w-16 h-16 border-2 border-primary">
-                                  <AvatarImage src={challenge.player1_avatar} />
-                                  <AvatarFallback className="bg-primary/20 text-primary">
-                                    {challenge.player1_name}
-                                  </AvatarFallback>
-                                </Avatar>
-                                <div>
-                                  <h3 className="text-lg font-bold text-primary">{challenge.player1_name}</h3>
-                                  <div className="flex items-center space-x-2 text-sm text-primary/80">
-                                    <Trophy className="w-4 h-4" />
-                                    <span>Rank: #</span>
-                                  </div>
-                                </div>
-                              </div>
-                            </>
-                          )}
-                            
-
+                            </div>
                             <div className="space-y-2 mb-4">
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
@@ -1429,50 +1272,21 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="w-4 h-4 text-primary" />
-                                  <span className="text-sm font-medium text-primary">{challenge.amount} {challenge.money==1 && (
-                                    <span>SOL</span>
-                                  )} {challenge.money==2 && (
-                                    <span>GAMER</span>
-                                  )}</span>
+                                  <span className="text-sm font-medium text-primary">{challenge.amount} GAME</span>
                                 </div>
-                                {challenge.player1==publicKey && (
-                                <Badge className="bg-primary/20 text-primary">W: {challenge.opponent_records.wins}  - L: {challenge.opponent_records.losses} </Badge>
-                                )}
-                              {challenge.player2==publicKey && (
-                                <Badge className="bg-primary/20 text-primary">W: {challenge.opponent_records.wins}  - L: {challenge.opponent_records.losses} </Badge>
-                                )}
+                                <Badge className="bg-primary/20 text-primary">W: 7 - L: 3</Badge>
                               </div>
                             </div>
-                            {challenge.player1==publicKey && (
-                            <>
-                              <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
-                                <div className="flex items-center space-x-1">
-                                  <Zap className="w-3 h-3" />
-                                  <span>Win Streak: {challenge.opponent_records.win_streak} </span>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <Swords className="w-3 h-3" />
-                                  <span>Loss Streak: {challenge.opponent_records.loss_streak} </span>
-                                </div>
+                            <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
+                              <div className="flex items-center space-x-1">
+                                <Zap className="w-3 h-3" />
+                                <span>Win Streak: </span>
                               </div>
-                            </>
-                            )}
-
-                          {challenge.player2==publicKey && (
-                            <>
-                              <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
-                                <div className="flex items-center space-x-1">
-                                  <Zap className="w-3 h-3" />
-                                  <span>Win Streak: {challenge.opponent_records.win_streak} </span>
-                                </div>
-                                <div className="flex items-center space-x-1">
-                                  <Swords className="w-3 h-3" />
-                                  <span>Loss Streak: {challenge.opponent_records.loss_streak} </span>
-                                </div>
+                              <div className="flex items-center space-x-1">
+                                <Swords className="w-3 h-3" />
+                                <span>Loss Streak: </span>
                               </div>
-                            </>
-                            )}
-                            
+                            </div>
                             <div className="flex space-x-2">
                               {challenge.player2 == publicKey && challenge.status == 1 && (
                                 <Button
@@ -1587,7 +1401,6 @@ const EsportsPage: React.FC = () => {
                   onSubmit={submitScore}
                   player1Name={selectedChallenge?.player1_name || "Player 1"}
                   player2Name={selectedChallenge?.player2_name || "Player 2"}
-                  
                 />
                 <ConfirmScoreModal
                   isOpen={showConfirmScoreModal}
@@ -1601,7 +1414,6 @@ const EsportsPage: React.FC = () => {
                   player2Name={selectedChallenge?.player2_name}
                   initialPlayer1Score={selectedChallenge?.player1score}
                   initialPlayer2Score={selectedChallenge?.player2score}
-                  isScoring = {isScoring}
                 />
 
                 <DisputeScoreModal
@@ -1641,7 +1453,7 @@ const EsportsPage: React.FC = () => {
                           <div className="text-right">
                             <p className="font-semibold">{game.amount} SOL</p>
                             <p className="text-sm text-muted-foreground">
-                              Opponent: {game.player1 === publicKey!.toString() ? game.player2_name : game.player1_name}
+                              Opponent: {game.player1 === publicKey!.toString() ? game.player2 : game.player1}
                             </p>
                           </div>
                         </div>
@@ -1652,16 +1464,6 @@ const EsportsPage: React.FC = () => {
                           <Badge variant={game.player1score > game.player2score ? "success" : "destructive"}>
                             {game.player1score > game.player2score ? "Won" : "Lost"}
                           </Badge>
-                        </div>
-                        <div className="mt-2 flex justify-between items-center">
-                          <a
-                            href={`https://solscan.io/tx/${game.txid}`}
-                            target="_blank"
-                            rel="noopener noreferrer"
-                            className="text-blue-500 hover:underline"
-                          >
-                            proof of payment
-                          </a>
                         </div>
                       </li>
                     ))}
@@ -1678,8 +1480,8 @@ const EsportsPage: React.FC = () => {
                 <CardTitle className="text-2xl text-primary">Tournaments</CardTitle>
               </CardHeader>
               <CardContent>
-                <Tabs defaultValue="list" className="w-full">
-                  <TabsList className="grid w-full grid-cols-2 mb-8">
+                <Tabs value={activeTab} onValueChange={setActiveTab}>
+                  <TabsList>
                     <TabsTrigger value="list">Tournament List</TabsTrigger>
                     <TabsTrigger value="create">Create Tournament</TabsTrigger>
                   </TabsList>
@@ -1770,24 +1572,6 @@ const EsportsPage: React.FC = () => {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="grid grid-cols-4 items-center gap-4">
-                <Label htmlFor="console" className="text-right">
-                  Sol or Token
-                </Label>
-                <Select
-                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
-                  value={challengeData.money || ""}
-                >
-                  <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select Money" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">Solana</SelectItem>
-                    <SelectItem value="2">GAMER</SelectItem>
-                    {/* Add more consoles as needed */}
-                  </SelectContent>
-                </Select>
-              </div>
               <div className="grid grid-cols-4 items-center gap-4 w-full">
                 <Label htmlFor="amount" className="text-right">
                   Amount
@@ -1802,7 +1586,7 @@ const EsportsPage: React.FC = () => {
                       amount: e.target.value === "" ? "" : Number.parseFloat(e.target.value),
                     })
                   }
-                  placeholder="Amount"
+                  placeholder="Amount in GAME"
                   style={{ width: "272px" }}
                 />
               </div>

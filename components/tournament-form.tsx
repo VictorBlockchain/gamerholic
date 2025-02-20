@@ -25,7 +25,7 @@ const formSchema = z.object({
   game: z.string().min(1, "Game is required"),
   console: z.string().min(1, "Console is required"),
   entryFee: z.number().min(0, "Entry fee must be 0 or greater"),
-  prizePercentage: z.number().min(1).max(100, "Prize percentage must be between 1 and 100"),
+  prizePercentage: z.number().min(1).max(75, "Prize percentage must be between 1 and 100"),
   firstPlacePercentage: z.number().min(1).max(100, "First place percentage must be between 1 and 100"),
   secondPlacePercentage: z.number().min(0).max(100, "Second place percentage must be between 0 and 100"),
   thirdPlacePercentage: z.number().min(0).max(100, "Third place percentage must be between 0 and 100"),
@@ -34,8 +34,8 @@ const formSchema = z.object({
     required_error: "Start date is required",
   }),
   startTime: z.string().min(1, "Start time is required"),
-  prizeType: z.enum(["Solana", "GAMEr"]),
-  playerCount: z.enum(["4", "8", "16", "32", "64", "128"]),
+  money: z.enum(["1", "2"]),
+  playerCount: z.enum(["2","4", "8", "16", "32", "64", "128"]),
   tournamentImage: z.string().url("Invalid URL").optional(),
 })
 
@@ -55,12 +55,12 @@ export function TournamentForm() {
       game: "",
       console: "",
       entryFee: 0,
-      prizePercentage: 80,
-      firstPlacePercentage: 60,
+      prizePercentage: 75,
+      firstPlacePercentage: 50,
       secondPlacePercentage: 30,
-      thirdPlacePercentage: 10,
+      thirdPlacePercentage: 20,
       rules: "",
-      prizeType: "GAMEr",
+      money: "1",
       playerCount: "16",
       startTime: "",
     },
@@ -171,6 +171,27 @@ export function TournamentForm() {
               </FormItem>
             )}
           />
+                    <FormField
+            control={form.control}
+            name="money"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Money</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Money" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="1">Solana</SelectItem>
+                    <SelectItem value="2">GAMER</SelectItem>
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
           <FormField
             control={form.control}
             name="entryFee"
@@ -191,9 +212,14 @@ export function TournamentForm() {
               <FormItem>
                 <FormLabel>Prize Percentage</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} />
+                <Input
+                  type="number"
+                  value={75}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+                />
                 </FormControl>
-                <FormDescription>Percentage of entry fee that will go towards the prize</FormDescription>
+                <FormDescription>75% of prize pool is distributed to winners</FormDescription>
                 <FormMessage />
               </FormItem>
             )}
@@ -205,7 +231,13 @@ export function TournamentForm() {
               <FormItem>
                 <FormLabel>1st Place Prize Percentage</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} />
+                <Input
+                  type="number"
+                  value={50}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+                />
+                  {/* <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} /> */}
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -218,7 +250,13 @@ export function TournamentForm() {
               <FormItem>
                 <FormLabel>2nd Place Prize Percentage</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} />
+                <Input
+                  type="number"
+                  value={30}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+                />
+                  {/* <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} /> */}
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -231,7 +269,13 @@ export function TournamentForm() {
               <FormItem>
                 <FormLabel>3rd Place Prize Percentage</FormLabel>
                 <FormControl>
-                  <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} />
+                <Input
+                  type="number"
+                  value={20}
+                  disabled
+                  className="bg-gray-100 dark:bg-gray-800 cursor-not-allowed"
+                />
+                  {/* <Input type="number" {...field} onChange={(e) => field.onChange(Number.parseFloat(e.target.value))} /> */}
                 </FormControl>
                 <FormMessage />
               </FormItem>
@@ -308,8 +352,8 @@ export function TournamentForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="Solana">Solana</SelectItem>
-                    <SelectItem value="GAMEr">GAMEr tokens</SelectItem>
+                    <SelectItem value="1">Solana</SelectItem>
+                    <SelectItem value="2">GAMEr tokens</SelectItem>
                   </SelectContent>
                 </Select>
                 <FormMessage />
@@ -329,7 +373,8 @@ export function TournamentForm() {
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="4">4 players</SelectItem>
+                  <SelectItem value="2">2 players</SelectItem>
+                  <SelectItem value="4">4 players</SelectItem>
                     <SelectItem value="8">8 players</SelectItem>
                     <SelectItem value="16">16 players</SelectItem>
                     <SelectItem value="32">32 players</SelectItem>
