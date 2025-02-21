@@ -10,6 +10,7 @@ import type React from "react" // Import React
 import { useEffect } from "react"
 import {Toaster} from "@/components/ui/toaster"
 import { SpeedInsights } from "@vercel/speed-insights/next"
+import { Analytics } from "@vercel/analytics/react"
 // import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
 
 const WalletProviderComponent = dynamic(
@@ -42,6 +43,8 @@ export default function RootLayout({
         <DarkThemeProvider>
           <WalletProviderComponent>
             {children}
+            <Analytics />
+            <SpeedInsights />
             <Toaster />
             <Footer />
             <BottomNav />
