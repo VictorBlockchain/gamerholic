@@ -228,6 +228,7 @@ export default function GrabbitGame() {
   }, [gameId, publicKey, supabase])
 
   const fetchGameData = async () => {
+    console.log("fetching game data")
     try {
       const response = await fetch("/api/grabbit", {
         method: "POST",
