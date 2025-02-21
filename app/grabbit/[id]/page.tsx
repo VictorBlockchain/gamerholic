@@ -247,6 +247,7 @@ export default function GrabbitGame() {
   }
 
   const tryBecomeLeader = async () => {
+    console.log("working")
     const now = moment.utc()
     const threeSecondsAgo = moment.utc(now).subtract(3, "seconds")
 
@@ -256,7 +257,7 @@ export default function GrabbitGame() {
       console.error("Error fetching leader:", error.message)
       return
     }
-
+    
     if (data) {
       const lastActive = moment.utc(data.last_active)
 

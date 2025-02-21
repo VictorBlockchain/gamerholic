@@ -31,10 +31,10 @@ export function WalletDisplay() {
       }
 
       // Fetch GAMER token balance
-      let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
-      if (gamerBalance > 0) {
-        setGamerBalance(gamerBalance / 1_000_000_000);
-      }
+      // let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
+      // if (gamerBalance > 0) {
+      //   setGamerBalance(gamerBalance / 1_000_000_000);
+      // }
     } catch (error) {
       console.error("Error fetching balances:", error);
     }
