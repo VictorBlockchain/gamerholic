@@ -9,6 +9,7 @@ import dynamic from "next/dynamic"
 import type React from "react" // Import React
 import { useEffect } from "react"
 import {Toaster} from "@/components/ui/toaster"
+import { SpeedInsights } from "@vercel/speed-insights/next"
 // import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
 
 const WalletProviderComponent = dynamic(
