@@ -38,20 +38,20 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
 
   const onScoreUpdateRef = useRef(onScoreUpdate)
   
-  // useEffect(() => {
-  //   onScoreUpdateRef.current = onScoreUpdate
-  // }, [onScoreUpdate])
+  useEffect(() => {
+    onScoreUpdateRef.current = onScoreUpdate
+  }, [onScoreUpdate])
   
-  // useEffect(() => {
-  //   if (typeof window !== 'undefined') {
-  //     const checkMobile = () => {
-  //       setIsMobile(window.innerWidth <= 768)
-  //     }
-  //     checkMobile()
-  //     window.addEventListener("resize", checkMobile)
-  //     return () => window.removeEventListener("resize", checkMobile)
-  //   }
-  // }, [])
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const checkMobile = () => {
+        setIsMobile(window.innerWidth <= 768)
+      }
+      checkMobile()
+      window.addEventListener("resize", checkMobile)
+      return () => window.removeEventListener("resize", checkMobile)
+    }
+  }, [])
   
   // useEffect(() => {
   //   if (typeof window !== 'undefined') {
@@ -240,7 +240,47 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   // }, [])
 
   return (
-  <></>
+    <></>
+    // <Card className="w-full h-full mx-auto overflow-hidden">
+    //   <CardContent className="p-4 h-full flex flex-col">
+    //     <div className="flex-grow flex items-center justify-center">
+    //       <div
+    //         ref={containerRef}
+    //         className={`relative ${isFullScreen ? "fixed inset-0 z-50 bg-black" : ""}`}
+    //         style={{ width: gameWidth, height: gameHeight }}
+    //         tabIndex={0}
+    //         onKeyDown={(e) => e.preventDefault()}
+    //       >
+    //         {isMobile && (
+    //           <Button onClick={toggleFullScreen} variant="outline" size="icon" className="absolute top-2 right-2 z-10">
+    //             {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
+    //           </Button>
+    //         )}
+    //         <div ref={sketchRef} className="border-2 border-primary rounded-lg" />
+    //       </div>
+    //     </div>
+    //     {error && (
+    //       <div className="mt-4 p-2 bg-red-100 border border-red-400 text-red-700 rounded">
+    //         <strong>Error:</strong> {error}
+    //       </div>
+    //     )}
+    //     <div className="flex justify-center mt-4">
+    //       {!runGame && (
+    //         <Button
+    //           onClick={handleStartGame}
+    //           variant="default"
+    //           className="w-48 h-12 text-lg font-bold bg-gradient-to-r from-purple-500 to-pink-500 hover:from-purple-600 hover:to-pink-600 text-white rounded-full transition-all duration-300 transform hover:scale-105 shadow-lg hover:shadow-xl"
+    //         >
+    //           Start Game
+    //         </Button>
+    //       )}
+    //     </div>
+    //     <div className="mt-4 flex justify-between items-center bg-background/50 p-4 rounded-lg">
+    //       <div className="text-xl font-bold text-primary">Score: {score}</div>
+    //       <div className="text-xl font-bold text-primary">Time: {Math.ceil(timer)}s</div>
+    //     </div>
+    //   </CardContent>
+    // </Card>
   )
 }
 
