@@ -37,45 +37,47 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   const [isFullScreen, setIsFullScreen] = useState(false)
 
   const onScoreUpdateRef = useRef(onScoreUpdate)
-
+  
   useEffect(() => {
     onScoreUpdateRef.current = onScoreUpdate
   }, [onScoreUpdate])
-
+  
   useEffect(() => {
-    const checkMobile = () => {
-      setIsMobile(window.innerWidth <= 768)
+    if (typeof window !== 'undefined') {
+      const checkMobile = () => {
+        setIsMobile(window.innerWidth <= 768)
+      }
+      checkMobile()
+      window.addEventListener("resize", checkMobile)
+      return () => window.removeEventListener("resize", checkMobile)
     }
-    checkMobile()
-    window.addEventListener("resize", checkMobile)
-    return () => window.removeEventListener("resize", checkMobile)
   }, [])
-
+  
   useEffect(() => {
-    const preventDefaultKeys = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
-        e.preventDefault()
+    if (typeof window !== 'undefined') {
+      const preventDefaultKeys = (e: KeyboardEvent) => {
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+          e.preventDefault()
+        }
+      }
+      window.addEventListener("keydown", preventDefaultKeys)
+      return () => {
+        window.removeEventListener("keydown", preventDefaultKeys)
       }
     }
-    window.addEventListener("keydown", preventDefaultKeys)
-    return () => {
-      window.removeEventListener("keydown", preventDefaultKeys)
-    }
   }, [])
-
+  
   useEffect(() => {
-    let newP5Instance: p5 | null = null
-
-    if (sketchRef.current && gameCode) {
+    if (typeof window !== 'undefined' && sketchRef.current && gameCode) {
       try {
-        newP5Instance = new p5((p: p5) => {
+        const newP5Instance = new p5((p: p5) => {
           p.setup = () => {
             p.createCanvas(gameWidth, gameHeight)
             if (typeof (window as any).setup === "function") {
               ;(window as any).setup(p)
             }
           }
-
+  
           p.draw = () => {
             if (typeof (window as any).draw === "function") {
               ;(window as any).draw(p)
@@ -86,27 +88,27 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
               setScore(currentScore)
               if (onScoreUpdateRef.current) onScoreUpdateRef.current(currentScore)
             }
-
+  
             if (typeof (window as any).getCurrentTime === "function") {
               const currentTime = (window as any).getCurrentTime()
               setTimer(currentTime)
             }
           }
-
+  
           // Add other p5 event handlers as needed
           p.mousePressed = () => {
             if (typeof (window as any).mousePressed === "function") {
               ;(window as any).mousePressed(p)
             }
           }
-
+  
           p.keyPressed = () => {
             if (typeof (window as any).keyPressed === "function") {
               ;(window as any).keyPressed(p)
             }
             return false // Prevent default behavior
           }
-
+  
           p.keyReleased = () => {
             if (typeof (window as any).keyReleased === "function") {
               ;(window as any).keyReleased(p)
@@ -114,9 +116,9 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             return false // Prevent default behavior
           }
         }, sketchRef.current)
-
+  
         setP5Instance(newP5Instance)
-
+  
         // Evaluate the game code
         // eslint-disable-next-line no-new-func
         new Function(
@@ -127,17 +129,17 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
           }
         `,
         )(p5)(newP5Instance)
-
+  
         setError(null)
       } catch (err: any) {
         console.error("Error executing game code:", err)
         setError(err.toString())
       }
     }
-
+  
     return () => {
-      if (newP5Instance) {
-        newP5Instance.remove()
+      if (p5Instance) {
+        p5Instance.remove()
       }
     }
   }, [gameCode, gameWidth, gameHeight])
@@ -179,22 +181,30 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   }
 
   const handleResize = useCallback(() => {
-    const container = containerRef.current
-    if (container && p5Instance) {
-      const parentWidth = container.parentElement?.clientWidth || window.innerWidth
-      const parentHeight = container.parentElement?.clientHeight || window.innerHeight
+    if (typeof window !== 'undefined' && containerRef.current && p5Instance) {
+      const parentWidth = containerRef.current.parentElement?.clientWidth || window.innerWidth
+      const parentHeight = containerRef.current.parentElement?.clientHeight || window.innerHeight
       let scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight, 1)
-
+  
       if (isMobile) {
         scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight)
       }
-
-      container.style.width = `${gameWidth * scale}px`
-      container.style.height = `${gameHeight * scale}px`
-
+  
+      containerRef.current.style.width = `${gameWidth * scale}px`
+      containerRef.current.style.height = `${gameHeight * scale}px`
+  
       p5Instance.resizeCanvas(gameWidth * scale, gameHeight * scale)
     }
   }, [gameWidth, gameHeight, isMobile, p5Instance])
+  
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      window.addEventListener("resize", handleResize)
+      handleResize()
+  
+      return () => window.removeEventListener("resize", handleResize)
+    }
+  }, [handleResize])
 
   useEffect(() => {
     window.addEventListener("resize", handleResize)
@@ -204,24 +214,28 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   }, [handleResize])
 
   const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`)
-      })
-    } else {
-      document.exitFullscreen()
+    if (typeof window !== 'undefined') {
+      if (!document.fullscreenElement) {
+        containerRef.current?.requestFullscreen().catch((err) => {
+          console.error(`Error attempting to enable full-screen mode: ${err.message}`)
+        })
+      } else {
+        document.exitFullscreen()
+      }
     }
   }
 
   useEffect(() => {
-    const handleFullScreenChange = () => {
-      setIsFullScreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener("fullscreenchange", handleFullScreenChange)
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullScreenChange)
+    if (typeof window !== 'undefined') {
+      const handleFullScreenChange = () => {
+        setIsFullScreen(!!document.fullscreenElement)
+      }
+  
+      document.addEventListener("fullscreenchange", handleFullScreenChange)
+  
+      return () => {
+        document.removeEventListener("fullscreenchange", handleFullScreenChange)
+      }
     }
   }, [])
 
