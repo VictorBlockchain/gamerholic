@@ -68,7 +68,9 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   }, [])
   
   useEffect(() => {
-    if (typeof window !== 'undefined' && sketchRef.current && gameCode) {
+    if (typeof window === 'undefined') return; // Ensure it runs only in the client
+  
+    if (sketchRef.current && gameCode) {
       try {
         const newP5Instance = new p5((p: p5) => {
           p.setup = () => {
@@ -95,7 +97,6 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             }
           }
   
-          // Add other p5 event handlers as needed
           p.mousePressed = () => {
             if (typeof (window as any).mousePressed === "function") {
               ;(window as any).mousePressed(p)
@@ -143,6 +144,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
       }
     }
   }, [gameCode, gameWidth, gameHeight])
+  
 
   // useEffect(() => {
   //   setTimer(currentTimer || 0)
