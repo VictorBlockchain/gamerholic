@@ -53,19 +53,19 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
     }
   }, [])
   
-  // useEffect(() => {
-  //   if (typeof window !== 'undefined') {
-  //     const preventDefaultKeys = (e: KeyboardEvent) => {
-  //       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
-  //         e.preventDefault()
-  //       }
-  //     }
-  //     window.addEventListener("keydown", preventDefaultKeys)
-  //     return () => {
-  //       window.removeEventListener("keydown", preventDefaultKeys)
-  //     }
-  //   }
-  // }, [])
+  useEffect(() => {
+    if (typeof window !== 'undefined') {
+      const preventDefaultKeys = (e: KeyboardEvent) => {
+        if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+          e.preventDefault()
+        }
+      }
+      window.addEventListener("keydown", preventDefaultKeys)
+      return () => {
+        window.removeEventListener("keydown", preventDefaultKeys)
+      }
+    }
+  }, [])
   
   // useEffect(() => {
   //   if (typeof window !== 'undefined' && sketchRef.current && gameCode) {
