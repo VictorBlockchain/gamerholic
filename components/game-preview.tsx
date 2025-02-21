@@ -67,82 +67,82 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
     }
   }, [])
   
-  // useEffect(() => {
-  //   if (typeof window !== 'undefined' && sketchRef.current && gameCode) {
-  //     try {
-  //       const newP5Instance = new p5((p: p5) => {
-  //         p.setup = () => {
-  //           p.createCanvas(gameWidth, gameHeight)
-  //           if (typeof (window as any).setup === "function") {
-  //             ;(window as any).setup(p)
-  //           }
-  //         }
+  useEffect(() => {
+    if (typeof window !== 'undefined' && sketchRef.current && gameCode) {
+      try {
+        const newP5Instance = new p5((p: p5) => {
+          p.setup = () => {
+            p.createCanvas(gameWidth, gameHeight)
+            if (typeof (window as any).setup === "function") {
+              ;(window as any).setup(p)
+            }
+          }
   
-  //         p.draw = () => {
-  //           if (typeof (window as any).draw === "function") {
-  //             ;(window as any).draw(p)
-  //           }
-  //           // Update score
-  //           if (typeof (window as any).getScore === "function") {
-  //             const currentScore = (window as any).getScore()
-  //             setScore(currentScore)
-  //             if (onScoreUpdateRef.current) onScoreUpdateRef.current(currentScore)
-  //           }
+          p.draw = () => {
+            if (typeof (window as any).draw === "function") {
+              ;(window as any).draw(p)
+            }
+            // Update score
+            if (typeof (window as any).getScore === "function") {
+              const currentScore = (window as any).getScore()
+              setScore(currentScore)
+              if (onScoreUpdateRef.current) onScoreUpdateRef.current(currentScore)
+            }
   
-  //           if (typeof (window as any).getCurrentTime === "function") {
-  //             const currentTime = (window as any).getCurrentTime()
-  //             setTimer(currentTime)
-  //           }
-  //         }
+            if (typeof (window as any).getCurrentTime === "function") {
+              const currentTime = (window as any).getCurrentTime()
+              setTimer(currentTime)
+            }
+          }
   
-  //         // Add other p5 event handlers as needed
-  //         p.mousePressed = () => {
-  //           if (typeof (window as any).mousePressed === "function") {
-  //             ;(window as any).mousePressed(p)
-  //           }
-  //         }
+          // Add other p5 event handlers as needed
+          p.mousePressed = () => {
+            if (typeof (window as any).mousePressed === "function") {
+              ;(window as any).mousePressed(p)
+            }
+          }
   
-  //         p.keyPressed = () => {
-  //           if (typeof (window as any).keyPressed === "function") {
-  //             ;(window as any).keyPressed(p)
-  //           }
-  //           return false // Prevent default behavior
-  //         }
+          p.keyPressed = () => {
+            if (typeof (window as any).keyPressed === "function") {
+              ;(window as any).keyPressed(p)
+            }
+            return false // Prevent default behavior
+          }
   
-  //         p.keyReleased = () => {
-  //           if (typeof (window as any).keyReleased === "function") {
-  //             ;(window as any).keyReleased(p)
-  //           }
-  //           return false // Prevent default behavior
-  //         }
-  //       }, sketchRef.current)
+          p.keyReleased = () => {
+            if (typeof (window as any).keyReleased === "function") {
+              ;(window as any).keyReleased(p)
+            }
+            return false // Prevent default behavior
+          }
+        }, sketchRef.current)
   
-  //       setP5Instance(newP5Instance)
+        setP5Instance(newP5Instance)
   
-  //       // Evaluate the game code
-  //       // eslint-disable-next-line no-new-func
-  //       new Function(
-  //         "p5",
-  //         `
-  //         return function(p) {
-  //           ${gameCode}
-  //         }
-  //       `,
-  //       )(p5)(newP5Instance)
+        // Evaluate the game code
+        // eslint-disable-next-line no-new-func
+        new Function(
+          "p5",
+          `
+          return function(p) {
+            ${gameCode}
+          }
+        `,
+        )(p5)(newP5Instance)
   
-  //       setError(null)
-  //     } catch (err: any) {
-  //       console.error("Error executing game code:", err)
-  //       setError(err.toString())
-  //     }
-  //   }
+        setError(null)
+      } catch (err: any) {
+        console.error("Error executing game code:", err)
+        setError(err.toString())
+      }
+    }
   
-  //   return () => {
-  //     if (p5Instance) {
-  //       p5Instance.remove()
-  //     }
-  //   }
-  // }, [gameCode, gameWidth, gameHeight])
+    return () => {
+      if (p5Instance) {
+        p5Instance.remove()
+      }
+    }
+  }, [gameCode, gameWidth, gameHeight])
 
   // useEffect(() => {
   //   setTimer(currentTimer || 0)
