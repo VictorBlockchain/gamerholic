@@ -38,7 +38,7 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
     const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"))
     const senderKeypair = Keypair.fromSecretKey(secretKey)
     const receiverPubKey = new PublicKey(toAddress)
-
+    
     const lamports = Math.round(amount * 10 ** 9)
     console.log(lamports)
     const transaction = new Transaction().add(

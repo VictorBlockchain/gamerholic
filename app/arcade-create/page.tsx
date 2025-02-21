@@ -72,7 +72,8 @@ export default function CreateGamePage() {
   const [user_name, setUserName]: any = useState("")
   const [user_avater, setUserAvatar]: any = useState("")
   const [avatarFile, setAvatarFile]: any = useState("")
-
+  const [gameStarted, setGameStarted] = useState(false)
+  
   const [score, setScore] = useState(0)
   const [timer, setTimer] = useState(180) // Set initial timer to 3 minutes (180 seconds)
 
@@ -641,14 +642,14 @@ export default function CreateGamePage() {
                   <div className="text-xl font-bold text-primary">Score: {score}</div>
                   <div className="text-xl font-bold text-primary">Time: {Math.ceil(timer)}s</div>
                 </div>
-                {/* <GamePreview
+                <GamePreview
                   gameCode={gameCode}
                   gameCss={gameCss}
                   onScoreUpdate={handleScoreUpdate}
                   currentTimer={timer}
-                  onGameStart={() => setTimer(180)} // Reset timer to 3 minutes when game starts
+                  onGameStart={setGameStarted}
                   highScore={0}
-                /> */}
+                />
               </CardContent>
             </Card>
           </TabsContent>
