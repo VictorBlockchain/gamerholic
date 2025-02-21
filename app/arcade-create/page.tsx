@@ -257,22 +257,22 @@ export default function CreateGamePage() {
     setTimer(newTimer)
   }
   
-  useEffect(() => {
-    if (typeof window !== 'undefined') {
+  // useEffect(() => {
+  //   if (typeof window !== 'undefined') {
+    
+  //   const handleKeyDown = (e: KeyboardEvent) => {
+  //     if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
+  //       e.preventDefault()
+  //     }
+  //   }
 
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
-        e.preventDefault()
-      }
-    }
+  //   window.addEventListener("keydown", handleKeyDown)
 
-    window.addEventListener("keydown", handleKeyDown)
-
-    return () => {
-      window.removeEventListener("keydown", handleKeyDown)
-    }
-  }
-  }, [])
+  //   return () => {
+  //     window.removeEventListener("keydown", handleKeyDown)
+  //   }
+  // }
+  // }, [])
 
   const handleAvatarUpload = async (event: any) => {
     console.log("uploading")
