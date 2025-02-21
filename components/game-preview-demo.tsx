@@ -4,13 +4,12 @@ import type React from "react"
 import { useEffect, useRef, useState, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
-import { Maximize2, Minimize2 } from "lucide-react"
 
 interface GamePreviewProps {
   gameCode: string
   gameCss: string
   onScoreUpdate?: (score: number) => void
-  currentTimer?: number
+  onTimerUpdate?: (timer: number) => void
   onGameStart?: (runGame: boolean) => void
 }
 
@@ -18,7 +17,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   gameCode,
   gameCss,
   onScoreUpdate,
-  currentTimer,
+  onTimerUpdate,
   onGameStart,
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null)
@@ -33,7 +32,6 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   const [runGame, setRunGame] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
   const touchStartRef = useRef<{ x: number; y: number } | null>(null)
-  const [isFullScreen, setIsFullScreen] = useState(false)
 
   useEffect(() => {
     const checkMobile = () => {
@@ -128,17 +126,22 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
     const ctx = canvasRef.current?.getContext("2d")
     if (ctx) {
       if (typeof gameInstance.update === "function") {
-        gameInstance.update(1 / 60, () => currentTimer) // Pass a function to get currentTimer
+        gameInstance.update()
       }
       if (typeof gameInstance.draw === "function") {
-        gameInstance.draw(ctx, () => currentTimer) // Pass a function to get currentTimer
+        gameInstance.draw(ctx)
       }
 
-      // Update score
+      // Update score and timer
       if (typeof gameInstance.getScore === "function") {
         const currentScore = gameInstance.getScore()
         setScore(currentScore)
         if (onScoreUpdate) onScoreUpdate(currentScore)
+      }
+      if (typeof gameInstance.getTimer === "function") {
+        const currentTimer = gameInstance.getTimer()
+        setTimer(currentTimer)
+        if (onTimerUpdate) onTimerUpdate(currentTimer)
       }
     }
 
@@ -279,44 +282,16 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
     }
   }, [handleUserInput])
 
-  const toggleFullScreen = () => {
-    if (!document.fullscreenElement) {
-      containerRef.current?.requestFullscreen().catch((err) => {
-        console.error(`Error attempting to enable full-screen mode: ${err.message}`)
-      })
-    } else {
-      document.exitFullscreen()
-    }
-  }
-
-  useEffect(() => {
-    const handleFullScreenChange = () => {
-      setIsFullScreen(!!document.fullscreenElement)
-    }
-
-    document.addEventListener("fullscreenchange", handleFullScreenChange)
-
-    return () => {
-      document.removeEventListener("fullscreenchange", handleFullScreenChange)
-    }
-  }, [])
-
   return (
     <Card className="w-full h-full mx-auto overflow-hidden">
       <CardContent className="p-4 h-full flex flex-col">
         <div className="flex-grow flex items-center justify-center">
           <div
             ref={containerRef}
-            className={`relative ${isFullScreen ? "fixed inset-0 z-50 bg-black" : ""}`}
             style={{ width: gameWidth, height: gameHeight }}
             onTouchStart={handleTouchStart}
             onTouchEnd={handleTouchEnd}
           >
-            {isMobile && (
-              <Button onClick={toggleFullScreen} variant="outline" size="icon" className="absolute top-2 right-2 z-10">
-                {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
-              </Button>
-            )}
             <canvas
               id="gameCanvas"
               ref={canvasRef}
@@ -343,8 +318,8 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             </Button>
           )}
         </div>
-        {/* <div>Score: {score}</div>
-        <div>Timer: {timer}</div> */}
+        <div>Score: {score}</div>
+        <div>Timer: {timer}</div>
       </CardContent>
     </Card>
   )

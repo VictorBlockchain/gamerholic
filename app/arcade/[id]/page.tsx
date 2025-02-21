@@ -141,6 +141,7 @@ export default function PlayPage() {
 
   const handleGameEnd = useCallback(() => {
     if (!freePlay) {
+      console.log(freePlay)
       handleScore(scoreRef.current);
     }
     setGameStarted(false)
@@ -523,9 +524,9 @@ export default function PlayPage() {
                     gameCode={game.game_code}
                     gameCss={game.game_css}
                     onScoreUpdate={setScore}
-                    onTimerUpdate={(remainingTime) => setTimer(remainingTime)}
+                    currentTimer={timer}
                     onGameStart={setGameStarted}
-                    onGameEnd={() => handleScore()}
+                    // onGameEnd={() => handleScore()}
                   />
                 )}
                 {!gameStarted && !loading_play && (

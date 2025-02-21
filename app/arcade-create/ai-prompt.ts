@@ -1,64 +1,67 @@
-export const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
+const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
 
 1. The game should be implemented as plain JavaScript that can run in a browser environment.
 2. Use the canvas element provided by the platform for rendering the game.
 3. Implement the game logic using vanilla JavaScript without any external libraries or frameworks.
-4. The game must have a scoring system, a timer, and should be challenging with increasing difficulty.
+4. The game must have a scoring system and should be challenging with increasing difficulty.
 5. Implement the game using the following structure:
 
 \`\`\`javascript
 // Game variables (use let for variables that will change)
 let score = 0;
-let timeLeft = 60; // Game duration in seconds
 let gameWidth = 800; // Default game width
 let gameHeight = 600; // Default game height
 // Add other necessary game variables here
 
-function init() {
+function init(canvas) {
   // Initialize game elements and variables here
   // This function is called once when the game is loaded
   // Adjust game size based on the provided canvas
-  gameWidth = ctx.canvas.width;
-  gameHeight = ctx.canvas.height;
+  gameWidth = canvas.width;
+  gameHeight = canvas.height;
 }
 
 function start() {
   // Reset game state and start the game
   score = 0;
-  timeLeft = 60;
   // Initialize or reset other game variables
   // This function is called each time the game starts or restarts
 }
 
-function update(deltaTime) {
+function update(deltaTime, getCurrentTimer) {
   // Update game logic here
   // This function is called every frame
   // deltaTime is the time passed since the last frame in seconds
-  timeLeft -= deltaTime;
-  if (timeLeft <= 0) {
+  // getCurrentTimer is a function that returns the current game timer value
+  const currentTimer = getCurrentTimer();
+  if (currentTimer <= 0) {
     gameOver();
+    return;
   }
   // Update other game elements and increase difficulty over time
 }
 
-function draw(ctx) {
+function draw(ctx, getCurrentTimer) {
   // Clear the canvas and draw game elements here
   // ctx is the 2D rendering context for the canvas
   ctx.clearRect(0, 0, gameWidth, gameHeight);
 
   // Draw game elements
-  drawUI(ctx);
+  drawUI(ctx, getCurrentTimer);
   // Add more drawing code for your game elements
 }
 
-function drawUI(ctx) {
+function drawUI(ctx, getCurrentTimer) {
   // Draw score and timer
+  const currentTimer = getCurrentTimer();
   ctx.fillStyle = '#fff';
   ctx.font = '24px Arial';
   ctx.textAlign = 'left';
   ctx.fillText(\`Score: \${score}\`, 20, 40);
   ctx.textAlign = 'right';
-  ctx.fillText(\`Time: \${Math.ceil(timeLeft)}s\`, gameWidth - 20, 40);
+  const minutes = Math.floor(currentTimer / 60);
+  const seconds = Math.ceil(currentTimer % 60);
+  ctx.fillText(\`Time: \${minutes}:\${seconds.toString().padStart(2, '0')}\`, gameWidth - 20, 40);
 }
 
 function handleInput(event) {
@@ -79,7 +82,7 @@ function gameOver() {
 }
 
 // Initialize the game when the script loads
-init();
+init(document.querySelector('canvas'));
 
 // Expose necessary functions to the global scope
 window.startGame = start;
@@ -111,7 +114,7 @@ window.getScore = getScore;
 
 16. Ensure that all game logic is contained within the provided functions (init, start, update, draw, handleInput, drawUI, gameOver).
 
-17. The game should have a clear objective, scoring system, timer, and increasing difficulty to engage players.
+17. The game should have a clear objective, scoring system, and increasing difficulty to engage players.
 
 18. Include comments to explain complex logic or game mechanics for easier understanding and maintenance.
 
@@ -135,9 +138,11 @@ window.getScore = getScore;
 - Implement a minimum size for the game canvas to ensure playability on smaller screens.
 
 26. // Game Timer
-- The game timer must always be functional, regardless of whether the game is played in free or paid mode.
-- Initialize and start the timer in the game's start function, not in any payment-related logic.
-- Ensure the timer is updated in the game's update function, which should run continuously during gameplay.
+- The game timer is provided by the platform through the getCurrentTimer function.
+- Use getCurrentTimer() to get the current time remaining in the game.
+- Update the game state based on the current timer value in the update function.
+- Display the current time in the drawUI function.
+- Implement game over logic when the timer reaches zero.
 
 Use this template as a starting point for your game code. Be creative and implement an engaging game that fits within this structure. The game will be previewed in real-time as you develop it, so focus on creating a fun and interactive experience that works seamlessly with the Gamerholic platform. Remember to adjust game difficulty, speed, or complexity based on the score or elapsed time to keep the game challenging and engaging throughout the play session.
 

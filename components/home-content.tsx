@@ -234,7 +234,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
           {testableGames.length > 0 && (
             <GameGrid
               games={testableGames}
-              title="Games Available for Testing"
+              title="Arcade Games To Test"
               icon={<TestTube className="w-6 h-6 text-green-500" />}
               className="neon-border-1 bg-card/50 p-6 rounded-lg shadow-lg"
               showNoGamesMessage={false}

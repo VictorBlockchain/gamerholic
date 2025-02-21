@@ -1,5 +1,7 @@
 "use client"
 
+import type React from "react"
+
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -14,15 +16,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle, Gamepad2, Eye, Code, Upload, X, DollarSign } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
 import { GamePreview } from "@/components/game-preview"
-import { balanceManager } from '@/lib/balance'
-import { supabase } from '@/lib/supabase'
-import { SuccessModal } from '@/components/success-modal'
-import { ErrorModal } from '@/components/error-modal'
-import {
-  // getDepositWalletBalance,
-  searchUsers,
-  generateDepositWallet,
-} from "@/lib/platformWallet"
+import { balanceManager } from "@/lib/balance"
+import { supabase } from "@/lib/supabase"
+import { SuccessModal } from "@/components/success-modal"
+import { ErrorModal } from "@/components/error-modal"
+import { generateDepositWallet } from "@/lib/platformWallet"
 
 import {
   Dialog,
@@ -31,81 +29,82 @@ import {
   DialogFooter,
   DialogHeader,
   DialogTitle,
-  DialogTrigger,
 } from "@/components/ui/dialog"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 
-
-const solana = new balanceManager();
+const solana = new balanceManager()
 interface User {
-  userid:string
+  userid: string
   username: string
-  deposit_wallet:string
-  avatar:string
+  deposit_wallet: string
+  avatar: string
 }
-const GAME:any = process.env.NEXT_PUBLIC_GAMER
+const GAME: any = process.env.NEXT_PUBLIC_GAMER
 
 const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
 
 1. The game should be implemented as plain JavaScript that can run in a browser environment.
 2. Use the canvas element provided by the platform for rendering the game.
 3. Implement the game logic using vanilla JavaScript without any external libraries or frameworks.
-4. The game must have a scoring system, a timer, and should be challenging with increasing difficulty.
+4. The game must have a scoring system and should be challenging with increasing difficulty.
 5. Implement the game using the following structure:
 
 \`\`\`javascript
 // Game variables (use let for variables that will change)
 let score = 0;
-let timeLeft = 60; // Game duration in seconds
 let gameWidth = 800; // Default game width
 let gameHeight = 600; // Default game height
 // Add other necessary game variables here
 
-function init() {
+function init(canvas) {
   // Initialize game elements and variables here
   // This function is called once when the game is loaded
   // Adjust game size based on the provided canvas
-  gameWidth = ctx.canvas.width;
-  gameHeight = ctx.canvas.height;
+  gameWidth = canvas.width;
+  gameHeight = canvas.height;
 }
 
 function start() {
   // Reset game state and start the game
   score = 0;
-  timeLeft = 60;
   // Initialize or reset other game variables
   // This function is called each time the game starts or restarts
 }
 
-function update(deltaTime) {
+function update(deltaTime, getCurrentTimer) {
   // Update game logic here
   // This function is called every frame
   // deltaTime is the time passed since the last frame in seconds
-  timeLeft -= deltaTime;
-  if (timeLeft <= 0) {
+  // getCurrentTimer is a function that returns the current game timer value
+  const currentTimer = getCurrentTimer();
+  if (currentTimer <= 0) {
     gameOver();
+    return;
   }
   // Update other game elements and increase difficulty over time
 }
 
-function draw(ctx) {
+function draw(ctx, getCurrentTimer) {
   // Clear the canvas and draw game elements here
   // ctx is the 2D rendering context for the canvas
   ctx.clearRect(0, 0, gameWidth, gameHeight);
 
   // Draw game elements
-  drawUI(ctx);
+  drawUI(ctx, getCurrentTimer);
   // Add more drawing code for your game elements
 }
 
-function drawUI(ctx) {
+function drawUI(ctx, getCurrentTimer) {
   // Draw score and timer
+  const currentTimer = getCurrentTimer();
   ctx.fillStyle = '#fff';
   ctx.font = '24px Arial';
   ctx.textAlign = 'left';
   ctx.fillText(\`Score: \${score}\`, 20, 40);
   ctx.textAlign = 'right';
-  ctx.fillText(\`Time: \${Math.ceil(timeLeft)}s\`, gameWidth - 20, 40);
+  const minutes = Math.floor(currentTimer / 60);
+  const seconds = Math.ceil(currentTimer % 60);
+  ctx.fillText(\`Time: \${minutes}:\${seconds.toString().padStart(2, '0')}\`, gameWidth - 20, 40);
 }
 
 function handleInput(event) {
@@ -126,7 +125,7 @@ function gameOver() {
 }
 
 // Initialize the game when the script loads
-init();
+init(document.querySelector('canvas'));
 
 // Expose necessary functions to the global scope
 window.startGame = start;
@@ -158,7 +157,7 @@ window.getScore = getScore;
 
 16. Ensure that all game logic is contained within the provided functions (init, start, update, draw, handleInput, drawUI, gameOver).
 
-17. The game should have a clear objective, scoring system, timer, and increasing difficulty to engage players.
+17. The game should have a clear objective, scoring system, and increasing difficulty to engage players.
 
 18. Include comments to explain complex logic or game mechanics for easier understanding and maintenance.
 
@@ -182,9 +181,11 @@ window.getScore = getScore;
 - Implement a minimum size for the game canvas to ensure playability on smaller screens.
 
 26. // Game Timer
-- The game timer must always be functional, regardless of whether the game is played in free or paid mode.
-- Initialize and start the timer in the game's start function, not in any payment-related logic.
-- Ensure the timer is updated in the game's update function, which should run continuously during gameplay.
+- The game timer is provided by the platform through the getCurrentTimer function.
+- Use getCurrentTimer() to get the current time remaining in the game.
+- Update the game state based on the current timer value in the update function.
+- Display the current time in the drawUI function.
+- Implement game over logic when the timer reaches zero.
 
 Use this template as a starting point for your game code. Be creative and implement an engaging game that fits within this structure. The game will be previewed in real-time as you develop it, so focus on creating a fun and interactive experience that works seamlessly with the Gamerholic platform. Remember to adjust game difficulty, speed, or complexity based on the score or elapsed time to keep the game challenging and engaging throughout the play session.
 
@@ -217,38 +218,37 @@ export default function CreateGamePage() {
   const [successMessage, setSuccessMessage] = useState("Your action was completed successfully.")
   const [errorMessage, setErrorMessage] = useState("There was a problem completing your action.")
   const [showUserNameModal, setShowUserNameModal] = useState(false)
-  const [user_id, setUserId]:any = useState('')
-  const [user_name, setUserName]:any = useState('')
-  const [user_avater, setUserAvatar]:any = useState('')
-  const [avatarFile, setAvatarFile]:any = useState('')
+  const [user_id, setUserId]: any = useState("")
+  const [user_name, setUserName]: any = useState("")
+  const [user_avater, setUserAvatar]: any = useState("")
+  const [avatarFile, setAvatarFile]: any = useState("")
 
   const [score, setScore] = useState(0)
-  const [timer, setTimer] = useState(0)
-  
-  const [userData, setUserData]:any = useState<Partial<User>>({})
+  const [timer, setTimer] = useState(180) // Set initial timer to 3 minutes (180 seconds)
+
+  const [userData, setUserData]: any = useState<Partial<User>>({})
 
   useEffect(() => {
     if (publicKey) {
       fetchUser()
     }
   }, [publicKey])
-  let isFetching = false; 
-  
-  
+  const isFetching = false
+
   const fetchUser = async () => {
     if (!publicKey) return
-    
+
     try {
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
-      
+
       if (error) {
         console.error("Select Error:", error)
         return
       }
-      
+
       if (!data) {
         const { error: insertError } = await supabase.from("users").insert([{ publicKey: publicKey.toBase58() }])
-        
+
         if (insertError) {
           console.error("Insert Error:", insertError)
         } else {
@@ -331,7 +331,6 @@ export default function CreateGamePage() {
     }
 
     try {
-
       const formDataToSend = new FormData()
       Object.entries(formData).forEach(([key, value]) => {
         if (value !== null) {
@@ -342,41 +341,36 @@ export default function CreateGamePage() {
       formDataToSend.append("gameCss", gameCss)
       formDataToSend.append("creatorWallet", publicKey.toBase58())
       formDataToSend.append("fullSizeImage", formData.fullSizeImage)
-      
+
       //check user game balance
-      let GAMErBalance = await solana.getTokenBalance(userData.deposit_wallet,GAME)
+      const GAMErBalance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
       //check user sol balance
       let solBalance = await solana.getBalance(userData.deposit_wallet)
-      let createFee:any = process.env.NEXT_PUBLIC_ARCADE_CREATE_FEE
-          solBalance = solBalance  / 10 ** 9
-          createFee = createFee  / 10 ** 9
+      let createFee: any = process.env.NEXT_PUBLIC_ARCADE_CREATE_FEE
+      solBalance = solBalance / 10 ** 9
+      createFee = createFee / 10 ** 9
 
-      if(solBalance < createFee){
-        
+      if (solBalance < createFee) {
         setShowErrorModal(true)
         setErrorMessage("Go to your profile and deposit the game creation fee to your wallet")
-      
-      }else{
-      
+      } else {
         const response = await fetch("/api/arcade/create", {
           method: "POST",
           body: formDataToSend,
         })
-        
+
         const result = await response.json()
-        
+
         if (!result.success) {
           setShowErrorModal(true)
           setErrorMessage("error creating game")
           // throw new Error(result.error || "Failed to create game")
-        }else{
+        } else {
           setSuccessMessage("game created")
           setShowSuccessModal(true)
-    
         }
-
       }
-    
+
       // router.push("/my-games")
     } catch (error: any) {
       console.error("Error creating game:", error)
@@ -392,14 +386,14 @@ export default function CreateGamePage() {
         \`\`\`
 
         Can you help me identify the issue and suggest how to fix it?`)
-              toast({
-                variant: "destructive",
-                title: "Error",
-                description: "Error creating game. Please check the error message and AI prompt for assistance.",
-              })
+      toast({
+        variant: "destructive",
+        title: "Error",
+        description: "Error creating game. Please check the error message and AI prompt for assistance.",
+      })
     }
   }
-  
+
   const startGame = () => {
     // Force a re-render of the GamePreview component
     setGameCode((prevCode) => prevCode.trim())
@@ -426,70 +420,66 @@ export default function CreateGamePage() {
       window.removeEventListener("keydown", handleKeyDown)
     }
   }, [])
-    
-  const handleAvatarUpload = async (event:any) => {
-    console.log("uploading")
-    const file = event.target.files?.[0];
-    if (file) {
-      const fileName = `${Date.now()}_${file.name}`; // Unique filename
-      const { data, error } = await supabase.storage
-        .from('images') // Your bucket name
-        .upload(fileName, file);
-  
-      if (error) {
-        console.error("Upload Error:", error);
-      } else {
-        console.log("File uploaded successfully:", data);
-        let url = 'https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/'+data.fullPath
-        await updateUserAvatar(publicKey, url);
-      }
-    }
-  };
-  
-  const updateUserAvatar = async (publicKey:any, avatarUrl:any) => {
-    const { error } = await supabase
-      .from('users')
-      .update({ avatar_url: avatarUrl })
-      .eq('publicKey', publicKey);
-      setAvatarFile(avatarUrl)
-    if (error) {
-      console.error("Error updating avatar:", error);
-    } else {
-      console.log("Avatar updated successfully!");
-    }
-  };
 
-    const handleSetUserName = async () =>{
-    
-      let name = userData.name
-      if(!userData.deposit_wallet){
-        let data_wallet:any = await generateDepositWallet(publicKey)
+  const handleAvatarUpload = async (event: any) => {
+    console.log("uploading")
+    const file = event.target.files?.[0]
+    if (file) {
+      const fileName = `${Date.now()}_${file.name}` // Unique filename
+      const { data, error } = await supabase.storage
+        .from("images") // Your bucket name
+        .upload(fileName, file)
+
+      if (error) {
+        console.error("Upload Error:", error)
+      } else {
+        console.log("File uploaded successfully:", data)
+        const url = "https://bwvzhdrrqvrdnmywdrlm.supabase.co/storage/v1/object/public/" + data.fullPath
+        await updateUserAvatar(publicKey, url)
       }
-      const { data, error } = await supabase
+    }
+  }
+
+  const updateUserAvatar = async (publicKey: any, avatarUrl: any) => {
+    const { error } = await supabase.from("users").update({ avatar_url: avatarUrl }).eq("publicKey", publicKey)
+    setAvatarFile(avatarUrl)
+    if (error) {
+      console.error("Error updating avatar:", error)
+    } else {
+      console.log("Avatar updated successfully!")
+    }
+  }
+
+  const handleSetUserName = async () => {
+    const name = userData.name
+    if (!userData.deposit_wallet) {
+      const data_wallet: any = await generateDepositWallet(publicKey)
+    }
+    const { data, error } = await supabase
       .from("users")
       .update({ username: name }) // Updating the username
-      .eq("publicKey", publicKey);       // Condition to match the publicKey
-      
-      if (error) {
-          // console.error("Update Error:", error);
-          handleErrorNotification("theres an error " + error)
-      } else {
-          // console.log("Username updated successfully:", data);
-          setShowUserNameModal(false)
-          handleSuccessNotification("user name updated")
-      }
-      fetchUser()    
+      .eq("publicKey", publicKey) // Condition to match the publicKey
+
+    if (error) {
+      // console.error("Update Error:", error);
+      handleErrorNotification("theres an error " + error)
+    } else {
+      // console.log("Username updated successfully:", data);
+      setShowUserNameModal(false)
+      handleSuccessNotification("user name updated")
     }
-  
-    const handleSuccessNotification = (message: string) => {
-      setSuccessMessage(message)
-      setShowSuccessModal(true)
-    }
-    
-    const handleErrorNotification = (message:string) => {
-      setErrorMessage(message)
-      setShowErrorModal(true)
-    }
+    fetchUser()
+  }
+
+  const handleSuccessNotification = (message: string) => {
+    setSuccessMessage(message)
+    setShowSuccessModal(true)
+  }
+
+  const handleErrorNotification = (message: string) => {
+    setErrorMessage(message)
+    setShowErrorModal(true)
+  }
 
   return (
     <div className="min-h-screen bg-gradient-to-b from-background to-background/80 text-foreground">
@@ -802,7 +792,8 @@ export default function CreateGamePage() {
                   gameCode={gameCode}
                   gameCss={gameCss}
                   onScoreUpdate={handleScoreUpdate}
-                  onTimerUpdate={handleTimerUpdate}
+                  currentTimer={timer}
+                  onGameStart={() => setTimer(180)} // Reset timer to 3 minutes when game starts
                 />
               </CardContent>
             </Card>
@@ -875,80 +866,80 @@ export default function CreateGamePage() {
         </Card>
 
         <Dialog open={showUserNameModal} onOpenChange={() => setShowUserNameModal(false)}>
-      <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
-        <DialogHeader>
-          <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
-          <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
-        </DialogHeader>
-        <div className="grid gap-6 py-4">
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
-              <div className="flex items-center space-x-4">
-                <Avatar className="w-24 h-24">
-                  <AvatarImage src={avatarFile} />
-                  <AvatarFallback className="bg-primary/20 text-primary text-2xl">
-                    {userData.name ? userData.name[0].toUpperCase() : "?"}
-                  </AvatarFallback>
-                </Avatar>
-                <div>
-                  <Label htmlFor="avatar-upload" className="cursor-pointer">
-                    <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
-                      <Upload size={16} />
-                      <span>Upload Avatar</span>
+          <DialogContent className="sm:max-w-[425px] bg-card/90 backdrop-blur-sm">
+            <DialogHeader>
+              <DialogTitle className="text-3xl font-bold text-primary">Profile Setup</DialogTitle>
+              <DialogDescription>Complete your profile in 3 easy steps</DialogDescription>
+            </DialogHeader>
+            <div className="grid gap-6 py-4">
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">1. Set Your Avatar</h3>
+                  <div className="flex items-center space-x-4">
+                    <Avatar className="w-24 h-24">
+                      <AvatarImage src={avatarFile} />
+                      <AvatarFallback className="bg-primary/20 text-primary text-2xl">
+                        {userData.name ? userData.name[0].toUpperCase() : "?"}
+                      </AvatarFallback>
+                    </Avatar>
+                    <div>
+                      <Label htmlFor="avatar-upload" className="cursor-pointer">
+                        <div className="flex items-center space-x-2 bg-primary text-primary-foreground px-3 py-2 rounded-md hover:bg-primary/90 transition-colors">
+                          <Upload size={16} />
+                          <span>Upload Avatar</span>
+                        </div>
+                      </Label>
+                      <Input
+                        id="avatar-upload"
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={handleAvatarUpload}
+                      />
                     </div>
-                  </Label>
-                  <Input
-                    id="avatar-upload"
-                    type="file"
-                    accept="image/*"
-                    className="hidden"
-                    onChange={handleAvatarUpload}
-                  />
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
-              <div className="grid gap-2">
-                <Label htmlFor="username">Username</Label>
-                <Input
-                  id="username"
-                  value={userData.name || ""}
-                  onChange={(e) => setUserData({ ...userData, name: e.target.value })}
-                  placeholder="e.g. CyberNinja"
-                  className="bg-background/50 border-primary/20"
-                />
-              </div>
-            </CardContent>
-          </Card>
-          
-          <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
-            <CardContent className="p-4">
-              <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
-              <p className="text-sm text-muted-foreground mb-2">
-                Click 'Update Profile' to generate your unique deposit address.
-              </p>
-            </CardContent>
-          </Card>
-        </div>
-        <DialogFooter>
-          <Button onClick={() => setShowUserNameModal(false)} variant="outline">
-            Cancel
-          </Button>
-          <Button
-            onClick={handleSetUserName}
-            type="submit"
-            className="bg-primary text-primary-foreground hover:bg-primary/90"
-          >
-            Update Profile
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">2. Set Your Username</h3>
+                  <div className="grid gap-2">
+                    <Label htmlFor="username">Username</Label>
+                    <Input
+                      id="username"
+                      value={userData.name || ""}
+                      onChange={(e) => setUserData({ ...userData, name: e.target.value })}
+                      placeholder="e.g. CyberNinja"
+                      className="bg-background/50 border-primary/20"
+                    />
+                  </div>
+                </CardContent>
+              </Card>
+
+              <Card className="bg-background/50 backdrop-blur-sm border-primary/20">
+                <CardContent className="p-4">
+                  <h3 className="text-lg font-semibold text-primary mb-2">3. Generate Deposit Address</h3>
+                  <p className="text-sm text-muted-foreground mb-2">
+                    Click 'Update Profile' to generate your unique deposit address.
+                  </p>
+                </CardContent>
+              </Card>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setShowUserNameModal(false)} variant="outline">
+                Cancel
+              </Button>
+              <Button
+                onClick={handleSetUserName}
+                type="submit"
+                className="bg-primary text-primary-foreground hover:bg-primary/90"
+              >
+                Update Profile
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
 
         {showSuccessModal && (
           <SuccessModal isOpen={showSuccessModal} onClose={() => setShowSuccessModal(false)} message={successMessage} />
