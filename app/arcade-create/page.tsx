@@ -626,13 +626,13 @@ export default function CreateGamePage() {
                   <div className="text-xl font-bold text-primary">Score: {score}</div>
                   <div className="text-xl font-bold text-primary">Time: {Math.ceil(timer)}s</div>
                 </div>
-                <GamePreview
+                {/* <GamePreview
                   gameCode={gameCode}
                   gameCss={gameCss}
                   onScoreUpdate={handleScoreUpdate}
                   currentTimer={timer}
                   onGameStart={() => setTimer(180)} // Reset timer to 3 minutes when game starts
-                />
+                /> */}
               </CardContent>
             </Card>
           </TabsContent>
