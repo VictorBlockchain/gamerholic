@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useCallback } from "react"
 import { Card, CardContent } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Maximize2, Minimize2 } from "lucide-react"
+import p5 from "p5"
 
 interface GamePreviewProps {
   gameCode: string
@@ -12,6 +13,7 @@ interface GamePreviewProps {
   onScoreUpdate?: (score: number) => void
   currentTimer?: number
   onGameStart?: (runGame: boolean) => void
+  highScore?: number
 }
 
 export const GamePreview: React.FC<GamePreviewProps> = ({
@@ -20,20 +22,25 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   onScoreUpdate,
   currentTimer,
   onGameStart,
+  highScore = 0,
 }) => {
-  const canvasRef = useRef<HTMLCanvasElement>(null)
+  const sketchRef = useRef<HTMLDivElement>(null)
   const containerRef = useRef<HTMLDivElement>(null)
   const [error, setError] = useState<string | null>(null)
-  const [gameInstance, setGameInstance] = useState<any>(null)
-  const [animationFrameId, setAnimationFrameId] = useState<number | null>(null)
+  const [p5Instance, setP5Instance] = useState<p5 | null>(null)
   const [gameWidth, setGameWidth] = useState(800)
   const [gameHeight, setGameHeight] = useState(600)
   const [score, setScore] = useState(0)
   const [timer, setTimer] = useState(0)
   const [runGame, setRunGame] = useState(false)
   const [isMobile, setIsMobile] = useState(false)
-  const touchStartRef = useRef<{ x: number; y: number } | null>(null)
   const [isFullScreen, setIsFullScreen] = useState(false)
+
+  const onScoreUpdateRef = useRef(onScoreUpdate)
+
+  useEffect(() => {
+    onScoreUpdateRef.current = onScoreUpdate
+  }, [onScoreUpdate])
 
   useEffect(() => {
     const checkMobile = () => {
@@ -45,239 +52,156 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
   }, [])
 
   useEffect(() => {
-    const canvas = canvasRef.current
-    if (!canvas) return
-
-    const ctx = canvas.getContext("2d")
-    ctx?.clearRect(0, 0, canvas.width, canvas.height)
-
-    if (!gameCode.trim()) {
-      if (ctx) {
-        ctx.fillStyle = "white"
-        ctx.font = "16px Arial"
-        ctx.textAlign = "center"
-        ctx.fillText("Enter your game code and click 'Update Preview'", canvas.width / 2, canvas.height / 2)
+    const preventDefaultKeys = (e: KeyboardEvent) => {
+      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", " "].includes(e.key)) {
+        e.preventDefault()
       }
-      return
+    }
+    window.addEventListener("keydown", preventDefaultKeys)
+    return () => {
+      window.removeEventListener("keydown", preventDefaultKeys)
+    }
+  }, [])
+
+  useEffect(() => {
+    let newP5Instance: p5 | null = null
+
+    if (sketchRef.current && gameCode) {
+      try {
+        newP5Instance = new p5((p: p5) => {
+          p.setup = () => {
+            p.createCanvas(gameWidth, gameHeight)
+            if (typeof (window as any).setup === "function") {
+              ;(window as any).setup(p)
+            }
+          }
+
+          p.draw = () => {
+            if (typeof (window as any).draw === "function") {
+              ;(window as any).draw(p)
+            }
+            // Update score
+            if (typeof (window as any).getScore === "function") {
+              const currentScore = (window as any).getScore()
+              setScore(currentScore)
+              if (onScoreUpdateRef.current) onScoreUpdateRef.current(currentScore)
+            }
+
+            if (typeof (window as any).getCurrentTime === "function") {
+              const currentTime = (window as any).getCurrentTime()
+              setTimer(currentTime)
+            }
+          }
+
+          // Add other p5 event handlers as needed
+          p.mousePressed = () => {
+            if (typeof (window as any).mousePressed === "function") {
+              ;(window as any).mousePressed(p)
+            }
+          }
+
+          p.keyPressed = () => {
+            if (typeof (window as any).keyPressed === "function") {
+              ;(window as any).keyPressed(p)
+            }
+            return false // Prevent default behavior
+          }
+
+          p.keyReleased = () => {
+            if (typeof (window as any).keyReleased === "function") {
+              ;(window as any).keyReleased(p)
+            }
+            return false // Prevent default behavior
+          }
+        }, sketchRef.current)
+
+        setP5Instance(newP5Instance)
+
+        // Evaluate the game code
+        // eslint-disable-next-line no-new-func
+        new Function(
+          "p5",
+          `
+          return function(p) {
+            ${gameCode}
+          }
+        `,
+        )(p5)(newP5Instance)
+
+        setError(null)
+      } catch (err: any) {
+        console.error("Error executing game code:", err)
+        setError(err.toString())
+      }
     }
 
+    return () => {
+      if (newP5Instance) {
+        newP5Instance.remove()
+      }
+    }
+  }, [gameCode, gameWidth, gameHeight])
+
+  useEffect(() => {
+    setTimer(currentTimer || 0)
+  }, [currentTimer])
+
+  useEffect(() => {
     // Apply CSS
     const styleElement = document.createElement("style")
     styleElement.textContent = gameCss
     document.head.appendChild(styleElement)
 
-    // Execute the game code
-    try {
-      const gameModule = { exports: {} }
-      const wrappedCode = `
-        (function(module, exports) {
-          ${gameCode}
-          if (typeof startGame === 'function') {
-            module.exports = {
-              start: startGame,
-              update: typeof update === 'function' ? update : () => {},
-              draw: typeof draw === 'function' ? draw : () => {},
-              getScore: typeof getScore === 'function' ? getScore : () => 0,
-              handleInput: typeof handleInput === 'function' ? handleInput : () => {},
-              getTimer: typeof getTimer === 'function' ? getTimer : () => 0,
-            };
-          } else {
-            module.exports = { start: () => {}, update: () => {}, draw: () => {}, getScore: () => 0, handleInput: () => {}, getTimer: () => 0 };
-          }
-        })(gameModule, gameModule.exports);
-      `
-      // eslint-disable-next-line no-new-func
-      new Function("gameModule", wrappedCode)(gameModule)
-
-      const game: any = gameModule.exports
-      setGameInstance(game)
-
-      // Extract game dimensions from the code
-      const widthMatch = gameCode.match(/let\s+gameWidth\s*=\s*(\d+)/)
-      const heightMatch = gameCode.match(/let\s+gameHeight\s*=\s*(\d+)/)
-
-      if (widthMatch && heightMatch) {
-        setGameWidth(Number.parseInt(widthMatch[1]))
-        setGameHeight(Number.parseInt(heightMatch[1]))
-      }
-
-      if (typeof game.start === "function") {
-        game.start(canvas)
-      }
-
-      setError(null)
-    } catch (err: any) {
-      console.error("Error executing game code:", err)
-      setError(err.toString())
-      if (ctx) {
-        ctx.fillStyle = "red"
-        ctx.font = "16px Arial"
-        ctx.textAlign = "center"
-        ctx.fillText(`Error: ${err.toString()}`, canvas.width / 2, canvas.height / 2)
-      }
-    }
-
     return () => {
       document.head.removeChild(styleElement)
     }
-  }, [gameCode, gameCss])
-
-  const gameLoop = () => {
-    if (!gameInstance) return
-
-    const ctx = canvasRef.current?.getContext("2d")
-    if (ctx) {
-      if (typeof gameInstance.update === "function") {
-        gameInstance.update(1 / 60, () => currentTimer) // Pass a function to get currentTimer
-      }
-      if (typeof gameInstance.draw === "function") {
-        gameInstance.draw(ctx, () => currentTimer) // Pass a function to get currentTimer
-      }
-
-      // Update score
-      if (typeof gameInstance.getScore === "function") {
-        const currentScore = gameInstance.getScore()
-        setScore(currentScore)
-        if (onScoreUpdate) onScoreUpdate(currentScore)
-      }
-    }
-
-    const frameId = requestAnimationFrame(gameLoop)
-    setAnimationFrameId(frameId)
-  }
+  }, [gameCss])
 
   const handleStartGame = () => {
-    if (!gameInstance || typeof gameInstance.start !== "function") return
-
-    // Stop previous loop if running
-    if (animationFrameId) {
-      cancelAnimationFrame(animationFrameId)
-    }
-
-    canvasRef.current?.focus()
-    gameInstance.start()
-    gameLoop()
-    setRunGame(true)
-    if (onGameStart) {
-      onGameStart(true)
-    }
-  }
-
-  const handleUserInput = useCallback(
-    (event: Event) => {
-      if (gameInstance && typeof gameInstance.handleInput === "function") {
-        gameInstance.handleInput(event)
-      }
-    },
-    [gameInstance],
-  )
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    const touch = e.touches[0]
-    touchStartRef.current = { x: touch.clientX, y: touch.clientY }
-  }
-
-  const handleTouchEnd = (e: React.TouchEvent) => {
-    if (!touchStartRef.current) return
-
-    const touch = e.changedTouches[0]
-    const endX = touch.clientX
-    const endY = touch.clientY
-    const startX = touchStartRef.current.x
-    const startY = touchStartRef.current.y
-
-    const deltaX = endX - startX
-    const deltaY = endY - startY
-
-    // Determine swipe direction
-    if (Math.abs(deltaX) > Math.abs(deltaY)) {
-      // Horizontal swipe
-      if (deltaX > 0) {
-        simulateKeyEvent("ArrowRight")
+    try {
+      console.log("Starting game")
+      if (typeof (window as any).startGame === "function") {
+        ;(window as any).startGame(p5Instance)
       } else {
-        simulateKeyEvent("ArrowLeft")
+        console.error("startGame function is not defined")
       }
-    } else {
-      // Vertical swipe
-      if (deltaY > 0) {
-        simulateKeyEvent("ArrowDown")
-      } else {
-        simulateKeyEvent("ArrowUp")
+      setRunGame(true)
+      setTimer(180) // Reset timer to 3 minutes
+      if (onGameStart) {
+        onGameStart(true)
       }
+      // Focus on the game container to ensure it receives keyboard events
+      containerRef.current?.focus()
+    } catch (error) {
+      console.error("Error starting game:", error)
+      setError("Failed to start the game. Please try again.")
     }
-
-    touchStartRef.current = null
   }
 
-  const simulateKeyEvent = (key: string) => {
-    const keyDownEvent = new KeyboardEvent("keydown", { key })
-    const keyUpEvent = new KeyboardEvent("keyup", { key })
-    handleUserInput(keyDownEvent)
-    handleUserInput(keyUpEvent)
-  }
+  const handleResize = useCallback(() => {
+    const container = containerRef.current
+    if (container && p5Instance) {
+      const parentWidth = container.parentElement?.clientWidth || window.innerWidth
+      const parentHeight = container.parentElement?.clientHeight || window.innerHeight
+      let scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight, 1)
+
+      if (isMobile) {
+        scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight)
+      }
+
+      container.style.width = `${gameWidth * scale}px`
+      container.style.height = `${gameHeight * scale}px`
+
+      p5Instance.resizeCanvas(gameWidth * scale, gameHeight * scale)
+    }
+  }, [gameWidth, gameHeight, isMobile, p5Instance])
 
   useEffect(() => {
-    const handleResize = () => {
-      const container = containerRef.current
-      if (container) {
-        const parentWidth = container.parentElement?.clientWidth || window.innerWidth
-        const parentHeight = container.parentElement?.clientHeight || window.innerHeight
-        let scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight, 1)
-
-        // For mobile, allow scaling beyond 1 to fit the full screen
-        if (isMobile) {
-          scale = Math.min(parentWidth / gameWidth, parentHeight / gameHeight)
-        }
-
-        container.style.width = `${gameWidth * scale}px`
-        container.style.height = `${gameHeight * scale}px`
-
-        // Update canvas size
-        const canvas = canvasRef.current
-        if (canvas) {
-          canvas.width = gameWidth * scale
-          canvas.height = gameHeight * scale
-          const ctx = canvas.getContext("2d")
-          if (ctx) {
-            ctx.scale(scale, scale)
-          }
-        }
-      }
-    }
-
     window.addEventListener("resize", handleResize)
     handleResize()
 
     return () => window.removeEventListener("resize", handleResize)
-  }, [gameWidth, gameHeight, isMobile])
-
-  useEffect(() => {
-    const preventArrowScroll = (e: KeyboardEvent) => {
-      if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Space"].includes(e.code)) {
-        e.preventDefault()
-      }
-    }
-
-    window.addEventListener("keydown", preventArrowScroll)
-
-    return () => window.removeEventListener("keydown", preventArrowScroll)
-  }, [])
-
-  useEffect(() => {
-    window.addEventListener("keydown", handleUserInput)
-    window.addEventListener("keyup", handleUserInput)
-    window.addEventListener("mousedown", handleUserInput)
-    window.addEventListener("mouseup", handleUserInput)
-    window.addEventListener("mousemove", handleUserInput)
-
-    return () => {
-      window.removeEventListener("keydown", handleUserInput)
-      window.removeEventListener("keyup", handleUserInput)
-      window.removeEventListener("mousedown", handleUserInput)
-      window.removeEventListener("mouseup", handleUserInput)
-      window.removeEventListener("mousemove", handleUserInput)
-    }
-  }, [handleUserInput])
+  }, [handleResize])
 
   const toggleFullScreen = () => {
     if (!document.fullscreenElement) {
@@ -309,22 +233,15 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             ref={containerRef}
             className={`relative ${isFullScreen ? "fixed inset-0 z-50 bg-black" : ""}`}
             style={{ width: gameWidth, height: gameHeight }}
-            onTouchStart={handleTouchStart}
-            onTouchEnd={handleTouchEnd}
+            tabIndex={0}
+            onKeyDown={(e) => e.preventDefault()}
           >
             {isMobile && (
               <Button onClick={toggleFullScreen} variant="outline" size="icon" className="absolute top-2 right-2 z-10">
                 {isFullScreen ? <Minimize2 className="h-4 w-4" /> : <Maximize2 className="h-4 w-4" />}
               </Button>
             )}
-            <canvas
-              id="gameCanvas"
-              ref={canvasRef}
-              width={gameWidth}
-              height={gameHeight}
-              className="border-2 border-primary rounded-lg"
-              tabIndex={0}
-            />
+            <div ref={sketchRef} className="border-2 border-primary rounded-lg" />
           </div>
         </div>
         {error && (
@@ -343,8 +260,10 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             </Button>
           )}
         </div>
-        {/* <div>Score: {score}</div>
-        <div>Timer: {timer}</div> */}
+        <div className="mt-4 flex justify-between items-center bg-background/50 p-4 rounded-lg">
+          <div className="text-xl font-bold text-primary">Score: {score}</div>
+          <div className="text-xl font-bold text-primary">Time: {Math.ceil(timer)}s</div>
+        </div>
       </CardContent>
     </Card>
   )

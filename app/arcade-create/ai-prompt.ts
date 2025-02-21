@@ -1,98 +1,197 @@
-const aiGameCreationPrompt = `Create a JavaScript-based game for the Gamerholic platform using the following structure and guidelines:
+export const aiGameCreationPrompt = `Create a p5.js-based game for the Gamerholic platform using the following structure and guidelines:
 
-1. The game should be implemented as plain JavaScript that can run in a browser environment.
-2. Use the canvas element provided by the platform for rendering the game.
-3. Implement the game logic using vanilla JavaScript without any external libraries or frameworks.
-4. The game must have a scoring system and should be challenging with increasing difficulty.
+1. The game should be implemented using p5.js and run in a browser environment.
+2. Use the p5.js canvas for rendering the game, with dimensions that adapt to the available space.
+3. The game must have a scoring system and should be challenging with increasing difficulty.
+4. IMPORTANT: All p5.js functions must be called using the 'p' object passed to each function. This ensures compatibility with our game preview system.
 5. Implement the game using the following structure:
 
 \`\`\`javascript
-// Game variables (use let for variables that will change)
 let score = 0;
-let gameWidth = 800; // Default game width
-let gameHeight = 600; // Default game height
+let highScore = 0; // This will be updated from the React component
+let gameWidth, gameHeight;
+let gameState = 'start'; // Possible states: 'start', 'playing', 'gameover'
 // Add other necessary game variables here
 
-function init(canvas) {
+function setup(p) {
+  // Create a canvas that fills the parent container
+  gameWidth = p.windowWidth;
+  gameHeight = p.windowHeight;
+  p.createCanvas(gameWidth, gameHeight);
+
+  // Set frame rate to ensure consistent performance
+  p.frameRate(60);
+  
+  // Get highScore from the React component
+  highScore = window.highScore || 0;
+
   // Initialize game elements and variables here
-  // This function is called once when the game is loaded
-  // Adjust game size based on the provided canvas
-  gameWidth = canvas.width;
-  gameHeight = canvas.height;
+  initializeGame(p);
 }
 
-function start() {
-  // Reset game state and start the game
-  score = 0;
-  // Initialize or reset other game variables
-  // This function is called each time the game starts or restarts
+function draw(p) {
+  // Clear the background
+  if (!p) return;
+  p.background(0);
+
+  switch (gameState) {
+    case 'start':
+      drawStartScreen(p);
+      break;
+    case 'playing':
+      updateGame(p);
+      drawGame(p);
+      break;
+    case 'gameover':
+      drawGameOverScreen(p);
+      break;
+  }
 }
 
-function update(deltaTime, getCurrentTimer) {
+function drawStartScreen(p) {
+  p.fill(255);
+  p.textAlign(p.CENTER, p.CENTER);
+  p.textSize(32);
+  p.text('Click to Start', p.width / 2, p.height / 2);
+}
+
+function updateGame(p) {
   // Update game logic here
   // This function is called every frame
-  // deltaTime is the time passed since the last frame in seconds
-  // getCurrentTimer is a function that returns the current game timer value
+  // Update game elements and increase difficulty over time
   const currentTimer = getCurrentTimer();
   if (currentTimer <= 0) {
-    gameOver();
+    gameOver(p);
     return;
   }
-  // Update other game elements and increase difficulty over time
+  // Add game update logic here
 }
 
-function draw(ctx, getCurrentTimer) {
-  // Clear the canvas and draw game elements here
-  // ctx is the 2D rendering context for the canvas
-  ctx.clearRect(0, 0, gameWidth, gameHeight);
-
-  // Draw game elements
-  drawUI(ctx, getCurrentTimer);
+function drawGame(p) {
+  // Draw game elements here
+  drawUI(p);
   // Add more drawing code for your game elements
 }
 
-function drawUI(ctx, getCurrentTimer) {
-  // Draw score and timer
-  const currentTimer = getCurrentTimer();
-  ctx.fillStyle = '#fff';
-  ctx.font = '24px Arial';
-  ctx.textAlign = 'left';
-  ctx.fillText(\`Score: \${score}\`, 20, 40);
-  ctx.textAlign = 'right';
-  const minutes = Math.floor(currentTimer / 60);
-  const seconds = Math.ceil(currentTimer % 60);
-  ctx.fillText(\`Time: \${minutes}:\${seconds.toString().padStart(2, '0')}\`, gameWidth - 20, 40);
+function drawGameOverScreen(p) {
+  p.fill(255);
+  p.textAlign(p.CENTER, p.CENTER);
+  p.textSize(32);
+  p.text('Game Over', p.width / 2, p.height / 2);
+  p.textSize(24);
+  p.text('Click to Restart', p.width / 2, p.height / 2 + 40);
+  p.text('Score: ' + score, p.width / 2, p.height / 2 + 80);
+  p.text('High Score: ' + highScore, p.width / 2, p.height / 2 + 120);
 }
 
-function handleInput(event) {
-  // Handle user input here
-  // This function is called when the user interacts with the game
-  // event.type will be 'keydown', 'keyup', 'mousedown', 'mouseup', or 'mousemove'
-  // event will have properties like key, code, clientX, clientY, etc.
+function drawUI(p) {
+  // Draw score and other UI elements
+  p.fill(255);
+  p.textSize(gameWidth * 0.03); // Relative text size
+  p.textAlign(p.LEFT, p.TOP);
+  p.text(\`Score: \${score}\`, gameWidth * 0.02, gameHeight * 0.02);
+  p.text(\`High Score: \${highScore}\`, gameWidth * 0.02, gameHeight * 0.06);
+  
+  // Draw timer
+  const currentTimer = getCurrentTimer();
+  const minutes = Math.floor(currentTimer / 60);
+  const seconds = Math.ceil(currentTimer % 60);
+  p.textAlign(p.RIGHT, p.TOP);
+  p.text(\`Time: \${minutes}:\${seconds.toString().padStart(2, '0')}\`, gameWidth * 0.98, gameHeight * 0.02);
+}
+
+function keyPressed(p) {
+  // Handle key press events
+  // This function must be defined, even if empty
+}
+
+function keyReleased(p) {
+  // Handle key release events
+  // This function must be defined, even if empty
+}
+
+function mousePressed(p) {
+  // Handle mouse input here
+    // This function must be defined, even if empty
+  
+  if (gameState === 'start' || gameState === 'gameover') {
+    startGame();
+  }
+}
+
+function windowResized(p) {
+  // Adjust the canvas size when the window is resized
+  gameWidth = p.windowWidth;
+  gameHeight = p.windowHeight;
+  p.resizeCanvas(gameWidth, gameHeight);
+
+  // Adjust game elements if necessary
+  initializeGame(p);
 }
 
 function getScore() {
   return score;
 }
 
-function gameOver() {
-  // Handle game over state
-  console.log("Game Over! Final Score:", score);
-  // You may want to stop the game loop or show a game over screen here
+function initializeGame(p) {
+  // Initialize or reset game elements and variables
+  gameWidth = p.width;
+  gameHeight = p.height;
+  // Add any other initialization logic here
 }
 
-// Initialize the game when the script loads
-init(document.querySelector('canvas'));
+function startGame() {
+  // Reset game state and start the game
+  score = 0;
+  gameState = 'playing';
+  // Initialize or reset other game variables
+  // This function is called when the Start Game button is clicked
+  initializeGame(p);
+}
+
+function gameOver(p) {
+  // Handle game over state
+  console.log("Game Over! Final Score:", score);
+  if (score > highScore) {
+    highScore = score;
+    // Update high score in the React component
+    if (window.updateHighScore) {
+      window.updateHighScore(highScore);
+    }
+  }
+  gameState = 'gameover';
+}
+
+function getCurrentTimer() {
+  // Implement this function to return the current game time
+  // This should be based on the game's internal timer logic
+}
 
 // Expose necessary functions to the global scope
-window.startGame = start;
-window.handleInput = handleInput;
-window.update = update;
+window.setup = setup;
 window.draw = draw;
+window.keyPressed = keyPressed;
+window.mousePressed = mousePressed;
+window.windowResized = windowResized;
 window.getScore = getScore;
+window.startGame = startGame;
 \`\`\`
 
-6. Do not include any HTML structure tags ie: 'body'. The game will be embedded in an existing structure.
+Important: Always define the following functions, even if they are empty:
+   - setup(p)
+   - draw(p)
+   - keyPressed(p)
+   - keyReleased(p)
+   - mousePressed(p)
+   - getScore()
+   - startGame()
+
+   Make sure to expose all necessary functions to the global scope as shown in the template.
+   Use the 'p' parameter consistently when calling p5.js functions:
+   Correct: p.rect(), p.fill(), p.width, p.height
+   Incorrect: rect(), fill(), width, height
+   
+6. Do not include any HTML structure tags. The game will be embedded in an existing structure.
 
 7. Ensure that the game can be started by calling the global startGame() function.
 
@@ -100,50 +199,55 @@ window.getScore = getScore;
 
 9. Make sure to implement proper game over conditions and update the score accordingly.
 
-10. The game should be responsive and adjust to different canvas sizes. Use the gameWidth and gameHeight variables for positioning and sizing game elements.
+10. The game should be responsive and adjust to different canvas sizes:
+    - Ensure the game canvas is centered in the game view.
+    - Make sure the score and timer are always visible, regardless of screen size.
+    - Use relative positioning for UI elements (score, timer) to ensure they remain visible on different screen sizes.
+    - Consider using percentages or viewport units for positioning instead of fixed pixel values.
+    - Implement a minimum size for the game canvas to ensure playability on smaller screens.
 
-11. Implement error handling to prevent the game from crashing due to runtime errors.
+11. Implement error handling to prevent the game from crashing due to runtime errors:
+    - Use try-catch blocks in critical sections of your code.
+    - Implement fallback behaviors for unexpected scenarios.
+    - Log errors to the console for debugging purposes.
 
 12. Use ES6+ syntax and best practices for clean, readable code.
 
-13. Do not use setTimeout or setInterval for game loops or animations. The platform will handle calling the update and draw functions.
+13. Do not use setTimeout or setInterval for game loops or animations. p5.js handles the main loop.
 
-14. Do not add event listeners directly. Instead, use the handleInput function to process user inputs.
+14. Avoid using global variables outside of the provided structure. Encapsulate game state within the functions.
 
-15. Avoid using global variables outside of the provided structure. Encapsulate game state within the functions.
+15. Ensure that all game logic is contained within the provided p5.js functions (setup, draw, etc.).
 
-16. Ensure that all game logic is contained within the provided functions (init, start, update, draw, handleInput, drawUI, gameOver).
+16. The game should have a clear objective, scoring system, and increasing difficulty to engage players.
 
-17. The game should have a clear objective, scoring system, and increasing difficulty to engage players.
+17. Include comments to explain complex logic or game mechanics for easier understanding and maintenance.
 
-18. Include comments to explain complex logic or game mechanics for easier understanding and maintenance.
+18. Game Timer Implementation:
+    - Use the getCurrentTimer function to get the current time remaining in the game.
+    - Update the game state based on the current timer value in the updateGame function.
+    - Display the current time in the drawUI function.
+    - Implement game over logic when the timer reaches zero.
 
-19. Ensure that the score and timer are always visible and properly positioned on the screen.
+19. Use appropriate font sizes and colors for UI elements to ensure readability against the game background.
 
-20. Use relative positioning for game elements based on the gameWidth and gameHeight variables to ensure consistency across different canvas sizes.
+20. Consider implementing a simple pause functionality to enhance user experience.
 
-21. Implement a drawUI function to handle the rendering of the score, timer, and any other UI elements consistently.
+21. Test the game at different canvas sizes to ensure that all elements are visible and the game remains playable.
 
-22. Use appropriate font sizes and colors for UI elements to ensure readability against the game background.
+22. Optimize performance:
+    - Limit the number of objects created during gameplay.
+    - Use efficient algorithms for collision detection and other computationally intensive tasks.
+    - Consider using object pooling for frequently created/destroyed objects.
 
-23. Consider implementing a simple pause functionality to enhance user experience.
+23. Implement proper cleanup in the gameOver function to ensure no lingering processes or memory leaks.
 
-24. Test the game at different canvas sizes to ensure that all elements are visible and the game remains playable.
+24. High Score Implementation:
+    - Use the highScore variable to store and display the highest score achieved.
+    - Update the high score when a new high score is achieved in the gameOver function.
+    - Use window.updateHighScore(highScore) to update the high score in the React component if available.
 
-25. // Responsive Design
-- Ensure the game canvas is centered in the game view.
-- Make sure the score and timer are always visible, regardless of screen size.
-- Use relative positioning for UI elements (score, timer) to ensure they remain visible on different screen sizes.
-- Consider using percentages or viewport units for positioning instead of fixed pixel values.
-- Implement a minimum size for the game canvas to ensure playability on smaller screens.
+Use this template as a starting point for your p5.js game code. Be creative and implement an engaging game that fits within this structure. The game will be previewed in real-time as you develop it, so focus on creating a fun and interactive experience that works seamlessly with the Gamerholic platform. Remember to adjust game difficulty, speed, or complexity based on the score or elapsed time to keep the game challenging and engaging throughout the play session.
 
-26. // Game Timer
-- The game timer is provided by the platform through the getCurrentTimer function.
-- Use getCurrentTimer() to get the current time remaining in the game.
-- Update the game state based on the current timer value in the update function.
-- Display the current time in the drawUI function.
-- Implement game over logic when the timer reaches zero.
+Important Note: When writing custom p5.js code for your game, ensure that all drawing and update logic is contained within the p5.js functions (setup, draw, etc.), and always use the 'p' object to call p5.js functions. Do not manipulate the DOM or use vanilla JavaScript methods that might interfere with the main site's functionality.`
 
-Use this template as a starting point for your game code. Be creative and implement an engaging game that fits within this structure. The game will be previewed in real-time as you develop it, so focus on creating a fun and interactive experience that works seamlessly with the Gamerholic platform. Remember to adjust game difficulty, speed, or complexity based on the score or elapsed time to keep the game challenging and engaging throughout the play session.
-
-Important CSS Note: When writing custom CSS for your game, do not use any selectors that target the <body> tag or any other elements outside of the game canvas. Your CSS should only affect elements within the game canvas to avoid interfering with the main site's styling.`

@@ -74,6 +74,7 @@ export default function PlayPage() {
   const [loading_play, setLoadingPlay] = useState(false)
   const [play_time, setPlayTime]:any = useState()
   const [gameWallet, setGameWallet]:any = useState()
+  const [highScore, setHighScore] = useState(0)
 
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
@@ -223,6 +224,7 @@ export default function PlayPage() {
     if (error) console.error("Error fetching game data:", error)
     else setGame(data)
     setPlayTime(data.play_time)
+    setHighScore(data.top_score)
     setLoading(false)
   }
 
@@ -526,6 +528,7 @@ export default function PlayPage() {
                     onScoreUpdate={setScore}
                     currentTimer={timer}
                     onGameStart={setGameStarted}
+                    highScore={highScore} 
                     // onGameEnd={() => handleScore()}
                   />
                 )}
