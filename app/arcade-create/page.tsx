@@ -256,8 +256,10 @@ export default function CreateGamePage() {
   const handleTimerUpdate = (newTimer: number) => {
     setTimer(newTimer)
   }
-
+  
   useEffect(() => {
+    if (typeof window !== 'undefined') {
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight"].includes(e.key)) {
         e.preventDefault()
@@ -269,6 +271,7 @@ export default function CreateGamePage() {
     return () => {
       window.removeEventListener("keydown", handleKeyDown)
     }
+  }
   }, [])
 
   const handleAvatarUpload = async (event: any) => {
