@@ -86,6 +86,9 @@ export function Header() {
             <span>Logout</span>
           </div>
         </DropdownMenuItem>
+        <DropdownMenuItem asChild>
+          <AuthButton />
+        </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
   );
