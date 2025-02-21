@@ -1,7 +1,7 @@
 "use client"
 
 import type React from "react"
-
+import dynamic from 'next/dynamic'
 import { useState, useRef, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { useWallet } from "@solana/wallet-adapter-react"
@@ -15,7 +15,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { PlusCircle, Gamepad2, Eye, Code, Upload, X, DollarSign } from "lucide-react"
 import { useToast } from "@/components/ui/use-toast"
-import { GamePreview } from "@/components/game-preview"
+// import { GamePreview } from "@/components/game-preview"
+const GamePreview = dynamic(() => import("@/components/game-preview").then((mod) => mod.GamePreview), { ssr: false });
+
 import { balanceManager } from "@/lib/balance"
 import { supabase } from "@/lib/supabase"
 import { SuccessModal } from "@/components/success-modal"
