@@ -44,7 +44,7 @@ export default function RootLayout({
           <WalletProviderComponent>
             {children}
             <Analytics />
-            <SpeedInsights />
+            {/* <SpeedInsights /> */}
             <Toaster />
             <Footer />
             <BottomNav />
