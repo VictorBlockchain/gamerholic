@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback,useRef } from "react"
+import dynamic from 'next/dynamic'
 import { useParams } from "next/navigation"
 import { useWallet, useConnection } from "@solana/wallet-adapter-react"
 import { LAMPORTS_PER_SOL, PublicKey } from "@solana/web3.js"
@@ -14,7 +15,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { ThumbsUp, ThumbsDown, Zap, Loader2, Trophy, Clock } from "lucide-react"
 import { supabase } from "@/lib/supabase"
 import { PauseModal } from "@/components/pause-modal"
-import { GamePreview } from "@/components/game-preview"
+// import { GamePreview } from "@/components/game-preview"
+const GamePreview = dynamic(() => import("@/components/game-preview").then((mod) => mod.GamePreview), { ssr: false });
 import React from "react"
 import { SuccessModal } from "@/components/success-modal"
 import { ErrorModal } from "@/components/error-modal"
