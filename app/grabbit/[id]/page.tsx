@@ -194,7 +194,6 @@ export default function GrabbitGame() {
         },
         (payload: any) => {
           const data = payload.new
-          // console.log(data)
           const filteredData = Object.fromEntries(
             Object.entries(data).filter(([_, value]) => value !== null && value !== undefined),
           )
@@ -216,7 +215,7 @@ export default function GrabbitGame() {
             if (playerObj) {
               setPlayerData(playerObj)
             }
-            console.log(updatedData)
+            // console.log(updatedData)
             return updatedData
           })
         },
