@@ -2,12 +2,12 @@
 
 import Link from "next/link";
 import { Button } from "@/components/ui/button";
-import { Bell, User, ChevronDown, Menu } from "lucide-react";
+import { Bell, User, ChevronDown, Menu, LogOut } from "lucide-react"; // Added LogOut icon
 import Image from "next/image";
 import { WalletDisplay } from "@/components/wallet-display";
 import { AuthButton } from "@/components/auth-button";
 import { useState, useEffect } from "react";
-import { useWallet } from "@solana/wallet-adapter-react";
+import { useWallet } from "@solana/wallet-adapter-react"; // Import useWallet
 import { supabase } from "@/lib/supabase";
 import {
   DropdownMenu,
@@ -20,7 +20,7 @@ import {
 export function Header() {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
   const [notifications, setNotifications] = useState([]);
-  const { publicKey }: any = useWallet();
+  const { publicKey, disconnect }: any = useWallet(); // Added disconnect
   const [userData, setUserData]: any = useState();
 
   useEffect(() => {
@@ -28,7 +28,7 @@ export function Header() {
       fetchUser();
     }
   }, [publicKey]);
-  
+
   const fetchUser = async () => {
     const { data: user, error: userError } = await supabase
       .from("users")
@@ -40,6 +40,11 @@ export function Header() {
     }
   };
 
+  // Logout function
+  const handleLogout = () => {
+    disconnect(); // Disconnect the Solana wallet
+    // Optionally, you can also clear any local state or Supabase session here
+  };
 
   const ProfileMenu = () => (
     <DropdownMenu>
@@ -74,8 +79,12 @@ export function Header() {
           <Link href="/my-support-tickets">Support Tickets</Link>
         </DropdownMenuItem>
         <DropdownMenuSeparator />
-        <DropdownMenuItem asChild>
-          <AuthButton />
+        {/* Logout Button */}
+        <DropdownMenuItem onClick={handleLogout}>
+          <div className="flex items-center gap-2">
+            <LogOut className="h-4 w-4" />
+            <span>Logout</span>
+          </div>
         </DropdownMenuItem>
       </DropdownMenuContent>
     </DropdownMenu>
@@ -89,7 +98,7 @@ export function Header() {
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end">
-      <DropdownMenuItem asChild>
+        <DropdownMenuItem asChild>
           <Link href="/">Home</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
