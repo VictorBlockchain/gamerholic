@@ -12,14 +12,16 @@ export class balanceManager {
 
 async getBalance(address: any): Promise<number> {
 try {
-    console.log(address)
-    const publicKey = new PublicKey(address)
-    const balance = await connection.getBalance(publicKey)
-    // console.log(balance)
+    let balance = 0
+    if(address){
+        const publicKey = new PublicKey(address)
+        balance = await connection.getBalance(publicKey)
+    
+    }
     return balance
-    // return balance / 10 ** 9 // Convert lamports to SOL
+
 } catch (error) {
-    console.error("Failed to get balance:", error)
+   // console.error("Failed to get balance:", error)
     return 0
 }
 }

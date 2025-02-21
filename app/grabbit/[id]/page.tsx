@@ -169,7 +169,7 @@ export default function GrabbitGame() {
   }
 
   const fetchNSetGame = async () => {
-    // console.log("fetching")
+    console.log("fetching")
     const { data, error } = await supabase.from("grabbit").select("*").eq("game_id", gameId).maybeSingle()
     // console.log(data)
     const balance = await Balance.getBalance(data.wallet)
@@ -194,6 +194,7 @@ export default function GrabbitGame() {
         },
         (payload: any) => {
           const data = payload.new
+          // console.log(data)
           const filteredData = Object.fromEntries(
             Object.entries(data).filter(([_, value]) => value !== null && value !== undefined),
           )
@@ -215,7 +216,7 @@ export default function GrabbitGame() {
             if (playerObj) {
               setPlayerData(playerObj)
             }
-
+            console.log(updatedData)
             return updatedData
           })
         },
@@ -228,7 +229,6 @@ export default function GrabbitGame() {
   }, [gameId, publicKey, supabase])
 
   const fetchGameData = async () => {
-    console.log("fetching game data")
     try {
       const response = await fetch("/api/grabbit", {
         method: "POST",
@@ -248,7 +248,6 @@ export default function GrabbitGame() {
   }
 
   const tryBecomeLeader = async () => {
-    console.log("working")
     const now = moment.utc()
     const threeSecondsAgo = moment.utc(now).subtract(3, "seconds")
 
@@ -657,7 +656,7 @@ export default function GrabbitGame() {
                 </div>
               )}
               {gameData.players.length > 0 &&
-                gameData.players.some((playerObj: any) => playerObj.player == publicKey.toString()) && (
+                gameData.players.some((playerObj: any) => playerObj.player == publicKey) && (
                   <>
                     <div className="col-span-4">
                       <ActionButtons
