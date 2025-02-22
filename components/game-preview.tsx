@@ -266,7 +266,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
             <strong>Error:</strong> {error}
           </div>
         )}
-        <div className="flex justify-center mt-4">
+        {/* <div className="flex justify-center mt-4">
           {!runGame && (
             <Button
               onClick={handleStartGame}
@@ -280,7 +280,7 @@ export const GamePreview: React.FC<GamePreviewProps> = ({
         <div className="mt-4 flex justify-between items-center bg-background/50 p-4 rounded-lg">
           <div className="text-xl font-bold text-primary">Score: {score}</div>
           <div className="text-xl font-bold text-primary">Time: {Math.ceil(timer)}s</div>
-        </div>
+        </div> */}
       </CardContent>
     </Card>
     </>
