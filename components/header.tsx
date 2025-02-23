@@ -128,7 +128,7 @@ export function Header() {
       <div className="container mx-auto px-4">
         <div className="flex h-14 items-center justify-between">
           <Link href="/" className="flex items-center gap-2">
-            <div className="relative w-8 h-8 rounded-full overflow-hidden">
+            <div className="relative w-12 h-12 rounded-full overflow-hidden">
               <Image
                 src="/logo.jpg"
                 alt="Gamerholic Logo"
@@ -136,7 +136,7 @@ export function Header() {
                 objectFit="cover"
               />
             </div>
-            <span className="text-xl font-bold text-primary neon-glow sm:block hidden">
+            <span className="text-xl font-bold text-white neon-glow sm:block hidden">
               Gamerholic
             </span>
           </Link>

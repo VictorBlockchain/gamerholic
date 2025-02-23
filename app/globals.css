@@ -280,4 +280,9 @@ body {
   background-color: hsl(var(--background));
   color: hsl(var(--foreground));
 }
-
+.w-12{
+  width: 3rem;
+}
+.h-12{
+  height: 3rem;
+}
