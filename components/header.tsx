@@ -130,7 +130,7 @@ export function Header() {
           <Link href="/" className="flex items-center gap-2">
             <div className="relative w-8 h-8 rounded-full overflow-hidden">
               <Image
-                src="/logo.png"
+                src="/logo.jpg"
                 alt="Gamerholic Logo"
                 layout="fill"
                 objectFit="cover"
