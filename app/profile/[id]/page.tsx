@@ -536,7 +536,7 @@ export default function ProfilePage() {
           </Card>
           <Card>
             <CardHeader>
-              <CardTitle>GAME</CardTitle>
+              <CardTitle>GAMER</CardTitle>
             </CardHeader>
             <CardContent>
               <p className="text-4xl font-bold text-center">{userData.balance_game  || 0}</p>
