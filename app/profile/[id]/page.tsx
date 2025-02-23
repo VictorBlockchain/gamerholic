@@ -32,6 +32,7 @@ import {
 import { generateDepositWallet } from "@/lib/platformWallet"
 import { balanceManager } from "@/lib/balance"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
+const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC;
 
 const BALANCE = new balanceManager()
 
@@ -95,7 +96,7 @@ export default function ProfilePage() {
   const [withdrawType, setWithdrawType] = useState<"sol" | "game">("sol")
   const [esportsRecords, setEsportsRecords] = useState<EsportsRecord[]>([])
 
-  const [userData, setUserData] = useState<Partial<User>>({})
+  const [userData, setUserData]:any = useState<Partial<User>>({})
   const [showUserNameModal, setShowUserNameModal] = useState(false)
   const [showSuccessModal, setShowSuccessModal] = useState(false)
   const [showErrorModal, setShowErrorModal] = useState(false)
@@ -138,8 +139,11 @@ export default function ProfilePage() {
         }
       } else {
         let balance_sol = 0
+        let balance_gamer = 0
         if (data.deposit_wallet) {
           balance_sol = await BALANCE.getBalance(data.deposit_wallet)
+          balance_gamer = await BALANCE.getTokenBalance(data.deposit_wallet, GAMER)
+
         }
 
         setUserData({
@@ -148,7 +152,7 @@ export default function ProfilePage() {
           deposit_wallet: data.deposit_wallet,
           avatar_url: data.avatar_url,
           balance_sol: balance_sol,
-          balance_game: data.balance_game || 0,
+          balance_game: balance_gamer || 0,
         })
         setCredits(data.credits || 0)
         setTotalEarnings(data.total_earnings || 0)
@@ -433,36 +437,33 @@ export default function ProfilePage() {
     setIsWithdrawModalOpen(true)
   }
 
-  const handleWithdrawSubmit = async (amount: number, isAll: boolean) => {
+  const handleWithdrawSubmit = async (amount: number, tokenAddres: any) => {
     if (!publicKey) return
 
     try {
-      let withdrawAmount = amount
-      if (isAll) {
-        withdrawAmount = withdrawType === "sol" ? userData.balance_sol || 0 : userData.balance_game || 0
-      }
+      let type = 1;
 
-      if (withdrawType === "sol") {
-        const success = await withdrawUserCredits(publicKey.toBase58(), withdrawAmount)
-        if (success) {
-          toast({
-            title: "Success",
-            description: `Successfully withdrawn ${withdrawAmount} SOL`,
-          })
-          await fetchUser()
-        } else {
-          throw new Error("Withdrawal failed")
+      if (withdrawType != "sol") {
+        type = 2
         }
-      } else {
-        // Implement GAME token withdrawal logic here
-        toast({
-          title: "Not Implemented",
-          description: "GAME token withdrawal is not yet implemented",
-          variant: "destructive",
-        })
-      }
 
-      setIsWithdrawModalOpen(false)
+        const response = await fetch("/api/profile/withdraw", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            user: publicKey,
+            amount: amount,
+            type: type,
+            token: tokenAddres
+          }),
+        })
+        const resp = await response.json()
+        if(resp.success){
+          await fetchUser()
+          setIsWithdrawModalOpen(false)
+          handleSuccessNotification('withdraw request processed')
+    
+        }
     } catch (error) {
       console.error("Error withdrawing:", error)
       toast({
@@ -522,7 +523,7 @@ export default function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{userData.balance_sol || 0}</p>
+              <p className="text-4xl font-bold text-center">{userData.balance_sol / 1_000_000_000 || 0}</p>
               <div className="flex justify-between mt-4">
                 <Button onClick={() => handleDeposit("sol")} className="bg-green-500 hover:bg-green-600">
                   <Coins className="mr-2 h-4 w-4" /> Deposit
@@ -538,7 +539,7 @@ export default function ProfilePage() {
               <CardTitle>GAME</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{userData.balance_game || 0}</p>
+              <p className="text-4xl font-bold text-center">{userData.balance_game  || 0}</p>
               <div className="flex justify-between mt-4">
                 <Button onClick={() => handleDeposit("game")} className="bg-green-500 hover:bg-green-600">
                   <Coins className="mr-2 h-4 w-4" /> Deposit

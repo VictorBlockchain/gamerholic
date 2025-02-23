@@ -16,7 +16,7 @@ interface WithdrawModalProps {
   balance: { sol: number; game: number }
 }
 
-const GAME_TOKEN_ADDRESS = "YOUR_GAME_TOKEN_ADDRESS_HERE" // Replace with actual GAME token address
+const GAMERHOLIC = process.env.NEXT_PUBLIC_GAMER// Replace with actual GAME token address
 
 export function WithdrawEarningsModal({ isOpen, onClose, onWithdraw, balance }: WithdrawModalProps) {
   const [amount, setAmount] = useState("")
@@ -35,14 +35,15 @@ export function WithdrawEarningsModal({ isOpen, onClose, onWithdraw, balance }: 
       return
     }
 
-    let tokenAddress = GAME_TOKEN_ADDRESS
+    let tokenAddress:any = GAMERHOLIC
     if (tokenType === "sol") {
-      tokenAddress = "SOL"
+      tokenAddress = "So11111111111111111111111111111111111111112"
     } else if (tokenType === "custom" && customTokenAddress) {
       tokenAddress = customTokenAddress
     }
-
+    
     try {
+      console.log(withdrawAmount, tokenAddress)
       await onWithdraw(withdrawAmount, tokenAddress)
       toast({
         title: "Withdrawal Initiated",
@@ -77,7 +78,7 @@ export function WithdrawEarningsModal({ isOpen, onClose, onWithdraw, balance }: 
             </div>
             <div>
               <Label htmlFor="game-balance" className="text-primary">
-                GAME Balance
+                GAMER Balance
               </Label>
               {/* <Input id="game-balance" value={balance.game.toFixed(4)} disabled className="bg-background/50" /> */}
             </div>
@@ -97,12 +98,12 @@ export function WithdrawEarningsModal({ isOpen, onClose, onWithdraw, balance }: 
           </div>
           <RadioGroup value={tokenType} onValueChange={setTokenType} className="grid grid-cols-3 gap-4">
             <div>
-              <RadioGroupItem value="game" id="game" className="peer sr-only" />
+              <RadioGroupItem value="game" id="gamer" className="peer sr-only" />
               <Label
-                htmlFor="game"
+                htmlFor="gamer"
                 className="flex flex-col items-center justify-between rounded-md border-2 border-muted bg-background/50 p-4 hover:bg-accent hover:text-accent-foreground peer-data-[state=checked]:border-primary [&:has([data-state=checked])]:border-primary"
               >
-                <span>GAME</span>
+                <span>GAMER</span>
               </Label>
             </div>
             <div>

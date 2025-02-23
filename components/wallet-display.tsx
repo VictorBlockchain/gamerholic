@@ -6,7 +6,7 @@ import { useWallet } from "@solana/wallet-adapter-react"
 import { supabase } from "@/lib/supabase"
 import { balanceManager } from "@/lib/balance";
 const BALANCE = new balanceManager();
-const GAMER = process.env.NEXT_PUBLIC_GAMER;
+const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC;
 
 export function WalletDisplay() {
   const { publicKey } = useWallet();
@@ -31,10 +31,10 @@ export function WalletDisplay() {
       }
 
       // Fetch GAMER token balance
-      // let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
-      // if (gamerBalance > 0) {
-      //   setGamerBalance(gamerBalance / 1_000_000_000);
-      // }
+      let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
+      if (gamerBalance > 0) {
+        setGamerBalance(gamerBalance );
+      }
     } catch (error) {
       console.error("Error fetching balances:", error);
     }
