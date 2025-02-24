@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server"
 import { supabase } from "@/lib/supabase"
 import { Keypair, Connection, PublicKey, Transaction, SystemProgram } from "@solana/web3.js"
-import { createTransferInstruction, getOrCreateAssociatedTokenAccount } from "@solana/spl-token"
+import { getAssociatedTokenAddress, createTransferInstruction, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { sendAndConfirmTransaction } from "@/lib/solana"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 
 const connection: any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
-const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
+const GAME_TOKEN_ADDRESS:any = process.env.GAMERHOLIC // GAMEr token mint address
 
 CryptoManager.initialize()
 
@@ -57,40 +57,56 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
     throw error
   }
 }
-async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: number) {
-  try {
-    if (!GAME_TOKEN_ADDRESS) {
-      throw new Error("GAMEr token address not configured")
+async function transferToken(
+    fromKeypair: any,
+    toAddress: string,
+    amount: number,
+    tokenMint: PublicKey,
+  ) {
+    try {
+        const secretKey = Uint8Array.from(Buffer.from(fromKeypair, "hex"));
+        const senderKeypair = Keypair.fromSecretKey(secretKey);
+    
+      // Convert the receiver's address to a PublicKey
+      const receiverPubKey = new PublicKey(toAddress);
+      const token = new PublicKey(tokenMint);
+      // Get or create the sender's associated token account
+      const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        senderKeypair.publicKey // Owner of the token account (sender)
+      );
+  
+      // Get or create the receiver's associated token account
+      const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        receiverPubKey // Owner of the token account (receiver)
+      );
+  
+      // Create the transfer instruction
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount.address, // Source token account
+        toTokenAccount.address, // Destination token account
+        senderKeypair.publicKey, // Owner of the source token account
+        Math.floor(amount * Math.pow(10, 9)) // Amount in token's smallest unit (e.g., lamports for SOL)
+      );
+  
+      // Create and send the transaction
+      const transaction = new Transaction().add(transferInstruction);
+      const signature = await sendAndConfirmTransaction(connection, transaction, [
+        senderKeypair,
+      ]);
+  
+      console.log("Transfer successful. Signature:", signature);
+      return signature;
+    } catch (error) {
+      console.error("Error transferring token:", error);
+      throw error;
     }
-
-    const toPublicKey = new PublicKey(toAddress)
-    const tokenMint = new PublicKey(GAME_TOKEN_ADDRESS)
-    
-    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      fromKeypair,
-      tokenMint,
-      fromKeypair.publicKey,
-    )
-
-    const toTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromKeypair, tokenMint, toPublicKey)
-
-    const transaction = new Transaction().add(
-      createTransferInstruction(
-        fromTokenAccount.address,
-        toTokenAccount.address,
-        fromKeypair.publicKey,
-        Math.floor(amount * Math.pow(10, 9)), // GAMEr has 9 decimals
-      ),
-    )
-    
-    const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
-    return signature
-  } catch (error) {
-    console.error("Error transferring GAMEr:", error)
-    throw error
   }
-}
 
 const fetchPlatformSettings = async () => {
   const { data, error } = await supabase
@@ -229,19 +245,19 @@ export async function POST(req: Request) {
           .single();
 
         if (insertError) throw insertError;
-
+        
         // Process the transfer
         let signature;
         if (tournament.money == 1) {
           signature = await transferSOL(tournamentKeypair, payment.recipient, payment.amount);
         } else {
-          signature = await transferGAMEr(tournamentKeypair, payment.recipient, payment.amount);
+          signature = await transferToken(tournamentKeypair, payment.recipient, payment.amount,GAME_TOKEN_ADDRESS);
         }
 
         if (!signature) {
           return NextResponse.json({ error: "Error paying winners" }, { status: 400 });
         }
-
+        
         // Update payment record
         const { error: updateError } = await supabase
           .from("payments")

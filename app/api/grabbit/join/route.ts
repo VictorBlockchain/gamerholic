@@ -1,7 +1,7 @@
 import { supabase } from "@/lib/supabase";
 import { NextResponse } from "next/server"
 import { Keypair, Connection, PublicKey, Transaction, SystemProgram, sendAndConfirmTransaction, LAMPORTS_PER_SOL } from "@solana/web3.js";
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token";
+import { getAssociatedTokenAddress, createTransferInstruction, getOrCreateAssociatedTokenAccount } from "@solana/spl-token"
 import moment from "moment";
 import "moment-timezone"; // Import moment-timezone for timezone handling
 const timezone = "America/New_York";
@@ -11,6 +11,7 @@ CryptoManager.initialize()
 
 const IV_LENGTH = 16; // AES block size
 const connection: any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
+const GAME_TOKEN_ADDRESS:any = process.env.GAMERHOLIC // GAMEr token mint address
 
 const fetchGameData = async (gameid:any) => {
   const { data, error: fetchError } = await supabase
@@ -119,39 +120,56 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
   }
 }
 
-  // const sendTokenTransactions = async (
-  //   recipientAddress: string,
-  //   amount: number,
-  //   privateKey: Uint8Array
-  // ): Promise<any> => {
-  //   try {
-  //     const senderKeypair = Keypair.fromSecretKey(new Uint8Array(privateKey));
+async function transferToken(
+    fromKeypair: any,
+    toAddress: string,
+    amount: number,
+    tokenMint: PublicKey,
+  ) {
+    try {
+        const secretKey = Uint8Array.from(Buffer.from(fromKeypair, "hex"));
+        const senderKeypair = Keypair.fromSecretKey(secretKey);
+    
+      // Convert the receiver's address to a PublicKey
+      const receiverPubKey = new PublicKey(toAddress);
+      const token = new PublicKey(tokenMint);
+      // Get or create the sender's associated token account
+      const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        senderKeypair.publicKey // Owner of the token account (sender)
+      );
   
-  //     const feeAmount = amount * 0.03;
-  //     const recipientAmount = amount - feeAmount;
+      // Get or create the receiver's associated token account
+      const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        receiverPubKey // Owner of the token account (receiver)
+      );
   
-  //     const transaction = new Transaction().add(
-  //       SystemProgram.transfer({
-  //         fromPubkey: senderKeypair.publicKey,
-  //         toPubkey: new PublicKey(recipientAddress),
-  //         lamports: recipientAmount * 10 ** 9,
-  //       }),
-  //       SystemProgram.transfer({
-  //         fromPubkey: senderKeypair.publicKey,
-  //         toPubkey: new PublicKey(FEE_ADDRESS),
-  //         lamports: feeAmount * 10 ** 9,
-  //       })
-  //     );
+      // Create the transfer instruction
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount.address, // Source token account
+        toTokenAccount.address, // Destination token account
+        senderKeypair.publicKey, // Owner of the source token account
+        Math.floor(amount * Math.pow(10, 9)) // Amount in token's smallest unit (e.g., lamports for SOL)
+      );
   
-  //     const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
-  //     console.log("Transaction successful with signature:", signature);
+      // Create and send the transaction
+      const transaction = new Transaction().add(transferInstruction);
+      const signature = await sendAndConfirmTransaction(connection, transaction, [
+        senderKeypair,
+      ]);
   
-  //     return Promise.resolve({success:true, message: signature});
-  //   } catch (error:any) {
-  //     console.error("Transaction failed:", error);
-  //     return Promise.reject({success:false, message: error.message});
-  //   }
-  // };
+      console.log("Transfer successful. Signature:", signature);
+      return signature;
+    } catch (error) {
+      console.error("Error transferring token:", error);
+      throw error;
+    }
+  }
 
 export async function POST(req: Request) {
   try {

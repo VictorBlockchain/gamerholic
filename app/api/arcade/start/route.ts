@@ -12,7 +12,7 @@ let BALANCE = new balanceManager()
 CryptoManager.initialize()
 
 const connection:any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
-const GAMEr:any = process.env.NEXT_PUBLIC_GAMER // GAMEr token mint address
+const GAMEr:any = process.env.NEXT_PUBLIC_GAMERHOLIC // GAMEr token mint address
 
 async function transferSOL(fromPrivateKey: string, toAddress: string, amount: number) {
   try {
@@ -42,40 +42,56 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
   }
 }
 
-async function transferGAMEr(fromKeypair: Keypair, toAddress: string, amount: number, tokenMintAddress:any) {
-  try {
-
+async function transferToken(
+    fromKeypair: any,
+    toAddress: string,
+    amount: number,
+    tokenMint: PublicKey,
+  ) {
+    try {
+        const secretKey = Uint8Array.from(Buffer.from(fromKeypair, "hex"));
+        const senderKeypair = Keypair.fromSecretKey(secretKey);
     
-    const toPublicKey = new PublicKey(toAddress)
-    const tokenMint = new PublicKey(tokenMintAddress)
-    
-    // Get or create token accounts
-    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      fromKeypair,
-      tokenMint,
-      fromKeypair.publicKey,
-    )
-    
-    const toTokenAccount = await getOrCreateAssociatedTokenAccount(connection, fromKeypair, tokenMint, toPublicKey)
-        
-    const transaction = new Transaction().add(
-      // Main transfer
-      createTransferInstruction(
-        fromTokenAccount.address,
-        toTokenAccount.address,
-        fromKeypair.publicKey,
-        amount,
-      ),
-    )
-    
-    const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
-    return signature
-  } catch (error) {
-    console.error("Error transferring GAMEr:", error)
-    throw error
+      // Convert the receiver's address to a PublicKey
+      const receiverPubKey = new PublicKey(toAddress);
+      const token = new PublicKey(tokenMint);
+      // Get or create the sender's associated token account
+      const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        senderKeypair.publicKey // Owner of the token account (sender)
+      );
+  
+      // Get or create the receiver's associated token account
+      const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        receiverPubKey // Owner of the token account (receiver)
+      );
+  
+      // Create the transfer instruction
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount.address, // Source token account
+        toTokenAccount.address, // Destination token account
+        senderKeypair.publicKey, // Owner of the source token account
+        Math.floor(amount * Math.pow(10, 9)) // Amount in token's smallest unit (e.g., lamports for SOL)
+      );
+  
+      // Create and send the transaction
+      const transaction = new Transaction().add(transferInstruction);
+      const signature = await sendAndConfirmTransaction(connection, transaction, [
+        senderKeypair,
+      ]);
+  
+      console.log("Transfer successful. Signature:", signature);
+      return signature;
+    } catch (error) {
+      console.error("Error transferring token:", error);
+      throw error;
+    }
   }
-}
 
 export async function POST(request: Request) {
   const { gameId, player } = await request.json()
@@ -171,8 +187,8 @@ export async function POST(request: Request) {
         }
       }else{
           
-          const secretKey = Uint8Array.from(Buffer.from(playerPrivateKey, "hex"));
-          const senderKeypair = Keypair.fromSecretKey(secretKey);
+          // const secretKey = Uint8Array.from(Buffer.from(playerPrivateKey, "hex"));
+          // const senderKeypair = Keypair.fromSecretKey(secretKey);
     
           balance = await BALANCE.getTokenBalance(player, GAMEr)
           const mintInfo = await getMint(connection, GAMEr);
@@ -181,8 +197,8 @@ export async function POST(request: Request) {
           const playFee = arcade.play_fee * fee
           if(balance >= playFee){
           
-            txid_play = await transferGAMEr(
-              senderKeypair,
+            txid_play = await transferToken(
+              playerPrivateKey,
               arcadeWallet.public_key,
               playFee,
               tokenMintAddress

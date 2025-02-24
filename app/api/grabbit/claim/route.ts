@@ -8,6 +8,7 @@ import { balanceManager } from "@/lib/balance"
 const Balance = new balanceManager()
 CryptoManager.initialize()
 const connection: any = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL)
+const GAME_TOKEN_ADDRESS:any = process.env.GAMERHOLIC // GAMEr token mint address
 
 const fetchUserData = async (publicKey: string) => {
   const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
@@ -45,60 +46,56 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
     throw error
   }
 }
-async function transferSPLToken(
-  fromPrivateKey: string,
-  toAddress: string,
-  tokenMintAddress: string,
-  amount: number, // Amount in token units (e.g., 1 GAMEr = 1 * 10^decimals)
-  decimals: number // Number of decimals for the token (e.g., 9 for GAMEr)
-) {
-  try {
-    console.log("Trying to transfer SPL token");
-
-    // Convert the private key to a keypair
-    const secretKey = Uint8Array.from(Buffer.from(fromPrivateKey, "hex"));
-    const senderKeypair = Keypair.fromSecretKey(secretKey);
-
-    // Convert addresses to PublicKey objects
-    const tokenMint = new PublicKey(tokenMintAddress);
-    const toPublicKey = new PublicKey(toAddress);
-
-    // Get or create the sender's associated token account
-    const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      senderKeypair,
-      tokenMint,
-      senderKeypair.publicKey
-    );
-
-    // Get or create the receiver's associated token account
-    const toTokenAccount = await getOrCreateAssociatedTokenAccount(
-      connection,
-      senderKeypair,
-      tokenMint,
-      toPublicKey
-    );
-
-    // Create the transfer instruction
-    const transaction = new Transaction().add(
-      createTransferInstruction(
+async function transferToken(
+    fromKeypair: any,
+    toAddress: string,
+    amount: number,
+    tokenMint: PublicKey,
+  ) {
+    try {
+        const secretKey = Uint8Array.from(Buffer.from(fromKeypair, "hex"));
+        const senderKeypair = Keypair.fromSecretKey(secretKey);
+    
+      // Convert the receiver's address to a PublicKey
+      const receiverPubKey = new PublicKey(toAddress);
+      const token = new PublicKey(tokenMint);
+      // Get or create the sender's associated token account
+      const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        senderKeypair.publicKey // Owner of the token account (sender)
+      );
+  
+      // Get or create the receiver's associated token account
+      const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        receiverPubKey // Owner of the token account (receiver)
+      );
+  
+      // Create the transfer instruction
+      const transferInstruction = createTransferInstruction(
         fromTokenAccount.address, // Source token account
         toTokenAccount.address, // Destination token account
         senderKeypair.publicKey, // Owner of the source token account
-        Math.round(amount * 10 ** decimals), // Amount in token units (adjusted for decimals)
-        [] // No multisig signers
-      )
-    );
-
-    // Send and confirm the transaction
-    const signature = await sendAndConfirmTransaction(connection, transaction, [senderKeypair]);
-    console.log("SPL token transfer successful. Signature:", signature);
-    return signature;
-  } catch (error) {
-    console.error("Error transferring SPL token:", error);
-    throw error;
+        Math.floor(amount * Math.pow(10, 9)) // Amount in token's smallest unit (e.g., lamports for SOL)
+      );
+  
+      // Create and send the transaction
+      const transaction = new Transaction().add(transferInstruction);
+      const signature = await sendAndConfirmTransaction(connection, transaction, [
+        senderKeypair,
+      ]);
+  
+      console.log("Transfer successful. Signature:", signature);
+      return signature;
+    } catch (error) {
+      console.error("Error transferring token:", error);
+      throw error;
+    }
   }
-}
 
 export async function POST(req: Request) {
   try {
@@ -225,18 +222,28 @@ export async function POST(req: Request) {
             txid: signatureWinner,
           })
         }else{
-          return NextResponse.json({ success:false, message: "error paying grabbit host" }, { status: 500 })
+          return NextResponse.json({ success:false, message: "error paying grabbit winner" }, { status: 500 })
         }
     
     } else {
       // SPL Token transfer
-      // transferSPLToken(connection, fromPrivateKey, toAddress, tokenMintAddress, amount, decimals)
-      // .then((signature) => {
-      //   console.log("Transfer successful. Signature:", signature);
-      // })
-      // .catch((error) => {
-      //   console.error("Transfer failed:", error);
-      // });
+      signatureWinner = await transferToken(gameWalletPrivateKey, winner.deposit_wallet, winnerAmount,GAME_TOKEN_ADDRESS);
+      if(signatureWinner){
+        const { data: paymentRecord, error: insertError } = await supabase
+          .from("payments")
+          .insert({
+            user_id: winner.deposit_wallet,
+            payment_type: "grabbtWinner",
+            game_id: grabbit.game_id,
+            amount: winnerAmount,
+            token: GAME_TOKEN_ADDRESS,
+            status: "completed",
+            txid: signatureWinner,
+          })
+        }else{
+          return NextResponse.json({ success:false, message: "error paying grabbit winner" }, { status: 500 })
+        }
+    
     }
     
     // Update Grabbit game status

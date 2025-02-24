@@ -471,15 +471,26 @@ const EsportsPage: React.FC = () => {
   const handleSendMessage = async () => {
     if (newMessage.trim() === "" || !selectedChatRoom) return
     
+    const { data:banData, error:banError }: any = await supabase.from("chatroom_ban").select("*")
+    .eq("public_key", publicKey)
+    .eq("status", 1)
+    .maybeSingle()
+    
+    if(banData){
+      setErrorMessage("your are banned from chatting")
+      setShowErrorModal(true)
+      return
+
+    }
+
     const linkRegex = /(https?:\/\/[^\s]+)/g
     const codeRegex = /(<script>|<\/script>|javascript:|on\w+\s*=)/gi
     if (linkRegex.test(newMessage) || codeRegex.test(newMessage)) {
       setErrorMessage("links not permitted")
       setShowErrorModal(true)
-
       return
     }
-
+    
     const { error } = await supabase.from("chat_messages").insert({
       chatroom_id: selectedChatRoom.id,
       sender_id: user_id,

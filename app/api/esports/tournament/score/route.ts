@@ -7,7 +7,7 @@ import { CryptoManager } from "@/lib/server/cryptoManager"
 
 const connection = new Connection("https://api.mainnet-beta.solana.com", "confirmed")
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
-const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
+const GAME_TOKEN_ADDRESS = process.env.GAMERHOLIC // GAMEr token mint address
 
 CryptoManager.initialize()
 
@@ -213,7 +213,7 @@ export async function POST(req: Request) {
         if (updateError) throw updateError
       } catch (error) {
         console.error(`Error processing payment to ${payment.recipient}:`, error)
-
+        
         // Update payment record with error
         await supabase
           .from("payments")

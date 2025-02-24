@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server"
 import { Keypair, Connection, PublicKey, Transaction, SystemProgram, LAMPORTS_PER_SOL } from "@solana/web3.js"
-import { getAssociatedTokenAddress, createTransferInstruction, TOKEN_PROGRAM_ID } from "@solana/spl-token"
+import { getAssociatedTokenAddress, createTransferInstruction, getOrCreateAssociatedTokenAccount, TOKEN_PROGRAM_ID } from "@solana/spl-token";
 import { supabase } from "@/lib/supabase"
 import { CryptoManager } from "@/lib/server/cryptoManager"
 import { sendAndConfirmTransaction } from "@/lib/solana"
@@ -8,7 +8,7 @@ import { sendAndConfirmTransaction } from "@/lib/solana"
 CryptoManager.initialize()
 const connection = new Connection(process.env.NEXT_PUBLIC_SOLANA_RPC_URL || "https://api.mainnet-beta.solana.com")
 const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
-const GAME_TOKEN_ADDRESS = process.env.GAME_TOKEN_ADDRESS // GAMEr token mint address
+const GAME_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_GAMERHOLIC // GAMEr token mint address
 
 const fetchUserData = async (publicKey: string) => {
   const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
@@ -77,22 +77,56 @@ async function transferSOL(fromPrivateKey: string, toAddress: string, amount: nu
   }
 }
 
-const transferToken = async (fromPrivateKey: string, toAddress: string, amount: number, mintAddress: string) => {
-  const fromKeypair = Keypair.fromSecretKey(Buffer.from(JSON.parse(fromPrivateKey)))
-  const mintPublicKey = new PublicKey(mintAddress)
-
-  const toPublicKey = new PublicKey(toAddress)
-  const fromTokenAccount = await getAssociatedTokenAddress(mintPublicKey, fromKeypair.publicKey)
-  const toTokenAccount = await getAssociatedTokenAddress(mintPublicKey, toPublicKey)
-
-  const transaction = new Transaction().add(
-    createTransferInstruction(fromTokenAccount, toTokenAccount, fromKeypair.publicKey, amount, [], TOKEN_PROGRAM_ID),
-  )
-
-  const signature = await sendAndConfirmTransaction(connection, transaction, [fromKeypair])
-  console.log("Transaction successful with signature:", signature)
-  return signature
-}
+async function transferToken(
+    fromKeypair: any,
+    toAddress: string,
+    amount: number,
+    tokenMint: PublicKey,
+  ) {
+    try {
+        const secretKey = Uint8Array.from(Buffer.from(fromKeypair, "hex"));
+        const senderKeypair = Keypair.fromSecretKey(secretKey);
+    
+      // Convert the receiver's address to a PublicKey
+      const receiverPubKey = new PublicKey(toAddress);
+      const token = new PublicKey(tokenMint);
+      // Get or create the sender's associated token account
+      const fromTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        senderKeypair.publicKey // Owner of the token account (sender)
+      );
+  
+      // Get or create the receiver's associated token account
+      const toTokenAccount = await getOrCreateAssociatedTokenAccount(
+        connection,
+        senderKeypair, // Payer of the transaction (sender)
+        token, // Mint address of the token
+        receiverPubKey // Owner of the token account (receiver)
+      );
+  
+      // Create the transfer instruction
+      const transferInstruction = createTransferInstruction(
+        fromTokenAccount.address, // Source token account
+        toTokenAccount.address, // Destination token account
+        senderKeypair.publicKey, // Owner of the source token account
+        Math.floor(amount * Math.pow(10, 9)) // Amount in token's smallest unit (e.g., lamports for SOL)
+      );
+  
+      // Create and send the transaction
+      const transaction = new Transaction().add(transferInstruction);
+      const signature = await sendAndConfirmTransaction(connection, transaction, [
+        senderKeypair,
+      ]);
+  
+      console.log("Transfer successful. Signature:", signature);
+      return signature;
+    } catch (error) {
+      console.error("Error transferring token:", error);
+      throw error;
+    }
+  }
 
 const updateEsportsRecord = async (publicKey: string, game: string, isWinner: boolean) => {
   const { data, error } = await supabase
