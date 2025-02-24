@@ -7,7 +7,7 @@ export function Hero() {
     <section
       className="py-16 sm:py-24 px-4 text-center relative overflow-hidden rounded-lg shadow-2xl mb-12"
       style={{
-        backgroundImage: "url('/home3.jpg')", // Replace with your image path
+        backgroundImage: "url('/home5.png')", // Replace with your image path
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
@@ -24,10 +24,11 @@ export function Hero() {
           I Win For A Living
         </h1>
         <p className="text-xl sm:text-2xl mb-8 sm:mb-10 max-w-2xl mx-auto text-gray-300">
-          High Score Arcade: earn $$ when others fail to beat your score{" "}
+          Solana Esports & Arcade
           <br />
+          Heads Up, Tournaments, High Score Arcade, Grabbit
           <br />
-          + esports: heads up games & tournaments
+          Win & Get Paid In Crypto
         </p>
       </div>
     </section>
