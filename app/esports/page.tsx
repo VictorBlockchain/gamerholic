@@ -470,6 +470,15 @@ const EsportsPage: React.FC = () => {
 
   const handleSendMessage = async () => {
     if (newMessage.trim() === "" || !selectedChatRoom) return
+    
+    const linkRegex = /(https?:\/\/[^\s]+)/g
+    const codeRegex = /(<script>|<\/script>|javascript:|on\w+\s*=)/gi
+    if (linkRegex.test(newMessage) || codeRegex.test(newMessage)) {
+      setErrorMessage("links not permitted")
+      setShowErrorModal(true)
+
+      return
+    }
 
     const { error } = await supabase.from("chat_messages").insert({
       chatroom_id: selectedChatRoom.id,

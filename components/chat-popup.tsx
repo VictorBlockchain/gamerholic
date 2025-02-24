@@ -132,7 +132,14 @@ export const ChatPopup: React.FC<ChatPopupProps> = ({
 
   const sendMessage = async () => {
     if (newMessage.trim() === "" || isBlocked) return
-
+    
+    const linkRegex = /(https?:\/\/[^\s]+)/g
+    const codeRegex = /(<script>|<\/script>|javascript:|on\w+\s*=)/gi
+    if (linkRegex.test(newMessage) || codeRegex.test(newMessage)) {
+      alert("links not permitted")
+      
+      return
+    }
     const { error } = await supabase.from("chat_1on1").insert({
       sender_id: senderId,
       receiver_id: receiverId,
