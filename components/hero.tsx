@@ -30,7 +30,7 @@ export function Hero() {
           <br />
           Win & Get Paid In Crypto
         </p>
-        <p className="text-2xl mb-8 sm:mb-10 max-w-2xl mx-auto text-gray-300">
+        <div className="text-2xl mb-8 sm:mb-10 max-w-2xl mx-auto text-gray-300">
           <h2>
 
           Contract: <a href="https://pump.fun/A16i7fjFagzf2Ejezhc4xidcZ8J7utmLLQCqzZRWpump" target="_blank" rel="noopener noreferrer" className="text-blue-400 hover:underline">
@@ -38,7 +38,7 @@ export function Hero() {
           </a>
           </h2>
 
-        </p>
+        </div>
       </div>
     </section>
   );

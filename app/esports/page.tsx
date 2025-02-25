@@ -52,6 +52,7 @@ import {
 // Add this import at the top of the file
 import { ChatPopup } from "@/components/chat-popup"
 const solana = new balanceManager()
+const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC
 // Define types for chat messages, chatrooms, and esports challenges
 interface ChatMessage {
   id: string
@@ -469,18 +470,25 @@ const EsportsPage: React.FC = () => {
   }
 
   const handleSendMessage = async () => {
+    if(!selectedChatRoom){
+      setErrorMessage("select room to chat in")
+      setShowErrorModal(true)
+
+    }
     if (newMessage.trim() === "" || !selectedChatRoom) return
-    
+    let pass = 1
     const { data:banData, error:banError }: any = await supabase.from("chatroom_ban").select("*")
     .eq("public_key", publicKey)
     .eq("status", 1)
     .maybeSingle()
     
+    
     if(banData){
       setErrorMessage("your are banned from chatting")
       setShowErrorModal(true)
-      return
-
+      pass = 0
+      // return
+    
     }
 
     const linkRegex = /(https?:\/\/[^\s]+)/g
@@ -488,28 +496,33 @@ const EsportsPage: React.FC = () => {
     if (linkRegex.test(newMessage) || codeRegex.test(newMessage)) {
       setErrorMessage("links not permitted")
       setShowErrorModal(true)
-      return
+      pass = 0
+      // return
     }
     
-    const { error } = await supabase.from("chat_messages").insert({
-      chatroom_id: selectedChatRoom.id,
-      sender_id: user_id,
-      sender_name: user_name,
-      sender_public_key: publicKey,
-      sender_avatar: user_avater,
-      content: newMessage,
-    })
-    if (error) {
-      console.error("Error sending message:", error)
-      toast({
-        title: "Failed to send message",
-        description: "An error occurred while sending the message.",
-        variant: "destructive",
+    if(pass>0){
+    
+      const { error } = await supabase.from("chat_messages").insert({
+        chatroom_id: selectedChatRoom.id,
+        sender_id: user_id,
+        sender_name: user_name,
+        sender_public_key: publicKey,
+        sender_avatar: user_avater,
+        content: newMessage,
       })
-    } else {
-      setNewMessage("")
-      fetchMessages(selectedChatRoom.id)
+      if (error) {
+        console.error("Error sending message:", error)
+        toast({
+          title: "Failed to send message",
+          description: "An error occurred while sending the message.",
+          variant: "destructive",
+        })
+      } else {
+        setNewMessage("")
+        fetchMessages(selectedChatRoom.id)
+      }
     }
+  
   }
 
   const fetchPendingChallenges = async () => {
@@ -711,12 +724,11 @@ const EsportsPage: React.FC = () => {
     setShowCancelModal(false)
     setSelectedChallenge(null)
   }
-
+  
   const confirmAcceptChallenge = async () => {
     if (selectedChallenge) {
       //check user balance
-      const GAME = ""
-      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
       const gameAmount = selectedChallenge.amount / 10 ** 9
       balance = balance / 10 ** 9
       if (balance >= gameAmount) {
@@ -1306,7 +1318,7 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="w-4 h-4 text-primary" />
-                                  <span className="text-sm font-medium text-primary">{challenge.amount} GAME</span>
+                                  <span className="text-sm font-medium text-primary">{challenge.amount} GAMER</span>
                                 </div>
                                 <Badge className="bg-primary/20 text-primary">W: 7 - L: 3</Badge>
                               </div>

@@ -9,7 +9,6 @@ import crypto from "crypto";
 export class balanceManager {
     
 
-
 async getBalance(address: any): Promise<number> {
 try {
     let balance = 0

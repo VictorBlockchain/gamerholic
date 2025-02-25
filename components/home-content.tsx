@@ -108,7 +108,7 @@ const { data: arcadeData, error: arcadeError } = await supabase
       .eq("status",1)
       .order("created_at", { ascending: false })
       .limit(4)
-    console.log(data)
+    // console.log(data)
     if (error) {
       console.error("Error fetching testable games:", error)
     } else {

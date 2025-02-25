@@ -13,7 +13,8 @@ export function WalletDisplay() {
   const [balanceSol, setSolBalance] = useState(0);
   const [balanceGamer, setGamerBalance] = useState(0);
   const [showSol, setShowSol] = useState(true); // Track whether to show SOL or GAMER balance
-
+  
+  // console.log(GAMER)
   useEffect(() => {
     if (publicKey) {
       fetchBalances();
@@ -23,7 +24,7 @@ export function WalletDisplay() {
   const fetchBalances = async () => {
     try {
       const { data:user, error:userError } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-      
+      console.log("here")
       // Fetch SOL balance
       let solBalance = await BALANCE.getBalance(user.deposit_wallet);
       if (solBalance > 0) {
