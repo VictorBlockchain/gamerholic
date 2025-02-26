@@ -7,7 +7,7 @@ export function Hero() {
     <section
       className="py-16 sm:py-24 px-4 text-center relative overflow-hidden rounded-lg shadow-2xl mb-12"
       style={{
-        backgroundImage: "url('/home12.png')", // Replace with your image path
+        backgroundImage: "url('/home5.png')", // Replace with your image path
         backgroundSize: "cover",
         backgroundPosition: "center",
         backgroundRepeat: "no-repeat",
