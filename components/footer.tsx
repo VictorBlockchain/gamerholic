@@ -30,8 +30,8 @@ export function Footer() {
               <h3 className="text-lg font-bold mb-2 text-primary">Community</h3>
               <ul className="space-y-2">
                 <li>
-                  <Link href="/community" className="hover:text-primary">
-                    Forums
+                  <Link href="https://discord.gg/rgbDcMXtEb" className="hover:text-primary">
+                    Discord
                   </Link>
                 </li>
                 <li>

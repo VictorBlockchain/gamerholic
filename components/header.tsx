@@ -117,6 +117,9 @@ export function Header() {
           <Link href="/about">About Us</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <Link href="https://discord.gg/rgbDcMXtEb">Discord</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/support">Support</Link>
         </DropdownMenuItem>
       </DropdownMenuContent>
