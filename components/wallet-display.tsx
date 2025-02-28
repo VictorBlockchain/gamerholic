@@ -4,7 +4,9 @@ import { Button } from "@/components/ui/button"
 import { Wallet } from "lucide-react"
 import { useWallet } from "@solana/wallet-adapter-react"
 import { supabase } from "@/lib/supabase"
-import { balanceManager } from "@/lib/balance";
+import { balanceManager } from "@/lib/balances";
+import moment from 'moment';
+
 const BALANCE = new balanceManager();
 const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC;
 
@@ -24,18 +26,28 @@ export function WalletDisplay() {
   const fetchBalances = async () => {
     try {
       const { data:user, error:userError } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-      console.log("here")
-      // Fetch SOL balance
-      let solBalance = await BALANCE.getBalance(user.deposit_wallet);
-      if (solBalance > 0) {
-        setSolBalance(solBalance / 1_000_000_000);
-      }
+      let next_update = user.next_balance_update;
+      let now = moment();
+      let nextBalanceUpdate = now.add(1, 'minute').toISOString();
+      
+      if (!next_update || now.isAfter(next_update)) {
 
-      // Fetch GAMER token balance
-      let gamerBalance = await BALANCE.getTokenBalance(user.deposit_wallet, GAMER);
-      if (gamerBalance > 0) {
-        setGamerBalance(gamerBalance );
+        let balances = await BALANCE.getBalance(user.deposit_wallet);
+        // console.log(balances)
+        const { data, error } = await supabase
+        .from('users')
+        .update({ next_balance_update: nextBalanceUpdate, solana: balances.solana, gamer: balances.gamer })
+        .eq('publicKey', publicKey);
+        
+        setSolBalance(balances.solana / 1_000_000_000);
+        setGamerBalance(balances.gamer );
+      
+      }else{
+        setSolBalance(user.solana / 1_000_000_000);
+        setGamerBalance(user.gamer );
+
       }
+    
     } catch (error) {
       console.error("Error fetching balances:", error);
     }
