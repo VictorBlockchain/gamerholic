@@ -36,7 +36,7 @@ import { ReportScoreModal } from "@/components/report-score-modal"
 import { ConfirmScoreModal } from "@/components/confirm-score-modal"
 import { DisputeScoreModal } from "@/components/dispute-score-modal"
 import { MutualCancelModal } from "@/components/mutual-cancel-modal"
-import { balanceManager } from "@/lib/balance"
+import { balanceManager } from "@/lib/balances"
 import { TournamentForm } from "@/components/tournament-form"
 import { TournamentList } from "@/components/tournament-list"
 import {
@@ -599,16 +599,16 @@ const EsportsPage: React.FC = () => {
       )
       return
     }
-
+    
     //check user balance
-    let balance = 0;
+    let result  = await solana.getBalance(userData.deposit_wallet)
+    let balance_sol = result.solana
+    let balance_gamer = result.gamer
+    let balance = 0
     if(challengeData.money==1){
-        
-        balance = await solana.getBalance(userData.deposit_wallet)
-
+        balance = balance_sol
     }else{
-      balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
-
+        balance = balance_gamer
     }
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
     const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
@@ -620,7 +620,7 @@ const EsportsPage: React.FC = () => {
         player1: publicKey!.toString(),
         status: 1, // Initial status for a new challenge
       })
-
+      
       if (error) {
         console.error("Error sending challenge:", error)
         setShowErrorModal(true)

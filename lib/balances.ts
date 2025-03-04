@@ -24,7 +24,7 @@ try {
         if (gamer) {
             balance_gamer = gamer.amount
         } 
-        console.log(nativeBalance, balance_gamer, GAMER)
+        // console.log(nativeBalance, balance_gamer, GAMER)
         
         return {solana: nativeBalance, gamer:balance_gamer}
 
