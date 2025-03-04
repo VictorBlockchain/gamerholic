@@ -76,6 +76,7 @@ interface EsportsChallenge {
   game: string
   console: string
   amount: number
+  money: number
   rules: string
   player1: string
   player2: string
@@ -247,7 +248,7 @@ const EsportsPage: React.FC = () => {
     }
   }, [publicKey])
   const isFetching = false
-
+  
   useEffect(() => {
     if (selectedChatRoom) {
       const chatRoomSubscription = supabase
@@ -579,6 +580,8 @@ const EsportsPage: React.FC = () => {
         message = "what game?"
       } else if (!challengeData.console) {
         message = "what console?"
+      }else if(!challengeData.money){
+        message = "are you playing for solana or gamer?"
       } else if (!challengeData.amount && challengeData.amount != 0) {
         message = "how mach in GAME tokens is this game for?"
       } else if (!challengeData.rules) {
@@ -591,14 +594,22 @@ const EsportsPage: React.FC = () => {
         challengeData.game,
         challengeData.console,
         challengeData.amount,
+        challengeData.money,
         challengeData.rules,
       )
       return
     }
 
     //check user balance
-    const GAME = ""
-    let balance = await solana.getTokenBalance(userData.deposit_wallet, GAME)
+    let balance = 0;
+    if(challengeData.money==1){
+        
+        balance = await solana.getBalance(userData.deposit_wallet)
+
+    }else{
+      balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
+
+    }
     const gameAmount = (challengeData.amount / 10 ** 9) * 1.03
     const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
     challengeData.fee = feeAmount
@@ -1635,6 +1646,24 @@ const EsportsPage: React.FC = () => {
                   placeholder="Amount in GAME"
                   style={{ width: "272px" }}
                 />
+              </div>
+              <div className="grid grid-cols-4 items-center gap-4">
+                <Label htmlFor="console" className="text-right">
+                  Money
+                </Label>
+                <Select
+                  onValueChange={(value) => setChallengeData({ ...challengeData, console: value })}
+                  value={challengeData.console || ""}
+                >
+                  <SelectTrigger className="col-span-3">
+                    <SelectValue placeholder="Select a console" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="1">Solana</SelectItem>
+                    <SelectItem value="2">Gamer</SelectItem>
+                    {/* Add more consoles as needed */}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="grid grid-cols-4 items-center gap-4">
                 <Label htmlFor="rules" className="text-right">
