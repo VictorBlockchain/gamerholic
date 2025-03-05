@@ -33,7 +33,7 @@ export function WalletDisplay() {
       if (!next_update || now.isAfter(next_update)) {
 
         let balances = await BALANCE.getBalance(user.deposit_wallet);
-        // console.log(balances)
+        console.log(balances)
         const { data, error } = await supabase
         .from('users')
         .update({ next_balance_update: nextBalanceUpdate, solana: balances.solana, gamer: balances.gamer })
@@ -45,7 +45,7 @@ export function WalletDisplay() {
       }else{
         setSolBalance(user.solana / 1_000_000_000);
         setGamerBalance(user.gamer );
-
+      
       }
     
     } catch (error) {

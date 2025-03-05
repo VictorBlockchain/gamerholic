@@ -15,7 +15,7 @@ async getBalance(address: any): Promise<any> {
 try {
     let balance = 0
     if(address){
-        console.log(address)
+        // console.log(address)
         const url = HELIUS_URL.replace('{address}', address);
         const response = await axios.get(url);
         let balance_gamer = 0;
