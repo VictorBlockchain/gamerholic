@@ -3,7 +3,7 @@ import {  getAssociatedTokenAddress, getAccount, TOKEN_PROGRAM_ID } from "@solan
 const RPC_ENDPOINT:any = process.env.NEXT_PUBLIC_SOLANA_RPC_URL;
 const connection = new Connection(RPC_ENDPOINT);
 const axios = require('axios');
-const API_KEY = process.env.NEXT_PUBLIC_HELIUS;
+const API_KEY = process.env.NEXT_PUBLIC_HELIUS
 const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC
 const HELIUS_URL = `https://api.helius.xyz/v0/addresses/{address}/balances?api-key=${API_KEY}`;
 import crypto from "crypto";
@@ -15,12 +15,13 @@ async getBalance(address: any): Promise<any> {
 try {
     let balance = 0
     if(address){
-        // console.log(address)
+        console.log(GAMER)
         const url = HELIUS_URL.replace('{address}', address);
         const response = await axios.get(url);
         let balance_gamer = 0;
         const { nativeBalance, tokens } = response.data;
-        const gamer = tokens.find((t:any) => t.tokenAccount === GAMER);
+        console.log(tokens)
+        const gamer = tokens.find((t:any) => t.mint === GAMER);
         if (gamer) {
             balance_gamer = gamer.amount
         } 

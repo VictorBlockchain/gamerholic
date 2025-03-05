@@ -33,18 +33,18 @@ export function WalletDisplay() {
       if (!next_update || now.isAfter(next_update)) {
 
         let balances = await BALANCE.getBalance(user.deposit_wallet);
-        console.log(balances)
+        // console.log(balances)
         const { data, error } = await supabase
         .from('users')
         .update({ next_balance_update: nextBalanceUpdate, solana: balances.solana, gamer: balances.gamer })
         .eq('publicKey', publicKey);
         
         setSolBalance(balances.solana / 1_000_000_000);
-        setGamerBalance(balances.gamer );
+        setGamerBalance(balances.gamer / 10 ** 6 );
       
       }else{
         setSolBalance(user.solana / 1_000_000_000);
-        setGamerBalance(user.gamer );
+        setGamerBalance(user.gamer / 10 ** 6 );
       
       }
     
