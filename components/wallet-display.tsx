@@ -12,8 +12,8 @@ const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC;
 
 export function WalletDisplay() {
   const { publicKey } = useWallet();
-  const [balanceSol, setSolBalance] = useState(0);
-  const [balanceGamer, setGamerBalance] = useState(0);
+  const [balanceSol, setSolBalance]:any = useState(0);
+  const [balanceGamer, setGamerBalance]:any = useState(0);
   const [showSol, setShowSol] = useState(true); // Track whether to show SOL or GAMER balance
   
   // console.log(GAMER)
@@ -65,7 +65,11 @@ export function WalletDisplay() {
       onClick={toggleBalance} // Toggle balance display on click
     >
       <Wallet className="mr-2 h-4 w-4" />
-      {showSol ? `${balanceSol.toFixed(6)} SOL` : `${balanceGamer.toFixed(6)} GAMER`}
+      {
+        showSol 
+          ? `${parseFloat(balanceSol).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })} SOL` 
+          : `${parseFloat(balanceGamer).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })} GAMER`
+      }
     </Button>
   );
 }

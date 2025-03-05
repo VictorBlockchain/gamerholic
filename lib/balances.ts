@@ -15,12 +15,12 @@ async getBalance(address: any): Promise<any> {
 try {
     let balance = 0
     if(address){
-        console.log(GAMER)
+        // console.log(GAMER)
         const url = HELIUS_URL.replace('{address}', address);
         const response = await axios.get(url);
         let balance_gamer = 0;
         const { nativeBalance, tokens } = response.data;
-        console.log(tokens)
+        // console.log(tokens)
         const gamer = tokens.find((t:any) => t.mint === GAMER);
         if (gamer) {
             balance_gamer = gamer.amount
