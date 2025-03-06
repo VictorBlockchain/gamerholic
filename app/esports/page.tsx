@@ -216,6 +216,7 @@ const EsportsPage: React.FC = () => {
   const scrollAreaRef = useRef<HTMLDivElement>(null)
   
   const popularGames: any = [
+    "Chess",
     "Madden NFL",
     "NBA 2K",
     "FIFA",
@@ -237,6 +238,7 @@ const EsportsPage: React.FC = () => {
     "Gears of War",
     "Warzone",
   ]
+  popularGames.sort((a:any, b:any) => a.localeCompare(b));
 
   useEffect(() => {
     if (publicKey) {
