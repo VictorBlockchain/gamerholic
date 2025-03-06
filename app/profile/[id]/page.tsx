@@ -152,7 +152,7 @@ export default function ProfilePage() {
           deposit_wallet: data.deposit_wallet,
           avatar_url: data.avatar_url,
           balance_sol: data.solana,
-          balance_game: data.gamer || 0,
+          balance_gamer: data.gamer || 0,
         })
         setCredits(data.credits || 0)
         setTotalEarnings(data.total_earnings || 0)
