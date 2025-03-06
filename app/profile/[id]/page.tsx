@@ -138,21 +138,21 @@ export default function ProfilePage() {
           console.log("New publicKey inserted into the database.")
         }
       } else {
-        let balance_sol = 0
-        let balance_gamer = 0
-        if (data.deposit_wallet) {
-          balance_sol = await BALANCE.getBalance(data.deposit_wallet)
-          balance_gamer = await BALANCE.getTokenBalance(data.deposit_wallet, GAMER)
-
-        }
+        // let balance_sol = 0
+        // let balance_gamer = 0
+        // if (data.deposit_wallet) {
+        //   balance_sol = await BALANCE.getBalance(data.deposit_wallet)
+        //   balance_gamer = await BALANCE.getTokenBalance(data.deposit_wallet, GAMER)
+        
+        // }
 
         setUserData({
           id: data.id,
           username: data.username,
           deposit_wallet: data.deposit_wallet,
           avatar_url: data.avatar_url,
-          balance_sol: balance_sol,
-          balance_game: balance_gamer || 0,
+          balance_sol: data.solana,
+          balance_game: data.gamer || 0,
         })
         setCredits(data.credits || 0)
         setTotalEarnings(data.total_earnings || 0)
