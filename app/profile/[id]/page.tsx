@@ -523,7 +523,7 @@ export default function ProfilePage() {
               </CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{userData.balance_sol / 1_000_000_000 || 0}</p>
+              <p className="text-4xl font-bold text-center">{`${parseFloat(userData.balance_sol).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}` }</p>
               <div className="flex justify-between mt-4">
                 <Button onClick={() => handleDeposit("sol")} className="bg-green-500 hover:bg-green-600">
                   <Coins className="mr-2 h-4 w-4" /> Deposit
@@ -539,7 +539,7 @@ export default function ProfilePage() {
               <CardTitle>GAMER</CardTitle>
             </CardHeader>
             <CardContent>
-              <p className="text-4xl font-bold text-center">{userData.balance_game  || 0}</p>
+              <p className="text-4xl font-bold text-center">{`${parseFloat(userData.balance_gamer).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`}</p>
               <div className="flex justify-between mt-4">
                 <Button onClick={() => handleDeposit("game")} className="bg-green-500 hover:bg-green-600">
                   <Coins className="mr-2 h-4 w-4" /> Deposit
