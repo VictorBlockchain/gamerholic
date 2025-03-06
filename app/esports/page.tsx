@@ -1317,7 +1317,7 @@ const EsportsPage: React.FC = () => {
                           <CardContent className="relative z-10 p-6">
                             <div className="flex items-center space-x-4 mb-4">
                               <Avatar className="w-16 h-16 border-2 border-primary">
-                                <AvatarImage src={challenge.player2_avatar} />
+                                <AvatarImage src={challenge.player2_avatar || '/avatar1.jpg'} />
                                 <AvatarFallback className="bg-primary/20 text-primary">
                                   {challenge.player2_name}
                                 </AvatarFallback>
@@ -1343,7 +1343,7 @@ const EsportsPage: React.FC = () => {
                               <div className="flex justify-between items-center">
                                 <div className="flex items-center space-x-2">
                                   <DollarSign className="w-4 h-4 text-primary" />
-                                  <span className="text-sm font-medium text-primary">{`${parseFloat(challenge.amount).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`} {challenge.money==1 &&(GAMER)} {challenge.money==2 &&(SOL)}</span>
+                                  <span className="text-sm font-medium text-primary">{`${parseFloat(challenge.amount).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`} {challenge.money==1 &&('GAMER')} {challenge.money==2 &&('SOL')}</span>
                                 </div>
                                 <Badge className="bg-primary/20 text-primary">W: 0 - L: 0</Badge>
                               </div>
