@@ -1326,7 +1326,7 @@ const EsportsPage: React.FC = () => {
                                 <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
                                 <div className="flex items-center space-x-2 text-sm text-primary/80">
                                   <Trophy className="w-4 h-4" />
-                                  <span>Rank: #123</span>
+                                  <span>Rank: #</span>
                                 </div>
                               </div>
                             </div>
