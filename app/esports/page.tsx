@@ -99,10 +99,12 @@ interface UserEsportsProfile {
 }
 
 interface User {
-  userid: string
+  id: string
   username: string
+  avatar_url: string
   deposit_wallet: string
-  avatar: string
+  balance_sol: number
+  balance_gamer: number
 }
 
 //status
@@ -368,10 +370,12 @@ const EsportsPage: React.FC = () => {
           setUserName(data.username)
           setUserAvatar(data.avatar_url)
           setUserData({
-            userid: data.id,
+            id: data.id,
             username: data.username,
             deposit_wallet: data.deposit_wallet,
-            avatar: data.avatar,
+            avatar_url: data.avatar_url,
+            balance_sol: data.solana,
+            balance_gamer: data.gamer || 0,
           })
         }
       }
@@ -738,10 +742,19 @@ const EsportsPage: React.FC = () => {
   }
   
   const confirmAcceptChallenge = async () => {
+    console.log("here")
     if (selectedChallenge) {
       //check user balance
-      let balance = await solana.getTokenBalance(userData.deposit_wallet, GAMER)
-      const gameAmount = selectedChallenge.amount / 10 ** 9
+      let balance = 0
+      let gameAmount = selectedChallenge.amount / 10 ** 9
+      
+      if(selectedChallenge.money==1){
+      balance = userData.balance_sol
+      let fee = gameAmount * 0.03
+      gameAmount = gameAmount + fee
+      }else{
+      balance = userData.balance_gamer
+      }
       balance = balance / 10 ** 9
       if (balance >= gameAmount) {
         const { error } = await supabase.from("esports").update({ status: 2 }).eq("id", selectedChallenge.id)
@@ -1332,7 +1345,7 @@ const EsportsPage: React.FC = () => {
                                   <DollarSign className="w-4 h-4 text-primary" />
                                   <span className="text-sm font-medium text-primary">{challenge.amount} GAMER</span>
                                 </div>
-                                <Badge className="bg-primary/20 text-primary">W: 7 - L: 3</Badge>
+                                <Badge className="bg-primary/20 text-primary">W: 0 - L: 0</Badge>
                               </div>
                             </div>
                             <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
