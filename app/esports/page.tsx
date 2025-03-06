@@ -605,6 +605,14 @@ const EsportsPage: React.FC = () => {
       )
       return
     }
+
+    //get the sum of all active games
+    const { data, error }:any = await supabase
+    .from('esports') // Specify the table name
+    .select('amount') // Select the `amount` column
+    .eq('player1', publicKey) // Filter by `player1`
+    .in("status", [1, 2, 3, 4, 5, 6])
+    let activeAmount = data.reduce((sum:any, row:any) => sum + (row.amount || 0), 0);
     
     //check user balance
     let result  = await solana.getBalance(userData.deposit_wallet)
@@ -620,7 +628,9 @@ const EsportsPage: React.FC = () => {
     const feeAmount = (challengeData.amount / 10 ** 9) * 0.03
     challengeData.fee = feeAmount
     balance = balance / 10 ** 9
-    if (balance >= gameAmount) {
+    let totalAmount = activeAmount + gameAmount
+
+    if (balance >= totalAmount) {
       const { error } = await supabase.from("esports").insert({
         ...challengeData,
         player1: publicKey!.toString(),
@@ -639,7 +649,7 @@ const EsportsPage: React.FC = () => {
         fetchPendingChallenges()
       }
     } else {
-      setErrorMessage("deposit more funds to send this challenge")
+      setErrorMessage("deposit more funds to send this challenge, current balance is not enough to cover this and pending challenges")
       setShowErrorModal(true)
     }
   }
@@ -742,8 +752,15 @@ const EsportsPage: React.FC = () => {
   }
   
   const confirmAcceptChallenge = async () => {
-    console.log("here")
     if (selectedChallenge) {
+      
+      const { data, error }:any = await supabase
+      .from('esports') // Specify the table name
+      .select('amount') // Select the `amount` column
+      .eq('player1', publicKey) // Filter by `player1`
+      .in("status", [1, 2, 3, 4, 5, 6])
+      let activeAmount = data.reduce((sum:any, row:any) => sum + (row.amount || 0), 0);
+
       //check user balance
       let balance = 0
       let gameAmount = selectedChallenge.amount / 10 ** 9
@@ -756,7 +773,9 @@ const EsportsPage: React.FC = () => {
       balance = userData.balance_gamer
       }
       balance = balance / 10 ** 9
-      if (balance >= gameAmount) {
+      let totalAmount = activeAmount + gameAmount
+
+      if (balance >= totalAmount) {
         const { error } = await supabase.from("esports").update({ status: 2 }).eq("id", selectedChallenge.id)
 
         if (error) {
@@ -764,6 +783,10 @@ const EsportsPage: React.FC = () => {
         } else {
           fetchPendingChallenges()
         }
+      }else{
+        setErrorMessage("deposit more to accept this challenge, current balance is not enough to cover this and pending challenges")
+        setShowErrorModal(true)
+
       }
     }
     setShowAcceptModal(false)
@@ -1629,8 +1652,8 @@ const EsportsPage: React.FC = () => {
                   Console
                 </Label>
                 <Select
-                  onValueChange={(value) => setChallengeData({ ...challengeData, console: value })}
-                  value={challengeData.console || ""}
+                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
+                  value={challengeData.money || ""}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select a console" />
