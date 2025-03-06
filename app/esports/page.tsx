@@ -647,7 +647,7 @@ const EsportsPage: React.FC = () => {
       .select("publicKey, avatar_url, username")
       .eq("username", username)
       .single()
-
+    
     setChallengeData({
       ...challengeData,
       player1: publicKey,
@@ -656,7 +656,6 @@ const EsportsPage: React.FC = () => {
       player2: data.publicKey,
       player2_name: username,
       player2_avatar: data.avatar_url,
-      player2_username: data.username,
     })
     setQuery(username)
     setShowDropdown(false)
@@ -1307,11 +1306,11 @@ const EsportsPage: React.FC = () => {
                               <Avatar className="w-16 h-16 border-2 border-primary">
                                 <AvatarImage src={challenge.player2_avatar} />
                                 <AvatarFallback className="bg-primary/20 text-primary">
-                                  {challenge.player2_username}
+                                  {challenge.player2_name}
                                 </AvatarFallback>
                               </Avatar>
                               <div>
-                                <h3 className="text-lg font-bold text-primary">{challenge.player2_username}</h3>
+                                <h3 className="text-lg font-bold text-primary">{challenge.player2_name}</h3>
                                 <div className="flex items-center space-x-2 text-sm text-primary/80">
                                   <Trophy className="w-4 h-4" />
                                   <span>Rank: #123</span>
@@ -1645,7 +1644,7 @@ const EsportsPage: React.FC = () => {
                       amount: e.target.value === "" ? "" : Number.parseFloat(e.target.value),
                     })
                   }
-                  placeholder="Amount in GAME"
+                  placeholder="Game Amount"
                   style={{ width: "272px" }}
                 />
               </div>
