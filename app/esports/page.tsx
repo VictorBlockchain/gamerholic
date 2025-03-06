@@ -1351,11 +1351,11 @@ const EsportsPage: React.FC = () => {
                             <div className="flex justify-between items-center text-xs text-primary/70 mb-4">
                               <div className="flex items-center space-x-1">
                                 <Zap className="w-3 h-3" />
-                                <span>Win Streak: </span>
+                                <span>Win Streak: 0 </span>
                               </div>
                               <div className="flex items-center space-x-1">
                                 <Swords className="w-3 h-3" />
-                                <span>Loss Streak: </span>
+                                <span>Loss Streak: 0 </span>
                               </div>
                             </div>
                             <div className="flex space-x-2">
@@ -1636,9 +1636,10 @@ const EsportsPage: React.FC = () => {
                     <SelectValue placeholder="Select a console" />
                   </SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="Mobile">Mobile</SelectItem>
                     <SelectItem value="PC">PC</SelectItem>
-                    <SelectItem value="PS5">PS5</SelectItem>
-                    <SelectItem value="Xbox Series X">Xbox Series X</SelectItem>
+                    <SelectItem value="PS">Play Station</SelectItem>
+                    <SelectItem value="XBOX">Xbox</SelectItem>
                     {/* Add more consoles as needed */}
                   </SelectContent>
                 </Select>
