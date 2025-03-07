@@ -657,7 +657,7 @@ export default function TournamentPage() {
             <CardContent>
               <h2 className="text-3xl font-bold mb-4 flex items-center">Prize Pool</h2>
               <div className="text-6xl font-bold flex items-center">
-                {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)).toLocaleString()}{" "}
+                {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100) + walletBalance[0].solana).toLocaleString()}{" "}
                 {tournament.money == 1 && "SOL"} {tournament.money == 2 && "GAMER"}
               </div>
               <div className="mt-4 grid grid-cols-2 gap-4">
@@ -676,7 +676,7 @@ export default function TournamentPage() {
                           2st Place: {tournament.second_place_percentage}%
                         </p>
                         <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">
-                          3st Place: {tournament.third_place_percentage}
+                          3st Place: {tournament.third_place_percentage}%
                         </p>                      
                     </>
                   )}
