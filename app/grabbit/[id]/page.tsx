@@ -446,7 +446,17 @@ export default function GrabbitGame() {
   const handleConfirmJoin = async () => {
     setHasJoined(true)
     setShowJoinModal(false)
-    console.log(gameData)
+    //check user balance if gamer to join > 0
+    if (gameData.gamer_to_join > 0) {
+      const { data:userData, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+      if(userData.gamer<gameData.gamer_to_join){
+        setErrorMessage("you need more gamer tokens to join")
+        setShowErrorModal(true)
+        return
+      }
+
+    }
+    // console.log(gameData)
     if (gameData.playersReady + 1 == gameData.playersMax) {
       setErrorMessage("max players reached")
       setShowErrorModal(true)
