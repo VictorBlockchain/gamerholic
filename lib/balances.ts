@@ -47,7 +47,7 @@ export class balanceManager {
       
           if (!walletError && walletData) {
             // Address found in wallets table
-            const last_updated = walletData.last_updated;
+            const last_updated = walletData.last_update;
       
             // Check if last_updated is null or one minute has passed
             const success = !last_updated || moment().diff(moment(last_updated), 'minutes') >= 3;
@@ -59,9 +59,31 @@ export class balanceManager {
               gamer: walletData.gamer,
             };
           }
+                    
+            // Check if the address exists in the grabbit table
+            const { data: grabbitData, error: grabbitError }: any = await supabase
+            .from('grabbit_wallet')
+            .select('last_update, solana, gamer')
+            .eq('wallet', address)
+            .single();
+        
+            if (!grabbitError && grabbitData) {
+            // Address found in wallets table
+            const last_updated = grabbitData.last_update;
+        
+            // Check if last_updated is null or one minute has passed
+            const success = !last_updated || moment().diff(moment(last_updated), 'minutes') >= 3;
+        
+            // Return the result with the current balance
+            return {
+                success,
+                solana: grabbitData.solana,
+                gamer: grabbitData.gamer,
+            };
+            }
       
           // Address not found in either table
-          console.log('Address not found in users or wallets table.');
+          console.log('Address not found in users, grabbit or wallets table.');
           return {
             success: true, // Allow the API call if the address is not found
             solana: 0, // Default balance values
@@ -113,6 +135,23 @@ export class balanceManager {
       
             console.log('Updated last_updated in wallets table.');
           }
+
+        // Check if the address exists in the grabbit table
+        const { data: grabbitData, error: grabbitError } = await supabase
+        .from('grabbit_wallet')
+        .select('last_update')
+        .eq('wallet', address)
+        .single();
+    
+        if (!grabbitError && grabbitData) {
+        // Update the last_updated field in the wallets table
+        await supabase
+            .from('wallets')
+            .update({ last_update: moment().toISOString() })
+            .eq('wallet', address);
+    
+        console.log('Updated last_updated in wallets table.');
+        }
         } catch (error:any) {
           console.error('Error updating last_updated:', error.message);
         }

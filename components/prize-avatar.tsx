@@ -6,9 +6,10 @@ interface PrizeAvatarProps {
   timeLeft: any
   winner: string
   status: number
+  prize_token: string
 }
 
-export function PrizeAvatar({ imageSrc, prizeName, timeLeft, winner, status }: PrizeAvatarProps) {
+export function PrizeAvatar({ imageSrc, prizeName, timeLeft, winner, status, prize_token }: PrizeAvatarProps) {
   if(timeLeft<0){
     timeLeft = 0
   }
@@ -19,7 +20,7 @@ export function PrizeAvatar({ imageSrc, prizeName, timeLeft, winner, status }: P
         <AvatarFallback>{prizeName.slice(0, 2).toUpperCase()}</AvatarFallback>
       </Avatar>
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-primary mb-2">{prizeName}</h2>
+        <h2 className="text-2xl font-bold text-primary mb-2">Win {prizeName} {prize_token == 'solana' && ('SOL')} {prize_token == 'GAMER' && ('GAMER')}</h2>
         {status==1 && (
             <p className="text-xl text-primary/80 mb-2">waiting on more players...</p>
         )}

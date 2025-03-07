@@ -31,7 +31,7 @@ import { SuccessModal } from "@/components/success-modal"
 import { ErrorModal } from "@/components/error-modal"
 import { CreateGrabbitModal } from "@/components/create-grabbit-modal"
 import { GrabbitClaimModal } from "@/components/grabbit-claim-modal"
-import { balanceManager } from "@/lib/balance"
+import { balanceManager } from "@/lib/balances"
 import { PlusCircle } from "lucide-react"
 import moment from "moment"
 import "moment-timezone"
@@ -132,7 +132,7 @@ export default function GrabbitGame() {
 
     try {
       const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
-
+      
       if (error && error.code !== "PGRST116") {
         // Ignore "no rows" error
         console.error("Select Error:", error)
@@ -171,10 +171,10 @@ export default function GrabbitGame() {
   const fetchNSetGame = async () => {
     console.log("fetching")
     const { data, error } = await supabase.from("grabbit").select("*").eq("game_id", gameId).maybeSingle()
-    // console.log(data)
+    console.log(data)
     const balance = await Balance.getBalance(data.wallet)
     setGameData(data)
-    setGameWalletBalance(balance / 10 ** 9)
+    setGameWalletBalance(balance.solana / 10 ** 9)
     setPlayerData([])
   }
   useEffect(() => {
@@ -618,6 +618,7 @@ export default function GrabbitGame() {
                   timeLeft={timeLeft}
                   winner={gameData.winner_name || "No winner yet"}
                   status={gameData.status}
+                  prize_token={gameData.prize_token}
                 />
               </div>
               <div className="text-center mb-6">
@@ -769,7 +770,15 @@ export default function GrabbitGame() {
                     </p>
                     <p className="text-primary/80 flex items-center">
                       <Wallet className="mr-2 h-5 w-5" />
-                      wallet: {gameData.wallet}
+                      wallet: 
+                      <a
+                        href={`https://solscan.io/account/${gameData.wallet}`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="text-primary hover:underline ml-1"
+                      >
+                        {`${gameData.wallet.slice(0, 4)}...${gameData.wallet.slice(-4)}`}
+                      </a>
                     </p>
                     <div className="space-y-2">
                       <p className="text-primary/80">Free Actions:</p>

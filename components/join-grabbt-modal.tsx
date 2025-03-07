@@ -43,7 +43,7 @@ export function JoinGameModal({ isOpen, onClose, onJoin, gameData }:any) {
             <div>
               <p className="font-semibold">Prize Pool</p>
               <p className="text-sm text-primary/70">
-                {gameData.prize_amount} {gameData.prize_token}
+                {gameData.title} {gameData.prize_token}
               </p>
             </div>
           </div>
@@ -56,13 +56,24 @@ export function JoinGameModal({ isOpen, onClose, onJoin, gameData }:any) {
               </p>
             </div>
           </div>
-          {gameData.entry_fee && (
+          {gameData.entry_fee > 0 && (
             <div className="flex items-center gap-4">
               <Coins className="h-5 w-5 text-green-500" />
               <div>
                 <p className="font-semibold">Entry Fee</p>
                 <p className="text-sm text-primary/70">
                   {gameData.entry_fee} SOL
+                </p>
+              </div>
+            </div>
+          )}
+          {gameData.gamer_to_join && (
+            <div className="flex items-center gap-4">
+              <Coins className="h-5 w-5 text-green-500" />
+              <div>
+                <p className="font-semibold">GAMER To Join</p>
+                <p className="text-sm text-primary/70">
+                  {gameData.gamer_to_join} GAMER
                 </p>
               </div>
             </div>
