@@ -799,7 +799,7 @@ export default function TournamentPage() {
                 Rules
               </h2>
               <div className="prose prose-invert">
-                <p>{tournament.rules}</p>
+                <p className="whitespace-pre-line">{tournament.rules}</p>
               </div>
             </CardContent>
           </Card>
