@@ -1694,7 +1694,7 @@ const EsportsPage: React.FC = () => {
                   value={challengeData.money || ""}
                 >
                   <SelectTrigger className="col-span-3">
-                    <SelectValue placeholder="Select a console" />
+                    <SelectValue placeholder="Playing For?" />
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="1">Solana</SelectItem>
