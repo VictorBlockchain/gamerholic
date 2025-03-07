@@ -24,6 +24,7 @@ interface Tournament {
   prize_type: string
   status: "upcoming" | "in-progress" | "completed" | "paid"
   image_url: string
+  money: number
 }
 
 export function TournamentList() {
@@ -66,8 +67,15 @@ export function TournamentList() {
     setIsJoinModalOpen(true)
   }
 
-  const calculatePrizePool = (tournament: Tournament) => {
-    return tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)
+  const calculatePrizePool = async (tournament: Tournament) => {
+    
+    const { data:walletData, error: walletError } = await supabase
+    .from("wallets")
+    .select("*")
+    .eq("tournament_id", tournament.game_id)
+    .single()
+
+    return tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100) + walletData.solana
   }
 
   if (isLoading) {
@@ -139,25 +147,15 @@ export function TournamentList() {
               <div className="flex items-center">
                 <Trophy className="w-4 h-4 mr-2" />
                 <span>
-                  Prize Pool: {calculatePrizePool(tournament).toFixed(2)}{" "}
-                  {tournament.prize_type === "Solana" ? "SOL" : "GAMEr"}
+                  Prize Pool: {calculatePrizePool(tournament)}{" "}
+                  {tournament.money === 1 ? "SOL" : "GAMER"}
                 </span>
               </div>
             </div>
-            <div className="flex space-x-2 mt-4">
-              <Button
-                className="flex-1"
-                onClick={() => handleJoinTournament(tournament)}
-                disabled={tournament.status !== "upcoming"}
-              >
-                {tournament.status === "upcoming"
-                  ? "Join Tournament"
-                  : tournament.status === "in-progress"
-                    ? "In Progress"
-                    : "Completed"}
-              </Button>
+            <div className="mt-3">
+              
               <Link href={`/tournaments/${tournament.game_id}`} passHref>
-                <Button variant="outline">View Tournament</Button>
+                <Button  className="flex-1 w-full">View Tournament</Button>
               </Link>
             </div>
           </CardContent>
