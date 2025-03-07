@@ -114,6 +114,9 @@ export function Header() {
           <Link href="/grabbit">Grabbit</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
+          <Link href="/shop">Shop</Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link href="/about">About Us</Link>
         </DropdownMenuItem>
         <DropdownMenuItem asChild>
