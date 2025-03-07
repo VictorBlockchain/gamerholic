@@ -454,7 +454,6 @@ export default function GrabbitGame() {
         setShowErrorModal(true)
         return
       }
-
     }
     // console.log(gameData)
     if (gameData.playersReady + 1 == gameData.playersMax) {

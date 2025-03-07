@@ -61,7 +61,7 @@ const GrabbitGameCard = ({ game }:any) => {
         />
       </CardHeader>
       <CardContent className="p-4">
-        <CardTitle className="text-xl mb-2 text-primary">{game.title}</CardTitle>
+        <CardTitle className="text-xl mb-2 text-primary">Win {game.title} {game.prize_token}</CardTitle>
         <div className="flex justify-between items-center mb-2">
           <Badge variant="outline" className="text-primary border-primary">
             <Users className="w-4 h-4 mr-1" />
