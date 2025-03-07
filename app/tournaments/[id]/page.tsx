@@ -18,7 +18,11 @@ import { EditTournamentModal } from "@/components/tournament-edit-modal"
 import { CancelTournamentModal } from "@/components/tournament-cancel-modal"
 import { JoinTournamentModal } from "@/components/tournament-join-modal"
 import { shuffle } from "lodash"
+import { balanceManager } from "@/lib/balances"
+
 const moment = require("moment")
+const GAMER = process.env.NEXT_PUBLIC_GAMERHOLIC;
+const BALANCE = new balanceManager()
 
 interface Tournament {
   game_id: number
@@ -38,11 +42,18 @@ interface Tournament {
   image_url: string
   status: "upcoming" | "in-progress" | "completed" | "paid"
   host_id: string
+  gamer_to_join: number
 }
 
 interface TournamentPlayer {
   player_id: string
   joined_at: string
+}
+
+interface TournamentWallet{
+  public_key: string
+  solana: number
+  gamer: number
 }
 
 interface Match {
@@ -130,7 +141,6 @@ export default function TournamentPage() {
   const params = useParams()
   const { publicKey } = useWallet()
   const [tournament, setTournament] = useState<Tournament | null>(null)
-  const [tournamentWallet, setTournamentWallet]: any = useState(null)
   const [matches, setMatches] = useState<Match[]>([])
   const [players, setPlayers] = useState<Player[]>([])
   const [results, setResults] = useState<TournamentResult[]>([])
@@ -153,7 +163,8 @@ export default function TournamentPage() {
   const [isJoining, setIsJoining] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
   const [winner, setWinner] = useState<Player | null>(null)
-
+  const [walletBalance, setWalletBalance] = useState<TournamentWallet[]>([])
+  
   useEffect(() => {
     fetchTournamentData()
   }, [])
@@ -162,22 +173,35 @@ export default function TournamentPage() {
     setIsLoading(true)
     setError(null)
     try {
+
+      // get tournament wallet balance
+      const { data:walletData, error: walletError } = await supabase
+      .from("wallets")
+      .select("*")
+      .eq("tournament_id", params.id)
+      .single()
+      let last_update = walletData.last_update
+      const shouldUpdate =
+      !last_update || // Update if last_update is null
+      moment().diff(moment(last_update), 'minutes') === 1; // Update if exactly one minute has passed
+      
+      let balance: any = {solana: walletData.solana, gamer: walletData.gamer}      
+      // console.log(walletData.public_key)
+      const newWalletEntry: TournamentWallet = {
+        public_key: walletData.public_key,
+        solana: balance.solana,
+        gamer: balance.gamer,
+      };
+      setWalletBalance((prevWalletBalance) => [...prevWalletBalance, newWalletEntry]);
+            
       const { data: tournamentData, error: tournamentError } = await supabase
         .from("tournaments")
         .select("*")
         .eq("game_id", params.id)
         .single()
-
+      
       if (tournamentError) throw tournamentError
-
-      const { data: tournamentWallet, error: tournamentWalletError } = await supabase
-        .from("wallets")
-        .select("*")
-        .eq("tournament_id", params.id)
-        .single()
-
-      if (tournamentWalletError) throw tournamentWalletError
-
+      
       const { data: matchesData, error: matchesError } = await supabase
         .from("tournament_matches")
         .select("*")
@@ -281,7 +305,7 @@ export default function TournamentPage() {
       setMatches(matchesData)
       setPlayers(playersWithRecords)
       setHost(hostData)
-      setTournamentWallet(tournamentWallet)
+      // setTournamentWallet(tournamentWallet)
     } catch (error) {
       console.error("Error fetching tournament data:", error)
       setError("Failed to fetch tournament data")
@@ -380,7 +404,17 @@ export default function TournamentPage() {
 
   const confirmJoinTournament = async () => {
     if (!publicKey || !tournament) return
-
+    
+    const { data:userData, error:userError } = await supabase.from("users").select("*").eq("publicKey", publicKey.toBase58()).single()
+    let result  = await BALANCE.getBalance(userData.deposit_wallet)
+    if(tournament.gamer_to_join>0){
+      if(result.gamer < tournament.gamer_to_join){
+        setErrorMessage("You don't have enough GAMER to join this tournament.")
+        setShowErrorModal(true)
+        return
+      }
+    }
+  
     setIsJoining(true)
     try {
       const response = await fetch("/api/esports/tournament/join", {
@@ -626,30 +660,56 @@ export default function TournamentPage() {
                 {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100)).toLocaleString()}{" "}
                 {tournament.money == 1 && "SOL"} {tournament.money == 2 && "GAMER"}
               </div>
-              <div className="mt-4">
-                {tournament.max_players == 2 && (
-                  <>
-                    <p>1st Place: 70%</p>
-                    <p>2nd Place: 30%</p>
-                  </>
-                )}
-                {tournament.max_players > 2 && (
-                  <>
-                    <p>1st Place: {tournament.first_place_percentage}%</p>
-                    <p>2nd Place: {tournament.second_place_percentage}%</p>
-                    <p>3rd Place: {tournament.third_place_percentage}%</p>
-                  </>
-                )}
-                <p>
-                  wallet:{" "}
-                  <b>
-                    <a
-                      href={`https://solscan.io/account/${tournamentWallet.public_key}`}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                    >{`${tournamentWallet.public_key.slice(0, 4)}...${tournamentWallet.public_key.slice(-4)}`}</a>
-                  </b>
+              <div className="mt-4 grid grid-cols-2 gap-4">
+                  {tournament.max_players == 2 && (
+                    <>
+                      <p className="text-gray-700 font-medium">1st Place:</p>
+                      <p className="text-gray-900 font-semibold">70%</p>
+                    </>
+                  )}
+                  {tournament.max_players > 2 && (
+                    <>
+                      <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">
+                          1st Place: {tournament.first_place_percentage}%
+                        </p>
+                        <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">
+                          2st Place: {tournament.second_place_percentage}%
+                        </p>
+                        <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">
+                          3st Place: {tournament.third_place_percentage}
+                        </p>                      
+                    </>
+                  )}
+              </div>
+              <div className="p-3 mt-3">
+              <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200 text-center">
+                  GAMER To Join: {" "}
+                  {
+                      walletBalance.length > 0 && (
+                        <b>
+                            {`${parseFloat(tournament.gamer_to_join).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`}
+                        
+                        </b>
+                      )
+                    }
                 </p>
+              <p className="mt-3 text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200 text-center">
+                  
+                  {
+                      walletBalance.length > 0 && (
+                        <b>
+                          <a
+                            href={`https://solscan.io/account/${walletBalance[0].public_key}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                          >
+                            {`${walletBalance[0].public_key.slice(0, 4)}...${walletBalance[0].public_key.slice(-4)}`}
+                          </a>
+                        </b>
+                      )
+                    }
+                </p>
+
               </div>
             </CardContent>
           </Card>

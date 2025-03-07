@@ -170,9 +170,9 @@ export async function POST(req: Request) {
     
     // const depositWalletKeypair:any = Buffer.from(privateKey).toString("hex");
     
-    if(platformSettings.min_tokens_tournament > 0){
+    if(tournament.gamer_to_join > 0){
       
-        tokensToJoinAmount = platformSettings.min_tokens_tournament / 10 ** 9
+        tokensToJoinAmount = tournament.gamer_to_join/ 10 ** 9
         balancePlayerToken = await BALANCE.getTokenBalance(user.deposit_wallet, tokenMintAddress.toString())
         const mintInfo = await getMint(connection, tokenMintAddress);
         const decimals = mintInfo.decimals;
