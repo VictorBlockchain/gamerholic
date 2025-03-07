@@ -1652,8 +1652,8 @@ const EsportsPage: React.FC = () => {
                   Console
                 </Label>
                 <Select
-                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
-                  value={challengeData.money || ""}
+                  onValueChange={(value) => setChallengeData({ ...challengeData, console: value })}
+                  value={challengeData.console || ""}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select a console" />
@@ -1690,8 +1690,8 @@ const EsportsPage: React.FC = () => {
                   Money
                 </Label>
                 <Select
-                  onValueChange={(value) => setChallengeData({ ...challengeData, console: value })}
-                  value={challengeData.console || ""}
+                  onValueChange={(value) => setChallengeData({ ...challengeData, money: value })}
+                  value={challengeData.money || ""}
                 >
                   <SelectTrigger className="col-span-3">
                     <SelectValue placeholder="Select a console" />
