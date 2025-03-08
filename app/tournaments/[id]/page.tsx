@@ -43,6 +43,7 @@ interface Tournament {
   status: "upcoming" | "in-progress" | "completed" | "paid"
   host_id: string
   gamer_to_join: number
+  winner_take_all: boolean
 }
 
 interface TournamentPlayer {
@@ -660,14 +661,23 @@ export default function TournamentPage() {
                 {(tournament.entry_fee * tournament.max_players * (tournament.prize_percentage / 100) + walletBalance[0].solana).toLocaleString()}{" "}
                 {tournament.money == 1 && "SOL"} {tournament.money == 2 && "GAMER"}
               </div>
-              <div className="mt-4 grid grid-cols-2 gap-4">
-                  {tournament.max_players == 2 && (
+              {tournament.winner_take_all && (
                     <>
-                      <p className="text-gray-700 font-medium">1st Place:</p>
-                      <p className="text-gray-900 font-semibold">70%</p>
+                    <div className="mt-4 grid grid-cols-1 gap-4">
+                      <p className="text-center text-gray-700 font-large font-bold bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">winner takes all</p>
+                    </div>
                     </>
                   )}
-                  {tournament.max_players > 2 && (
+              {!tournament.winner_take_all && (
+              
+              <div className="mt-4 grid grid-cols-2 gap-4">
+
+                  {tournament.max_players == 2 && (
+                    <>
+                      <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">1st Place: 70%</p>
+                    </>
+                  )}
+                  {tournament.max_players > 2  && (
                     <>
                       <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200">
                           1st Place: {tournament.first_place_percentage}%
@@ -681,6 +691,7 @@ export default function TournamentPage() {
                     </>
                   )}
               </div>
+                                )}
               <div className="p-3 mt-3">
               <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200 text-center">
                   GAMER To Join: {" "}

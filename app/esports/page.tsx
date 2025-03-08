@@ -1164,6 +1164,8 @@ const EsportsPage: React.FC = () => {
         <h1 className="text-4xl font-bold mb-8 text-center text-primary neon-glow">Esports Arena</h1>
         <Tabs defaultValue="chat" className="w-full">
           <TabsList className="grid w-full grid-cols-4 mb-8">
+          {publicKey && (
+            <>
             <TabsTrigger value="chat" className="text-lg">
               Chat
             </TabsTrigger>
@@ -1172,7 +1174,9 @@ const EsportsPage: React.FC = () => {
             </TabsTrigger>
             <TabsTrigger value="history" className="text-lg">
               History
-            </TabsTrigger>
+            </TabsTrigger>            
+            </>
+            )}
             <TabsTrigger value="tournaments" className="text-lg">
               Tournaments
             </TabsTrigger>
