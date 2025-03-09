@@ -633,7 +633,7 @@ export default function GrabbitGame() {
               <div className="text-center mb-6">
                 <Badge variant="secondary" className="text-lg px-3 py-1">
                   <Trophy className="inline-block mr-2" />
-                  Prize: {gameWalletBalance} SOL
+                  Prize: {gameWalletBalance || 0} SOL
                 </Badge>
               </div>
               {gameData.status === 4 && gameData.winner === publicKey.toString() && !gameData.prize_claimed && (
