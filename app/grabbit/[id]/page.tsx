@@ -777,18 +777,21 @@ export default function GrabbitGame() {
                       <Users className="mr-2 h-5 w-5" />
                       Players: {gameData.players_ready} / {gameData.players_max} (Min: {gameData.players_min})
                     </p>
-                    <p className="text-primary/80 flex items-center">
-                      <Wallet className="mr-2 h-5 w-5" />
-                      wallet: 
-                      <a
-                        href={`https://solscan.io/account/${gameData.wallet}`}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="text-primary hover:underline ml-1"
-                      >
-                        {`${gameData.wallet.slice(0, 4)}...${gameData.wallet.slice(-4)}`}
-                      </a>
-                    </p>
+                    {gameData.title!='practice' && (
+                          <p className="text-primary/80 flex items-center">
+                          <Wallet className="mr-2 h-5 w-5" />
+                          wallet: 
+                          <a
+                            href={`https://solscan.io/account/${gameData.wallet}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-primary hover:underline ml-1"
+                          >
+                            {`${gameData.wallet.slice(0, 4)}...${gameData.wallet.slice(-4)}`}
+                          </a>
+                        </p>
+                    )}
+                    
                     <div className="space-y-2">
                       <p className="text-primary/80">Free Actions:</p>
                       <div className="flex space-x-2">
