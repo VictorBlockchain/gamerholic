@@ -1178,7 +1178,7 @@ const EsportsPage: React.FC = () => {
             </>
             )}
             <TabsTrigger value="tournaments" className="text-lg">
-              Tournaments
+              Tournys
             </TabsTrigger>
           </TabsList>
           <TabsContent value="chat">
