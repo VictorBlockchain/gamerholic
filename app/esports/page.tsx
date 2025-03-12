@@ -1667,12 +1667,12 @@ const EsportsPage: React.FC = () => {
                 <Tabs value={activeTab} onValueChange={setActiveTab}>
                   <TabsList>
                     <TabsTrigger value="list">Tournament List</TabsTrigger>
-                    <TabsTrigger value="create">Create Tournament</TabsTrigger>
+                    <TabsTrigger value="creates">Create Tournament</TabsTrigger>
                   </TabsList>
                   <TabsContent value="list">
                     <TournamentList />
                   </TabsContent>
-                  <TabsContent value="create">
+                  <TabsContent value="creates">
                     <TournamentForm />
                   </TabsContent>
                 </Tabs>

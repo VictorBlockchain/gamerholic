@@ -25,6 +25,7 @@ const formSchema = z.object({
   game: z.string().min(1, "Game is required"),
   console: z.string().min(1, "Console is required"),
   entryFee: z.number().min(0, "Entry fee must be 0 or greater"),
+  type: z.enum(["1", "2"]),
   prizePercentage: z.number().min(1).max(75, "Prize percentage must be between 1 and 100"),
   firstPlacePercentage: z.number().min(1).max(100, "First place percentage must be between 1 and 100"),
   secondPlacePercentage: z.number().min(0).max(100, "Second place percentage must be between 0 and 100"),
@@ -53,6 +54,7 @@ export function TournamentForm() {
     defaultValues: {
       title: "",
       game: "",
+      type: "1",
       console: "",
       entryFee: 0,
       prizePercentage: 75,
@@ -65,14 +67,14 @@ export function TournamentForm() {
       startTime: "",
     },
   })
-
+  
   const handleImageUpload = async (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0]
     if (file) {
       const fileExt = file.name.split(".").pop()
       const fileName = `${Math.random()}.${fileExt}`
       const { data, error } = await supabase.storage.from("images").upload(fileName, file)
-
+      
       if (error) {
         setErrorMessage("Failed to upload image. Please try again.")
         setErrorModalOpen(true)
@@ -80,13 +82,13 @@ export function TournamentForm() {
         const {
           data: { publicUrl },
         } = supabase.storage.from("images").getPublicUrl(fileName)
-
+        
         setPreviewImage(publicUrl)
         form.setValue("tournamentImage", publicUrl)
       }
     }
   }
-
+  
   async function onSubmit(values: z.infer<typeof formSchema>) {
     setIsSubmitting(true)
     console.log(values)
@@ -101,11 +103,11 @@ export function TournamentForm() {
           host_id: publicKey.toString(),
         }),
       })
-
+      
       if (!response.ok) {
         throw new Error("Failed to create tournament")
       }
-
+      
       const data = await response.json()
       setSuccessMessage("Your tournament has been successfully created.")
       setSuccessModalOpen(true)
@@ -117,7 +119,7 @@ export function TournamentForm() {
       setIsSubmitting(false)
     }
   }
-
+  
   return (
     <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
       <Form {...form}>
@@ -144,6 +146,27 @@ export function TournamentForm() {
                 <FormControl>
                   <Input placeholder="Enter game name" {...field} />
                 </FormControl>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+                    <FormField
+            control={form.control}
+            name="type"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Tournament Type</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select Type" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="1">1v1</SelectItem>
+                    <SelectItem value="2">Battle Royal</SelectItem>
+                  </SelectContent>
+                </Select>
                 <FormMessage />
               </FormItem>
             )}

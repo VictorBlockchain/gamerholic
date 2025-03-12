@@ -9,6 +9,7 @@ CryptoManager.initialize()
 const formSchema = z.object({
   title: z.string(),
   game: z.string(),
+  type: z.number(),
   console: z.string(),
   entryFee: z.string(),
   prizePercentage: z.string(),
@@ -38,8 +39,8 @@ export async function POST(req: Request) {
     .seconds(0); // Reset seconds to 0
     
     // Log the input values for debugging
-    console.log("Parsed Start Date:", parsedStartDate.format());
-    console.log("Combined Start DateTime:", startDateTime.format());
+    // console.log("Parsed Start Date:", parsedStartDate.format());
+    // console.log("Combined Start DateTime:", startDateTime.format());
     
     // console.log(startDate, startTime)
     // const startDateTime = moment(`${startDate}T${startTime}:00`);
@@ -47,9 +48,9 @@ export async function POST(req: Request) {
     
     const now = moment();
     if (startDateTime.isBefore(now)) {
-      console.log("in the past")
+      // console.log("in the past")
     }else{
-      console.log(rest)
+      // console.log(rest)
     
     }
     // Generate a new Solana keypair for the tournament wallet
@@ -66,6 +67,7 @@ export async function POST(req: Request) {
       .insert({
         title: rest.title,
         game: rest.game,
+        type: rest.type,
         console: rest.console,
         first_place_percentage: rest.firstPlacePercentage,
         second_place_percentage: rest.secondPlacePercentage,

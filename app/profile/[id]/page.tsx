@@ -170,7 +170,7 @@ export default function ProfilePage() {
 
   const fetchGameHistory = async () => {
     if (!publicKey) return
-
+    
     const { data, error } = await supabase
       .from("arcade_history")
       .select("game_id, score, title, play_date")
@@ -349,14 +349,13 @@ export default function ProfilePage() {
 
     setIsGeneratingAddress(true)
     setErrorMessage("")
-
+    
     try {
-      const userId = publicKey.toBase58()
-
+      
       const { data, error }: any = await supabase
         .from("users")
         .select("deposit_wallet")
-        .eq("publicKey", userId)
+        .eq("publicKey", publicKey)
         .single()
 
       if (!data.deposit_wallet) {
@@ -364,7 +363,7 @@ export default function ProfilePage() {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({
-            user: userId,
+            user: publicKey,
             type: 1,
           }),
         })

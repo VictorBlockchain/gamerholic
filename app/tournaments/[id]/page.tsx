@@ -17,6 +17,7 @@ import { updateTournamentBracket } from "@/lib/tournament-utils"
 import { EditTournamentModal } from "@/components/tournament-edit-modal"
 import { CancelTournamentModal } from "@/components/tournament-cancel-modal"
 import { JoinTournamentModal } from "@/components/tournament-join-modal"
+import { ReportWinnerModal } from "@/components/tournament-report-winner"
 import { shuffle } from "lodash"
 import { balanceManager } from "@/lib/balances"
 
@@ -28,6 +29,7 @@ interface Tournament {
   game_id: number
   title: string
   game: string
+  type:number
   console: string
   entry_fee: number
   prize_percentage: number
@@ -163,6 +165,7 @@ export default function TournamentPage() {
   const [isJoinModalOpen, setIsJoinModalOpen] = useState(false)
   const [isJoining, setIsJoining] = useState(false)
   const [isDropdownOpen, setIsDropdownOpen] = useState(false)
+  const [isSetWinnerModalOpen, setWinnerModal] = useState(false)
   const [winner, setWinner] = useState<Player | null>(null)
   const [walletBalance, setWalletBalance] = useState<TournamentWallet[]>([])
   
@@ -478,6 +481,14 @@ export default function TournamentPage() {
       setIsUpdating(false)
     }
   }
+  
+  const handleReportWinner = async (playerId: string) => {
+
+  }
+  
+  const handleSetWinner = async () => {
+    setWinnerModal(true)
+  }
 
   const handleCancelTournament = async () => {
     setIsCancelModalOpen(true)
@@ -694,15 +705,18 @@ export default function TournamentPage() {
                                 )}
               <div className="p-3 mt-3">
               <p className="text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200 text-center">
-                  GAMER To Join: {" "}
-                  {
-                      walletBalance.length > 0 && (
-                        <b>
-                            {`${parseFloat(tournament.gamer_to_join).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`}
-                        
-                        </b>
-                      )
-                    }
+              GAMER To Join: {" "}
+                {
+                    walletBalance.length > 0 && (
+                        tournament.gamer_to_join > 0 ? (
+                            <b>
+                                {`${parseFloat(tournament.gamer_to_join).toLocaleString(undefined, { minimumFractionDigits: 6, maximumFractionDigits: 6 })}`}
+                            </b>
+                        ) : (
+                            <b>Free</b>
+                        )
+                    )
+                }
                 </p>
               <p className="mt-3 text-gray-700 font-medium bg-white border border-gray-300 rounded-lg px-3 py-1 hover:bg-gray-50 hover:border-gray-400 transition duration-200 text-center">
                   
@@ -771,6 +785,21 @@ export default function TournamentPage() {
                   {isDropdownOpen && (
                     <div className="origin-top-right absolute right-0 mt-2 w-56 rounded-md shadow-lg bg-white ring-1 ring-black ring-opacity-5 focus:outline-none z-10">
                       <div className="py-1" role="menu" aria-orientation="vertical" aria-labelledby="options-menu">
+                        {tournament.type==2 && (
+                          <>
+                          {/* Report Winner*/}
+                            <button
+                              onClick={() => {
+                                handleSetWinner()
+                                setIsDropdownOpen(false) // Close the dropdown after selection
+                              }}
+                              className="block px-4 py-2 text-sm text-gray-700 hover:bg-gray-100 hover:text-gray-900 w-full text-left"
+                              role="menuitem"
+                            >
+                              Report Winner
+                        </button>
+                          </>
+                        )}
                         {/* Edit Tournament Option */}
                         <button
                           onClick={() => {
@@ -855,7 +884,7 @@ export default function TournamentPage() {
             {isUpdating ? "Starting Tournament..." : "Start Tournament"}
           </Button>
         )}
-        {tournament.status != "upcoming" && (
+        {tournament.status != "upcoming" && tournament.type==1 && (
           <>
             <h2 className="text-3xl font-bold mb-8">Tournament Bracket</h2>
             <div className="overflow-x-auto">
@@ -870,7 +899,7 @@ export default function TournamentPage() {
             </div>
           </>
         )}
-
+        
         {players.length > 0 ? (
           <>
             <h2 className="text-3xl font-bold mb-8">Players</h2>
@@ -930,6 +959,13 @@ export default function TournamentPage() {
             <p className="text-muted-foreground mb-8">Take The Lead, Be The 1st To Join</p>
           </div>
         )}
+        
+        <ReportWinnerModal
+        isOpen={isSetWinnerModalOpen}
+        onClose={() => setWinnerModal(false)}
+        onSubmit={handleReportWinner}
+        matchId={selectedMatch?.id.toString()}
+        />
 
         <ReportScoreModal
           isOpen={isReportScoreModalOpen}
