@@ -1517,11 +1517,11 @@ video {
 .max-h-\[90vh\] {
   max-height: 90vh;
 }
-.max-h-screen {
-  max-height: 100vh;
-}
 .max-h-\[calc\(100vh-4rem\)\] {
   max-height: calc(100vh - 4rem);
+}
+.max-h-screen {
+  max-height: 100vh;
 }
 .min-h-0 {
   min-height: 0px;
@@ -2817,6 +2817,9 @@ video {
 .bg-\[radial-gradient\(circle_at_80\%_70\%\2c rgba\(255\2c 0\2c 128\2c 0\.15\)\2c transparent_40\%\)\] {
   background-image: radial-gradient(circle at 80% 70%,rgba(255,0,128,0.15),transparent 40%);
 }
+.bg-\[url\(\'\/home\/20\.png\?height\=300\&width\=600\'\)\] {
+  background-image: url('/home/20.png?height=300&width=600');
+}
 .bg-\[url\(\'\/home\/20\.png\?height\=600\&width\=1200\'\)\] {
   background-image: url('/home/20.png?height=600&width=1200');
 }
@@ -2843,9 +2846,6 @@ video {
 }
 .bg-gradient-to-t {
   background-image: linear-gradient(to top, var(--tw-gradient-stops));
-}
-.bg-\[url\(\'\/home\/20\.png\?height\=300\&width\=600\'\)\] {
-  background-image: url('/home/20.png?height=300&width=600');
 }
 .from-\[\#00C3FF\] {
   --tw-gradient-from: #00C3FF var(--tw-gradient-from-position);

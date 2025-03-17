@@ -123,10 +123,12 @@ export function HomeMobile() {
                   <p className="text-xs text-gray-300">Governance voting rights</p>
                 </div>
               </div>
+              <Link href="https://pump.fun/coin/A16i7fjFagzf2Ejezhc4xidcZ8J7utmLLQCqzZRWpump" target="_blank">
 
               <Button className="w-full bg-[#FFD600] hover:bg-[#E6C200] text-black rounded-full">
                 Buy $GAMER Token
               </Button>
+              </Link>
             </CardContent>
           </Card>
         </section>

@@ -113,7 +113,7 @@ return (
                 <ScrollReveal direction="up" distance={20} delay={200}>
                   <div className="flex flex-col sm:flex-row gap-4 mb-12">
                     <ButtonPressEffect>
-                    <Link href="/swap" passHref>
+                    <Link href="https://pump.fun/coin/A16i7fjFagzf2Ejezhc4xidcZ8J7utmLLQCqzZRWpump" target="_blank">
                         <Button
                           className="bg-[#00FFA9] hover:bg-[#00D48F] text-black font-medium px-8 py-7 h-auto rounded-full text-lg relative overflow-hidden group"
                         >
@@ -126,17 +126,19 @@ return (
                     </ButtonPressEffect>
                     
                     <ButtonPressEffect>
+                      <Link href="/tournaments">
                       <Button
                         variant="outline"
                         className="border-[#333] text-white hover:bg-white/5 px-8 py-7 h-auto rounded-full text-lg"
                       >
                         Browse Tournaments
                       </Button>
+                      </Link>
                     </ButtonPressEffect>
                   </div>
                 </ScrollReveal>
                 
-                <ScrollReveal direction="up" distance={20} delay={400}>
+                {/* <ScrollReveal direction="up" distance={20} delay={400}>
                   <div className="flex items-center gap-6">
                     <div className="text-center">
                       <div className="text-3xl font-bold text-white">
@@ -159,7 +161,7 @@ return (
                       <p className="text-gray-500 text-sm">GAMES</p>
                     </div>
                   </div>
-                </ScrollReveal>
+                </ScrollReveal> */}
               </div>
               
               <div className="lg:col-span-6 relative">
@@ -269,9 +271,11 @@ return (
 
                 <ScrollReveal direction="up" delay={600}>
                   <ButtonPressEffect>
+                    <Link href="https://pump.fun/coin/A16i7fjFagzf2Ejezhc4xidcZ8J7utmLLQCqzZRWpump" target="_blank">
                     <Button className="bg-[#FFD600] hover:bg-[#E6C200] text-black font-medium px-8 py-6 h-auto rounded-full">
                       Buy $GAMER Token
                     </Button>
+                    </Link>
                   </ButtonPressEffect>
                 </ScrollReveal>
               </div>
