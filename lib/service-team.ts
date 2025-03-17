@@ -59,6 +59,22 @@ export async function getTeamById(teamId: string): Promise<Team | null> {
 
   return data
 }
+// Get touranment teas
+
+export async function getPlayerTeams(playerId: string): Promise<Team[]> {
+  const { data, error } = await supabase
+    .from("teams")
+    .select("*")
+    .eq("creator_id", playerId)
+    .order("created_at", { ascending: false })
+  
+  if (error) {
+    console.error("Error fetching player teams:", error)
+    return []
+  }
+
+  return data || []
+}
 
 // Get teams created by a player
 export async function getPlayerTeams(playerId: string): Promise<Team[]> {
@@ -67,7 +83,7 @@ export async function getPlayerTeams(playerId: string): Promise<Team[]> {
     .select("*")
     .eq("creator_id", playerId)
     .order("created_at", { ascending: false })
-
+  
   if (error) {
     console.error("Error fetching player teams:", error)
     return []

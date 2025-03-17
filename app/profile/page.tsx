@@ -18,7 +18,7 @@ import { MobileHeader } from "@/components/mobile/mobile-header"
 
 
 export default function ProfilePage() {
-
+    
     const isMobile = useMobile()
   
   
