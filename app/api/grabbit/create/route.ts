@@ -15,11 +15,11 @@ const fetchRandom = async (): Promise<number> => {
 };
 
 const setWallet = async (gameId:any, wallet:any, wallet_key:any, iv:any) =>{
-    const { error } = await supabase.from("grabbit_wallet").insert({
+    const { error } = await supabase.from("wallets_grabbit").insert({
       game_id:gameId,
       wallet: wallet,
-      wallet_key: wallet_key,
-      wallet_iv: iv
+      sesime: wallet_key,
+      iv: iv
     })
     if(!error){
         return ({success:true})
@@ -77,7 +77,7 @@ export async function POST(req: Request) {
       .select();
       // console.log(data)
       if(data){
-        console.log(data[0])
+        // console.log(data[0])
         if(data[0].game_id>0){
 
           let gameId = data[0].game_id

@@ -142,7 +142,7 @@ export async function POST(req: Request) {
 
     // Fetch the wallet for this Grabbit game
     const { data: wallet, error: walletError } = await supabase
-      .from("grabbit_wallet")
+      .from("wallets_grabbit")
       .select("*")
       .eq("game_id", gameId)
       .single()
@@ -164,7 +164,7 @@ export async function POST(req: Request) {
     const winnerAmount = totalAmount - platformFee - hostFee
     
     // Decrypt game wallet private key
-    const gameWalletPrivateKey = CryptoManager.decrypt(wallet.wallet_key, wallet.wallet_iv)
+    const gameWalletPrivateKey = CryptoManager.decrypt(wallet.sesime, wallet.iv)
     let signatureFee:any;
     let signatureHost:any;
     let signatureWinner:any;

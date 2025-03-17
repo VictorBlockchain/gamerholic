@@ -63,9 +63,9 @@ const fetchPlayerData = async (gameid:any, userId:any) => {
 
 const fetchUserData = async (publicKey:any) => {
     const { data, error } = await supabase
-      .from("users")
+      .from("players")
       .select("*")
-      .eq("publicKey", publicKey)
+      .eq("player", publicKey)
       .single();
   
   if (error) {
@@ -75,6 +75,22 @@ const fetchUserData = async (publicKey:any) => {
   
   return data;
 };
+
+const fetchWalletData = async (publicKey:any) => {
+  const { data, error: fetchError } = await supabase
+  .from("wallet_players")
+  .select("*")
+  .eq("player", publicKey)
+  .single();
+  
+  if (fetchError) {
+    console.error(`Error fetching wallet data`);
+    return null;
+  }
+  
+  return data;
+};
+
 const updateGameData = async (gameid:any, userId:any, userName:any, userAvatar:any, endTime:any) => {
     const { data, error } = await supabase
     .from("grabbit")
@@ -181,6 +197,7 @@ export async function POST(req: Request) {
     let gameData:any = await fetchGameData(gameId)
     let playerData:any = await fetchPlayerData(gameId,publicKey)
     let userData:any = await fetchUserData(publicKey)
+    let walletData:any = await fetchWalletData(publicKey)
     const timeNow = moment();
     
     if(playerData){
@@ -201,8 +218,8 @@ export async function POST(req: Request) {
     
         //collect entry fee and send it to game wallet
         if(gameData.entry_fee>0){
-            console.log(gameData.entry_fee)
-          let userKey:any = CryptoManager.decrypt(userData.deposit_wallet_encryptedKey, userData.iv);
+            // console.log(gameData.entry_fee)
+          let userKey:any = CryptoManager.decrypt(walletData.sesime, walletData.iv);
           let fee_entry = gameData.entry_fee
             if(gameData.play_money==1){
               //entry fee is in solana
@@ -218,14 +235,14 @@ export async function POST(req: Request) {
         // Calculate the expiration time (now + 3 minutes)
         const seatExpire = timeNow.add(180, "seconds");
         // Insert the player data into the "grabbit_players" table
-        const { error: insertError } = await supabase
+        const {  data: upsertedRecord, error: insertError  } = await supabase
         .from("grabbit_players")
         .upsert(
             {
             game_id: gameId,
             player: publicKey,
-            player_avatar: userData.avatar_url,
-            player_name: userData.username,
+            player_avatar: userData.avatar,
+            player_name: userData.name,
             grabs: gameData.free_grabs,
             slaps: gameData.free_slaps,
             sneaks: gameData.free_sneaks,
@@ -233,15 +250,15 @@ export async function POST(req: Request) {
             status:1,
             txid:txid_play
             },{ onConflict: "game_id,player" } // Specify the unique constraint columns
-        );
-
+        ).select(); 
+            
             // Handle errors
             if (insertError) {
                 console.error("Insert error:", insertError.message);
                 return NextResponse.json({success:false, message:'error joining game'})
             
             }else{
-                return NextResponse.json({success:true, message:'you are in'})
+                return NextResponse.json({success:true, message:'you are in', data:upsertedRecord})
             } 
         
 

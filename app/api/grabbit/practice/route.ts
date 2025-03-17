@@ -5,7 +5,7 @@ import "moment-timezone";
 const setPracticeGame = async (): Promise<any> => {
   try {
     const randomPageNumber = Math.floor(Math.random() * 11) + 3;
-    const imagePath = `/grab${randomPageNumber}.jpg`;
+    const imagePath = `/grabbit/grab${randomPageNumber}.jpg`;
     const { data, error } = await supabase
       .from("grabbit")
       .insert({
@@ -31,7 +31,6 @@ const setPracticeGame = async (): Promise<any> => {
         title: 'practice',
         entry_fee: 0,
         entry_fee_token: null,
-        wallet: null,
         winner: null,
         winner_avatar: null,
         winner_name: null,
@@ -40,10 +39,10 @@ const setPracticeGame = async (): Promise<any> => {
     
     if (error) {
       console.error("Error inserting practice game:", error.message);
-      throw error; // Rethrow the error to propagate it
+      return false; // Rethrow the error to propagate it
     }
     
-    return data; // Return the inserted data
+    return true; // Return the inserted data
   } catch (err) {
     console.error("Failed to set practice game:", err);
     return null; // Return null or handle the error as needed
@@ -56,7 +55,7 @@ export async function POST(req: Request) {
     
     const body = await req.json();
     const { userId } = body;
-    console.log("working")
+    let done = true;
     const { data, error }: any = await supabase
       .from('grabbit')
       .select('*')
@@ -68,21 +67,18 @@ export async function POST(req: Request) {
       throw error;
     }
 
-    // Check if there are fewer than 3 practice games
     if (data.length < 3) {
-    //   console.log(`Only ${data.length} practice games found. Creating ${3 - data.length} more...`);
 
       // Create additional practice games
       for (let i = data.length; i < 3; i++) {
-        await setPracticeGame();
+       let data = await setPracticeGame();
+        if (!data) {
+          done = false
+        }
       }
+    } 
 
-    //   console.log('Successfully created 3 practice games.');
-    } else {
-    //   console.log('There are already 3 or more practice games.');
-    }
-
-   return NextResponse.json({success:true});
+   return NextResponse.json({success:done});
 
   }catch(error){
     return NextResponse.json({success:false})

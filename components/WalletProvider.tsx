@@ -19,11 +19,16 @@ const WalletModalProvider = dynamic(
 
 export const WalletProvider = ({ children }: { children: React.ReactNode }) => {
   // Allow switching between devnet and mainnet
-  const network = (process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork) || WalletAdapterNetwork.Devnet
-  const endpoint = useMemo(() => clusterApiUrl(network), [network])
-
+  const network = (process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork)
+  const endpoint = useMemo(() => 
+    process.env.NEXT_PUBLIC_SOLANA_NETWORK === "mainnet-beta"
+      ? "https://solana-mainnet.g.alchemy.com/v2/RYhH9z86g3X4KwWuCnYxBVbqxP1Jk6e0"
+      : clusterApiUrl(process.env.NEXT_PUBLIC_SOLANA_NETWORK as WalletAdapterNetwork),
+    [network]
+  );
+  
   const wallets = useMemo(() => [new PhantomWalletAdapter(), new SolflareWalletAdapter({ network })], [network])
-
+  
   return (
     <ConnectionProvider endpoint={endpoint}>
       <SolanaWalletProvider wallets={wallets} autoConnect>

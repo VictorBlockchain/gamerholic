@@ -1,55 +1,60 @@
 "use client"
-import type { Metadata } from "next"
-import { Exo_2 } from "next/font/google"
-import "./globals.css"
-import { Footer } from "@/components/footer"
-import { DarkThemeProvider } from "@/components/dark-theme-provider"
-import { BottomNav } from "@/components/bottom-nav"
+
+import type React from "react"
 import dynamic from "next/dynamic"
-import type React from "react" // Import React
-import { useEffect } from "react"
-import {Toaster} from "@/components/ui/toaster"
-import { SpeedInsights } from "@vercel/speed-insights/next"
+import { ThemeProvider } from "@/components/theme-provider"
+import "./globals.css"
+import { CursorGlow } from "@/components/ui/cursor-glow"
 import { Analytics } from "@vercel/analytics/react"
-// import { initializePlatformWalletOnLoad } from "@/lib/platformWallet"
+import { Footer } from "@/components/layout/footer"
+import { MobileFooter } from "@/components/mobile/mobile-footer"
+import { MobileNavigation } from "@/components/mobile/mobile-navigation"
+import { useMobile } from "@/hooks/use-mobile"
+// Import the UserProvider
+import { UserProvider } from "@/contexts/user-context"
 
 const WalletProviderComponent = dynamic(
   () => import("../components/WalletProvider").then((mod) => mod.WalletProvider),
   { ssr: false },
 )
 
-const exo2 = Exo_2({ subsets: ["latin"] })
-
-// export const metadata: Metadata = {
-//   title: "Gamerholic",
-//   description: "I Win For A Living - The Ultimate Crypto Gaming Platform",
-//   viewport: "width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no",
-// }
-
 export default function RootLayout({
   children,
 }: {
   children: React.ReactNode
 }) {
-  useEffect(() => {
-    // initializePlatformWalletOnLoad().catch(console.error)
-  }, [])
+  const isMobile = useMobile()
 
-  
   return (
-    <html lang="en" suppressHydrationWarning className="dark">
-      <link rel="icon" href="/favicon/favicon.ico" />
-      <body className={`${exo2.className} pb-16 sm:pb-0`}>
-        <DarkThemeProvider>
+    <html lang="en">
+      <head>
+        <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+        <meta name="description" content="Gamerholic - Create with AI, Compete to Win" />
+        <meta name="theme-color" content="#0A0A0A" />
+      </head>
+      <body>
+        <ThemeProvider attribute="class" defaultTheme="dark">
           <WalletProviderComponent>
-            {children}
-            <Analytics />
-            {/* <SpeedInsights /> */}
-            <Toaster />
-            <Footer />
-            <BottomNav />
+            <UserProvider>
+              <CursorGlow />
+
+              {children}
+              <Analytics />
+              {/* <SpeedInsights /> */}
+              {!isMobile && (
+                <>
+                  <Footer />
+                </>
+              )}
+              {isMobile && (
+                <>
+                  <MobileFooter />
+                  <MobileNavigation />
+                </>
+              )}
+            </UserProvider>
           </WalletProviderComponent>
-        </DarkThemeProvider>
+        </ThemeProvider>
       </body>
     </html>
   )

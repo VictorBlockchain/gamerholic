@@ -20,7 +20,9 @@ export function PrizeAvatar({ imageSrc, prizeName, timeLeft, winner, status, pri
         <AvatarFallback>{prizeName.slice(0, 2).toUpperCase()}</AvatarFallback>
       </Avatar>
       <div className="text-center">
-        <h2 className="text-2xl font-bold text-primary mb-2">{prizeName} {prize_token == 'solana' && ('SOL')} {prize_token == 'GAMER' && ('GAMER')}</h2>
+      <h2 className="text-2xl font-bold text-primary mb-2">{winner}</h2>
+
+        {/* <h2 className="text-2xl font-bold text-primary mb-2">{prizeName} {prize_token == 'solana' && ('SOL')} {prize_token == 'GAMER' && ('GAMER')}</h2> */}
         {status==1 && (
             <p className="text-xl text-primary/80 mb-2">waiting on more players...</p>
         )}
@@ -40,7 +42,7 @@ export function PrizeAvatar({ imageSrc, prizeName, timeLeft, winner, status, pri
             <p className="text-xl text-primary/80 mb-2">game over!</p>
         )}
         {status>2 && (
-            <p className="text-lg text-primary/70">Winner: {winner}</p>
+            <p className="text-lg text-primary/70">{prizeName} {prize_token == 'solana' && ('SOL')} {prize_token == 'GAMER' && ('GAMER')}</p>
         )}
       </div>
     </div>

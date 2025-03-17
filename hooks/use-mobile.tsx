@@ -1,19 +1,39 @@
-import * as React from "react"
+"use client"
 
-const MOBILE_BREAKPOINT = 768
+import { useState, useEffect, useCallback } from "react"
 
-export function useIsMobile() {
-  const [isMobile, setIsMobile] = React.useState<boolean | undefined>(undefined)
+export function useMobile(breakpoint = 768) {
+  const [isMobile, setIsMobile] = useState(false)
 
-  React.useEffect(() => {
-    const mql = window.matchMedia(`(max-width: ${MOBILE_BREAKPOINT - 1}px)`)
-    const onChange = () => {
-      setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
+  // Use useCallback to memoize the function
+  const checkMobile = useCallback(() => {
+    setIsMobile(window.innerWidth < breakpoint)
+  }, [breakpoint])
+
+  useEffect(() => {
+    // Check if window is defined (to avoid SSR issues)
+    if (typeof window === "undefined") return
+
+    // Initial check
+    checkMobile()
+
+    // Debounce resize event to prevent excessive calls
+    let timeoutId: NodeJS.Timeout
+    const handleResize = () => {
+      clearTimeout(timeoutId)
+      timeoutId = setTimeout(checkMobile, 200)
     }
-    mql.addEventListener("change", onChange)
-    setIsMobile(window.innerWidth < MOBILE_BREAKPOINT)
-    return () => mql.removeEventListener("change", onChange)
-  }, [])
 
-  return !!isMobile
+    // Add resize listener
+    window.addEventListener("resize", handleResize)
+
+    // Clean up
+    return () => {
+      window.removeEventListener("resize", handleResize)
+      clearTimeout(timeoutId)
+    }
+  }, [checkMobile])
+
+  return isMobile
 }
+

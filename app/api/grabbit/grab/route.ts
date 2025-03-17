@@ -53,9 +53,9 @@ const fetchPlayerData = async (gameid:any, userId:any) => {
 
 const fetchUserData = async (publicKey:any) => {
     const { data, error } = await supabase
-      .from("users")
+      .from("players")
       .select("*")
-      .eq("publicKey", publicKey)
+      .eq("player", publicKey)
       .single();
   
   if (error) {
@@ -66,7 +66,6 @@ const fetchUserData = async (publicKey:any) => {
   return data;
 };
 const updateGameData = async (gameid:any, userId:any, userName:any, userAvatar:any, endTime:any) => {
-  console.log(userId, userName, userAvatar)
     const { data, error } = await supabase
     .from("grabbit")
     .update({
@@ -151,7 +150,7 @@ export async function POST(req: Request) {
           
                     }
                     
-                    let resp:any = await updateGameData(gameId, userId, userData.username, userData.avatar_url,holdTime)
+                    let resp:any = await updateGameData(gameId, userId, userData.name, userData.avatar,holdTime)
                     if(resp.success){
                         //subtract grab
                         let grabs = playerData.grabs - 1

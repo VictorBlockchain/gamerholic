@@ -17,7 +17,7 @@ export async function checkTableExists(tableName: string): Promise<boolean> {
     .select("table_name")
     .eq("table_name", tableName)
     .single()
-
+  
   if (error) {
     console.error("Error checking table existence:", error)
     return false

@@ -13,10 +13,10 @@ CryptoManager.initialize()
 
 async function getWalletKeypair(tournamentId: number): Promise<any> {
   const { data: wallet, error } = await supabase.from("wallets").select("*").eq("tournament_id", tournamentId).single()
-
+  
   if (error) throw new Error(`Failed to fetch wallet for tournament ${tournamentId}: ${error.message}`)
   if (!wallet) throw new Error(`No wallet found for tournament ${tournamentId}`)
-
+  
   const privateKey = CryptoManager.decrypt(wallet.encrypted_key, wallet.iv)
   return privateKey
 }

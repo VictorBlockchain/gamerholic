@@ -11,7 +11,7 @@ const PLATFORM_FEE_PERCENT = 0.03 // 3% platform fee
 const GAME_TOKEN_ADDRESS = process.env.NEXT_PUBLIC_GAMERHOLIC // GAMEr token mint address
 
 const fetchUserData = async (publicKey: string) => {
-  const { data, error } = await supabase.from("users").select("*").eq("publicKey", publicKey).single()
+  const { data, error } = await supabase.from("players").select("*").eq("player", publicKey).single()
 
   if (error) {
     console.error(`Error fetching data for ${publicKey}:`, error)
@@ -20,7 +20,16 @@ const fetchUserData = async (publicKey: string) => {
   
   return data
 }
-
+const fetchWalletData = async (publicKey: string) => {
+  const { data, error } = await supabase.from("wallet_players").select("*").eq("player", publicKey).single()
+  
+  if (error) {
+    console.error(`Error fetching wallet data for ${publicKey}:`, error)
+    return null
+  }
+  
+  return data
+}
 const fetchGameData = async (id: string) => {
   const { data, error: fetchError } = await supabase.from("esports").select("*").eq("game_id", id).single()
 
@@ -199,7 +208,9 @@ export async function POST(req: Request) {
 
     const player1Data = await fetchUserData(gameData.player1)
     const player2Data = await fetchUserData(gameData.player2)
-
+    const walletDataPlayer1 = await fetchWalletData(gameData.player1)
+    const walletDataPlayer2 = await fetchWalletData(gameData.player2)
+    
     if (!player1Data || !player2Data) {
       return NextResponse.json({ success: false, message: "Failed to fetch player data" })
     }
@@ -208,8 +219,8 @@ export async function POST(req: Request) {
     const loser = winner === gameData.player1 ? gameData.player2 : gameData.player1
 
     // Deduct fees from both players
-    const player1PrivateKey = CryptoManager.decrypt(player1Data.deposit_wallet_encryptedKey, player1Data.iv)
-    const player2PrivateKey = CryptoManager.decrypt(player2Data.deposit_wallet_encryptedKey, player2Data.iv)
+    const player1PrivateKey = CryptoManager.decrypt(walletDataPlayer1.sesime, walletDataPlayer1.iv)
+    const player2PrivateKey = CryptoManager.decrypt(walletDataPlayer2.sesime, walletDataPlayer2.iv)
     if(gameData.money==1){
             
       

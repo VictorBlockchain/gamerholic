@@ -1,62 +1,58 @@
-import { cookies } from "next/headers";
-import { createServerComponentClient } from "@supabase/auth-helpers-nextjs";
-import { HomeContent } from "@/components/home-content";
+"use client"
 
-async function getServerSideData() {
-  const supabase = createServerComponentClient({ cookies });
+import { useEffect, useState, useRef } from "react"
+import { Header } from "@/components/layout/header"
+import { Footer } from "@/components/layout/footer"
+import { PageBackground } from "@/components/layout/page-background"
+import { NewsTicker } from "@/components/ui/news-ticker"
+import { AccessibilityMenu } from "@/components/ui/accessibility-improvements"
+import { useMobile } from "@/hooks/use-mobile"
+import {HomeDesktop} from "@/components/desktop/home/Home"
+import {HomeMobile} from "@/components/mobile/home/Home"
+import { MobileHeader } from "@/components/mobile/mobile-header"
+import {MobileFooter} from "@/components/mobile/mobile-footer"
 
-  // Fetch shop items with images
-  const { data, error } = await supabase
-    .from("shop_items")
-    .select("images")
-    .not("images", "is", null) // Exclude rows where `images` is null
-    .order("created_at", { ascending: false })
-    .limit(10);
-
-  if (error) {
-    console.error("Error fetching shop items:", error);
-    return { randomMerchImage: "/placeholder.svg" };
-  }
+export default function Home() {
   
-  // console.log("Raw Data:", JSON.stringify(data, null, 2)); // Debugging: Log raw data
+  const isMobile = useMobile()
+    // News ticker items
+    const newsItems = [
+      { id: 1, text: "New Tournament: Cyber Showdown with $10,000 prize pool", link: "/tournaments" },
+      { id: 2, text: "AI Game Creation tools updated with new features", link: "#" },
+      { id: 3, text: "Join our Discord community to connect with other players", link: "#" },
+      { id: 4, text: "Weekly challenge: Create a racing game and win prizes", link: "#" },
+      { id: 5, text: "Maintenance scheduled for tomorrow - 2 hours downtime", link: "#" },
+    ]
+  
+  return (
+    <div className="min-h-screen bg-[#0A0A0A] text-white">
+      {/* Skip to content link for accessibility */}
+      <a href="#main-content" className="skip-to-content">
+        Skip to content
+      </a>
+      
+      <PageBackground />
+      {isMobile ? <MobileHeader /> : <Header /> }
 
-  // Filter out items with empty image arrays or invalid images
-  const itemsWithValidImages = data
-    ?.filter((item) => 
-      Array.isArray(item.images) && // Ensure `images` is an array
-      item.images.length > 0 && // Ensure `images` is not empty
-      item.images.some((image) => 
-        typeof image === "string" && // Ensure each image is a string
-        image.trim() !== "" && // Ensure the string is not empty
-        !image.includes("undefined") // Exclude images with "undefined" in the name
-      )
-    ) || [];
+      
+      {/* News Ticker */}
+      {!isMobile && (
+            <NewsTicker
+            items={newsItems}
+            className="bg-black/50 backdrop-blur-md py-2 border-b border-[#222] text-sm"
+            itemClassName="text-gray-300"
+          />
+      )}
+        
+        {isMobile ? <HomeMobile /> : <HomeDesktop />}
+      
+      
+      {/* Accessibility Menu */}
+      <AccessibilityMenu />
 
-  // console.log("Filtered Items:", JSON.stringify(itemsWithValidImages, null, 2)); // Debugging: Log filtered items
-
-  // Flatten all valid images into a single array
-  const allValidImages = itemsWithValidImages.flatMap((item) =>
-    item.images.filter((image) => 
-      typeof image === "string" && // Ensure each image is a string
-      image.trim() !== "" && // Ensure the string is not empty
-      !image.includes("undefined") // Exclude images with "undefined" in the name
-    )
-  );
-
-  // console.log("All Valid Images:", allValidImages); // Debugging: Log all valid images
-
-  // Select a random image if available, otherwise fallback to placeholder
-  const randomMerchImage = allValidImages.length > 0
-    ? allValidImages[Math.floor(Math.random() * allValidImages.length)]
-    : "/placeholder.svg";
-
-  // console.log("Random Merch Image:", randomMerchImage); // Debugging: Log the selected image
-
-  return { randomMerchImage };
+      {/* Footer */}
+      {/* {isMobile ? <MobileFooter /> : <Footer /> } */}
+    </div>
+  )
 }
 
-export default async function Home() {
-  const { randomMerchImage } = await getServerSideData();
-  // console.log(randomMerchImage);
-  return <HomeContent randomMerchImage={randomMerchImage} />;
-}

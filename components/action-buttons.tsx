@@ -14,25 +14,25 @@ export function ActionButtons({ onSlap, onGrab, onSneak, grabs, slaps, sneaks }:
   return (
     <div className="grid grid-cols-3 gap-4">
       <Button
-        className="bg-gradient-to-r from-red-500 to-pink-500 hover:from-red-600 hover:to-pink-600 text-white"
+        className="bg-gradient-to-r from-[#00FFA9] to-[#00C3FF] hover:from-[#00D48F] hover:to-[#00A3DF] text-black font-medium rounded-full "
         size="lg"
         onClick={onSlap}
       >
-        <Hand className="mr-2 h-5 w-5" /> Slap ({slaps})
+       Slap ({slaps})
       </Button>
       <Button
-        className="bg-gradient-to-r from-green-500 to-emerald-500 hover:from-green-600 hover:to-emerald-600 text-white"
+        className="bg-gradient-to-r from-[#FFD700] to-[#FFA500] hover:from-[#FFC300] hover:to-[#FF8C00] text-black font-medium rounded-full"
         size="lg"
         onClick={onGrab}
       >
-        <Grab className="mr-2 h-5 w-5" /> Grab ({grabs})
+        Grab ({grabs})
       </Button>
       <Button
-        className="bg-gradient-to-r from-blue-500 to-cyan-500 hover:from-blue-600 hover:to-cyan-600 text-white"
+        className="bg-gradient-to-r from-[#00FFA9] to-[#00C3FF] hover:from-[#00D48F] hover:to-[#00A3DF] text-black font-medium rounded-full "
         size="lg"
         onClick={onSneak}
       >
-        <Footprints className="mr-2 h-5 w-5" /> Sneak ({sneaks})
+        Sneak ({sneaks})
       </Button>
     </div>
   )
