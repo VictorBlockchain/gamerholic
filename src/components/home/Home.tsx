@@ -762,7 +762,7 @@ export default function Home() {
       </div>
 
       {/* Social links section - Redesigned */}
-      <section className="relative flex flex-col items-center gap-8">
+      <section className="relative mb-24 flex flex-col items-center gap-8">
         {/* Animated Background Glow */}
         <div className="absolute inset-0 -z-10 flex items-center justify-center">
           <div className="h-64 w-64 rounded-full bg-gradient-to-r from-indigo-500/20 via-cyan-500/20 to-purple-500/20 blur-3xl"></div>
@@ -841,6 +841,7 @@ export default function Home() {
           </a>
         </div>
       </section>
+      <br />
     </>
   )
 }
