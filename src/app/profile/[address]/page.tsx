@@ -75,158 +75,15 @@ type AchievementActivity = {
 
 type RecentActivity = ChallengeActivity | TournamentActivity | AchievementActivity
 
-const mockRecentActivity: RecentActivity[] = [
-  {
-    id: 1,
-    type: 'challenge',
-    game: 'Madden NFL 24',
-    opponent: 'ProGamer42',
-    result: 'win',
-    amount: '0.5 ETH',
-    time: '2h ago',
-    mode: '1v1 Ranked',
-  },
-  {
-    id: 2,
-    type: 'tournament',
-    game: 'NBA 2K24',
-    name: 'Weekly Championship',
-    position: 3,
-    prize: '0.3 ETH',
-    time: '1d ago',
-    participants: 64,
-  },
-  {
-    id: 3,
-    type: 'challenge',
-    game: 'Call of Duty',
-    opponent: 'SniperElite',
-    result: 'win',
-    amount: '1.0 ETH',
-    time: '2d ago',
-    mode: 'Team Deathmatch',
-  },
-  {
-    id: 4,
-    type: 'achievement',
-    title: 'Win Streak Master',
-    description: 'Won 10 challenges in a row',
-    time: '3d ago',
-    icon: '🔥',
-  },
-  {
-    id: 5,
-    type: 'challenge',
-    game: 'Valorant',
-    opponent: 'AimGod',
-    result: 'loss',
-    amount: '0.5 ETH',
-    time: '4d ago',
-    mode: 'Competitive',
-  },
-]
+// Removed mockRecentActivity (was used for demo content)
 
-const mockChallenges = [
-  {
-    id: 1,
-    game: 'Madden NFL 24',
-    opponent: 'ProGamer42',
-    status: 'completed',
-    result: 'win',
-    date: '2024-03-20',
-    bet: '0.5 ETH',
-  },
-  {
-    id: 2,
-    game: 'NBA 2K24',
-    opponent: 'BallKing',
-    status: 'completed',
-    result: 'win',
-    date: '2024-03-19',
-    bet: '0.3 ETH',
-  },
-  {
-    id: 3,
-    game: 'Call of Duty',
-    opponent: 'SniperElite',
-    status: 'pending',
-    result: null,
-    date: '2024-03-21',
-    bet: '1.0 ETH',
-  },
-]
+// Removed mockChallenges
 
-const mockTournaments = [
-  {
-    id: 1,
-    name: 'Spring Championship 2024',
-    game: 'Madden NFL 24',
-    participants: 64,
-    position: 1,
-    prize: '5.0 ETH',
-    date: '2024-03-15',
-  },
-  {
-    id: 2,
-    name: 'Weekly Valorant Cup',
-    game: 'Valorant',
-    participants: 32,
-    position: 3,
-    prize: '0.5 ETH',
-    date: '2024-03-10',
-  },
-]
+// Removed mockTournaments
 
-const mockCreatedTournaments = [
-  {
-    id: 1,
-    name: 'Community Madden League',
-    game: 'Madden NFL 24',
-    participants: 16,
-    status: 'active',
-    prize: '2.0 ETH',
-    date: '2024-03-01',
-  },
-  {
-    id: 2,
-    name: 'Casual NBA Fridays',
-    game: 'NBA 2K24',
-    participants: 8,
-    status: 'completed',
-    prize: '0.5 ETH',
-    date: '2024-02-15',
-  },
-]
+// Removed mockCreatedTournaments
 
-const mockCreatedChallenges = [
-  {
-    id: 1,
-    game: 'Madden NFL 24',
-    mode: '1v1 Ranked',
-    opponent: 'RookieKing23',
-    amount: '0.5',
-    status: 'pending',
-    expiresIn: '2h 15m',
-  },
-  {
-    id: 2,
-    game: 'NBA 2K24',
-    mode: '3pt Contest',
-    opponent: 'SharpShooter',
-    amount: '0.3',
-    status: 'active',
-    expiresIn: '45m',
-  },
-  {
-    id: 3,
-    game: 'Call of Duty',
-    mode: 'Team Deathmatch',
-    opponent: 'SquadLeader',
-    amount: '1.0',
-    status: 'pending',
-    expiresIn: '5h 30m',
-  },
-]
+// Removed mockCreatedChallenges
 
 const rankConfig = {
   Bronze: { color: 'from-amber-700 to-amber-900', borderColor: 'border-amber-700' },
@@ -360,27 +217,6 @@ export default function ProfileAddressPage() {
 
   return (
     <div className="min-h-screen bg-black pt-24 pb-8 text-white">
-      {/* Header Section */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-amber-500/10 via-transparent to-transparent" />
-        <div className="relative container mx-auto px-4 py-6 sm:py-8">
-          {/* Header */}
-          <div className="mb-6 text-center sm:mb-8">
-            <div className="mb-3 flex items-center justify-center gap-2">
-              <div className="flex h-8 w-8 items-center justify-center rounded-xl bg-gradient-to-br from-amber-500 to-orange-600 shadow-lg shadow-amber-500/25 sm:h-12 sm:w-12">
-                <User className="h-4 w-4 text-white sm:h-6 sm:w-6" />
-              </div>
-              <h1 className="bg-gradient-to-r from-amber-400 via-orange-400 to-yellow-400 bg-clip-text text-3xl font-black tracking-tight text-transparent sm:text-4xl md:text-5xl">
-                Gamer Profile
-              </h1>
-            </div>
-            <p className="text-base font-medium text-amber-400 sm:text-lg">
-              View gamer stats & history
-            </p>
-          </div>
-        </div>
-      </section>
-
       {/* Main Content */}
       <div className="container mx-auto px-4 pb-8">
         <div className="mb-8 grid grid-cols-1 gap-6 lg:grid-cols-3">
@@ -402,13 +238,13 @@ export default function ProfileAddressPage() {
                 <div className="absolute inset-0 bg-gradient-to-t from-gray-900 via-gray-900/60 to-transparent" />
 
                 {/* Online Status Indicator */}
-                <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/20 px-3 py-1">
+                {/* <div className="absolute top-4 right-4 flex items-center gap-2 rounded-full border border-green-500/30 bg-green-500/20 px-3 py-1">
                   <div className="h-2 w-2 rounded-full bg-green-500" />
                   <span className="text-xs font-medium text-green-400">Online</span>
-                </div>
+                </div> */}
 
                 {/* Rank Badge */}
-                <div className="absolute -bottom-6 left-6">
+                {/* <div className="absolute -bottom-6 left-6">
                   <div
                     className={`rounded-full bg-gradient-to-r px-3 py-1 ${rankConfig[rankKey].color} border ${rankConfig[rankKey].borderColor} backdrop-blur-sm`}
                   >
@@ -417,7 +253,7 @@ export default function ProfileAddressPage() {
                       <span className="text-xs font-bold text-white">{primaryRank}</span>
                     </div>
                   </div>
-                </div>
+                </div> */}
               </div>
 
               <div className="p-6 pt-10">
@@ -445,7 +281,7 @@ export default function ProfileAddressPage() {
                   </div>
 
                   {/* Level Progress */}
-                  <div className="mb-4">
+                  {/* <div className="mb-4">
                     <div className="mb-1 flex justify-between text-xs text-gray-400">
                       <span>Level {level}</span>
                       <span>
@@ -458,7 +294,7 @@ export default function ProfileAddressPage() {
                         style={{ width: `${progressPct}%` }}
                       />
                     </div>
-                  </div>
+                  </div> */}
 
                   {/* Action Buttons */}
                   <div className="mb-4 flex gap-2">
@@ -478,23 +314,6 @@ export default function ProfileAddressPage() {
                   </div>
                 </div>
 
-                {/* Featured Games */}
-                <div className="mb-6">
-                  <h3 className="mb-3 text-xs font-bold tracking-wider text-gray-400 uppercase">
-                    Featured Games
-                  </h3>
-                  <div className="flex flex-wrap gap-2">
-                    {featuredGames.map((game: string, index: number) => (
-                      <span
-                        key={index}
-                        className="rounded-lg border border-gray-700 bg-gray-800 px-2 py-1 text-xs text-gray-300"
-                      >
-                        {game}
-                      </span>
-                    ))}
-                  </div>
-                </div>
-
                 {/* Social Links */}
                 <div className="mb-6 flex justify-center gap-3">
                   <div className="cursor-pointer rounded-lg bg-gray-800 p-2 transition-colors hover:bg-gray-700">
@@ -505,22 +324,6 @@ export default function ProfileAddressPage() {
                   </div>
                   <div className="cursor-pointer rounded-lg bg-gray-800 p-2 transition-colors hover:bg-gray-700">
                     <Globe className="h-4 w-4 text-gray-400 transition-colors hover:text-white" />
-                  </div>
-                </div>
-
-                {/* Enhanced Stats */}
-                <div className="grid grid-cols-3 gap-3 border-t border-gray-800 pt-6">
-                  <div className="text-center">
-                    <div className="text-lg font-black text-green-400">{totalWins}</div>
-                    <div className="text-xs text-gray-400">WINS</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-black text-amber-400">{winRate}%</div>
-                    <div className="text-xs text-gray-400">WIN RATE</div>
-                  </div>
-                  <div className="text-center">
-                    <div className="text-lg font-black text-blue-400">{level}</div>
-                    <div className="text-xs text-gray-400">LEVEL</div>
                   </div>
                 </div>
               </div>
@@ -620,109 +423,12 @@ export default function ProfileAddressPage() {
             className="scrollbar-hide flex gap-4 overflow-x-auto scroll-smooth pb-4"
             style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
           >
-            {mockRecentActivity.map((activity) => (
-              <div
-                key={activity.id}
-                className="group relative w-80 flex-none overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black transition-all duration-300 hover:border-gray-700"
-              >
-                {/* Activity Type Status Bar */}
-                <div
-                  className={`h-1 transition-all duration-300 ${getActivityBarColor(activity)}`}
-                />
-
-                <div className="p-6">
-                  <div className="mb-4 flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      {activity.type === 'challenge' && (
-                        <Target className="h-4 w-4 text-amber-400" />
-                      )}
-                      {activity.type === 'tournament' && (
-                        <Trophy className="h-4 w-4 text-blue-400" />
-                      )}
-                      {activity.type === 'achievement' && (
-                        <Star className="h-4 w-4 text-amber-400" />
-                      )}
-                      <span className="text-xs font-bold text-gray-400 uppercase">
-                        {activity.type === 'achievement' ? 'Achievement' : activity.type}
-                      </span>
-                    </div>
-                    <span className="text-xs text-gray-500">{activity.time}</span>
-                  </div>
-
-                  {activity.type === 'challenge' && (
-                    <>
-                      <h4 className="mb-2 font-bold text-white">{activity.game}</h4>
-                      <p className="mb-3 text-sm text-gray-400">{activity.mode}</p>
-                      <div className="mb-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-300">vs {activity.opponent}</span>
-                        <span
-                          className={`text-sm font-bold ${activity.result === 'win' ? 'text-green-400' : activity.result === 'loss' ? 'text-red-400' : 'text-gray-400'}`}
-                        >
-                          {(activity.result ?? 'pending').toUpperCase()}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-amber-400">{activity.amount}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white"
-                        >
-                          <ExternalLink className="mr-1 h-3 w-3" />
-                          VIEW
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {activity.type === 'tournament' && (
-                    <>
-                      <h4 className="mb-2 font-bold text-white">{activity.name}</h4>
-                      <p className="mb-3 text-sm text-gray-400">{activity.game}</p>
-                      <div className="mb-3 flex items-center justify-between">
-                        <span className="text-sm text-gray-300">
-                          {activity.participants} players
-                        </span>
-                        <span className="text-sm font-bold text-blue-400">
-                          #{activity.position}
-                        </span>
-                      </div>
-                      <div className="flex items-center justify-between">
-                        <span className="font-bold text-amber-400">{activity.prize}</span>
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          className="border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white"
-                        >
-                          <ExternalLink className="mr-1 h-3 w-3" />
-                          VIEW
-                        </Button>
-                      </div>
-                    </>
-                  )}
-
-                  {activity.type === 'achievement' && (
-                    <>
-                      <div className="mb-3 flex items-center gap-3">
-                        <div className="text-2xl">{activity.icon}</div>
-                        <div>
-                          <h4 className="mb-1 font-bold text-white">{activity.title}</h4>
-                          <p className="text-sm text-gray-400">{activity.description}</p>
-                        </div>
-                      </div>
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        className="w-full border-gray-700 text-gray-400 hover:border-gray-600 hover:text-white"
-                      >
-                        <Star className="mr-1 h-3 w-3" />
-                        VIEW ACHIEVEMENT
-                      </Button>
-                    </>
-                  )}
-                </div>
-              </div>
-            ))}
+            <div className="w-80 flex-none overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black p-6 text-center">
+              <p className="text-sm text-gray-400">No recent activity yet.</p>
+              <p className="text-xs text-gray-500">
+                Play matches and join tournaments to see updates here.
+              </p>
+            </div>
           </div>
         </div>
 
@@ -755,75 +461,20 @@ export default function ProfileAddressPage() {
               </TabsList>
 
               <TabsContent value="challenges" className="mt-6">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
-                  {mockChallenges.map((challenge) => {
-                    const statusInfo = statusConfig[challenge.status as keyof typeof statusConfig]
-                    return (
-                      <div
-                        key={challenge.id}
-                        className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black transition-all duration-300 hover:border-gray-700"
-                      >
-                        <div className={`h-1 ${statusInfo.color} transition-all duration-300`} />
-                        <CardContent className="p-4">
-                          <div className="mb-3 flex items-center justify-between">
-                            <div
-                              className={`flex items-center gap-1 rounded-full px-2 py-1 ${statusInfo.bgColor} ${statusInfo.borderColor} border`}
-                            >
-                              <div className={`h-2 w-2 rounded-full ${statusInfo.color}`} />
-                              <span className={`text-xs font-medium ${statusInfo.textColor}`}>
-                                {statusInfo.label}
-                              </span>
-                            </div>
-                            <span className="text-xs text-gray-400">{challenge.date}</span>
-                          </div>
-                          <h4 className="mb-2 font-bold text-white">{challenge.game}</h4>
-                          <p className="mb-3 text-sm text-gray-400">vs {challenge.opponent}</p>
-                          <div className="flex items-center justify-between">
-                            <span className="text-sm font-bold text-amber-400">
-                              {challenge.bet}
-                            </span>
-                            <Button
-                              size="sm"
-                              className="bg-gradient-to-r from-amber-500 to-orange-600 text-white hover:from-amber-600 hover:to-orange-700"
-                            >
-                              <ExternalLink className="mr-1 h-3 w-3" />
-                              VIEW
-                            </Button>
-                          </div>
-                        </CardContent>
-                      </div>
-                    )
-                  })}
+                <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                  <p className="text-sm text-gray-400">No challenges to show.</p>
+                  <p className="text-xs text-gray-500">
+                    Create or accept a challenge to populate this list.
+                  </p>
                 </div>
               </TabsContent>
 
               <TabsContent value="tournaments" className="mt-6">
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {mockTournaments.map((tournament) => (
-                    <div
-                      key={tournament.id}
-                      className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black transition-all duration-300 hover:border-gray-700"
-                    >
-                      <div className="h-1 bg-gradient-to-r from-purple-500 to-pink-600 transition-all duration-300" />
-                      <CardContent className="p-4">
-                        <div className="mb-3 flex items-center justify-between">
-                          <div className="flex items-center gap-1 rounded-full border border-purple-500/30 bg-purple-500/10 px-2 py-1">
-                            <div className="h-2 w-2 rounded-full bg-purple-500" />
-                            <span className="text-xs font-medium text-purple-400">
-                              #{tournament.position}
-                            </span>
-                          </div>
-                          <span className="text-xs text-gray-400">{tournament.date}</span>
-                        </div>
-                        <h4 className="mb-2 font-bold text-white">{tournament.name}</h4>
-                        <p className="mb-3 text-sm text-gray-400">{tournament.game}</p>
-                        <div className="flex items-center justify-between text-sm">
-                          <span className="text-gray-400">{tournament.participants} players</span>
-                          <span className="font-bold text-green-400">{tournament.prize}</span>
-                        </div>
-                      </CardContent>
-                    </div>
-                  ))}
+                <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                  <p className="text-sm text-gray-400">No tournaments to show.</p>
+                  <p className="text-xs text-gray-500">
+                    Join or create a tournament to populate this list.
+                  </p>
                 </div>
               </TabsContent>
 
@@ -831,98 +482,22 @@ export default function ProfileAddressPage() {
                 {/* Created Challenges */}
                 <div className="mb-8">
                   <h3 className="mb-4 text-lg font-bold text-white">Created Challenges</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {mockCreatedChallenges.map((challenge) => {
-                      const statusInfo = statusConfig[challenge.status as keyof typeof statusConfig]
-                      return (
-                        <div
-                          key={challenge.id}
-                          className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black transition-all duration-300 hover:border-gray-700"
-                        >
-                          <div className={`h-1 ${statusInfo.color} transition-all duration-300`} />
-                          <CardContent className="p-6">
-                            <div className="mb-4 flex items-start justify-between">
-                              <div>
-                                <h4 className="mb-1 text-lg font-bold text-white">
-                                  {challenge.game}
-                                </h4>
-                                <p className="text-sm text-gray-400">{challenge.mode}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold text-amber-400">${challenge.amount}</p>
-                                <p className="text-xs text-gray-500">{statusInfo.label}</p>
-                              </div>
-                            </div>
-                            <div className="flex items-center justify-between">
-                              <div className="flex items-center gap-3">
-                                <div className="flex h-10 w-10 items-center justify-center rounded-full bg-gradient-to-br from-amber-500 to-orange-600">
-                                  <span className="text-sm font-bold text-white">
-                                    {challenge.opponent.charAt(0).toUpperCase()}
-                                  </span>
-                                </div>
-                                <div>
-                                  <p className="font-medium text-white">{challenge.opponent}</p>
-                                  <p className="text-xs text-gray-500">Opponent</p>
-                                </div>
-                              </div>
-                              <div className="text-right">
-                                <p className="text-xs text-gray-500">Expires in</p>
-                                <p className="text-sm text-gray-300">{challenge.expiresIn}</p>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </div>
-                      )
-                    })}
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                    <p className="text-sm text-gray-400">No created challenges yet.</p>
+                    <p className="text-xs text-gray-500">
+                      Create a challenge to see it listed here.
+                    </p>
                   </div>
                 </div>
 
                 {/* Created Tournaments */}
                 <div>
                   <h3 className="mb-4 text-lg font-bold text-white">Created Tournaments</h3>
-                  <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                    {mockCreatedTournaments.map((tournament) => {
-                      const statusInfo =
-                        statusConfig[tournament.status as keyof typeof statusConfig]
-                      return (
-                        <div
-                          key={tournament.id}
-                          className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gradient-to-br from-gray-900 via-gray-900 to-black transition-all duration-300 hover:border-gray-700"
-                        >
-                          <div className={`h-1 ${statusInfo.color} transition-all duration-300`} />
-                          <CardContent className="p-6">
-                            <div className="mb-4 flex items-start justify-between">
-                              <div>
-                                <h4 className="mb-1 text-lg font-bold text-white">
-                                  {tournament.name}
-                                </h4>
-                                <p className="text-sm text-gray-400">{tournament.game}</p>
-                              </div>
-                              <div className="text-right">
-                                <p className="font-bold text-amber-400">{tournament.prize}</p>
-                                <p className="text-xs text-gray-500">{statusInfo.label}</p>
-                              </div>
-                            </div>
-                            <div className="space-y-3">
-                              <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">Players</span>
-                                <span className="text-white">{tournament.participants}/32</span>
-                              </div>
-                              <div className="h-2 w-full rounded-full bg-gray-800">
-                                <div
-                                  className="h-2 rounded-full bg-gradient-to-r from-blue-500 to-blue-600 transition-all duration-300"
-                                  style={{ width: `${(tournament.participants / 32) * 100}%` }}
-                                />
-                              </div>
-                              <div className="flex justify-between text-sm">
-                                <span className="text-gray-400">Started</span>
-                                <span className="text-white">{tournament.date}</span>
-                              </div>
-                            </div>
-                          </CardContent>
-                        </div>
-                      )
-                    })}
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                    <p className="text-sm text-gray-400">No created tournaments yet.</p>
+                    <p className="text-xs text-gray-500">
+                      Create a tournament to see it listed here.
+                    </p>
                   </div>
                 </div>
               </TabsContent>

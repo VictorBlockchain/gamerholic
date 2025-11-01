@@ -3,7 +3,7 @@ import { Users, Plus, ArrowRight, Sparkles, Zap, ExternalLink } from 'lucide-rea
 
 export default function TeamsComingSoon() {
   return (
-    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black">
+    <section className="relative flex min-h-screen items-center justify-center overflow-hidden bg-black pt-24">
       {/* Animated Background Grid */}
       <div className="absolute inset-0 -z-10 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,0.1),transparent_70%)]">
         <div className="absolute inset-0 bg-[url('/grid.svg')] [mask-image:linear-gradient(to_bottom,rgba(255,255,255,0.05),transparent_40%,transparent)] bg-center opacity-20"></div>
