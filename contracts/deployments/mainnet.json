@@ -1,0 +1,18 @@
+{
+  "network": "mainnet",
+  "chainId": 1329,
+  "deployer": "0xEA75A97dC0640292E97213C2EAb85d02767c5Fe9",
+  "contracts": {
+    "ChallengeFactory": {
+      "address": "0xB7E43B0252650354635961236FFAb5459959bba9"
+    },
+    "TournamentFactory": {
+      "address": "0xcAEfb63951F77663Edde35AbE930cBd8bfCA5952"
+    },
+    "TournamentDeployer": {
+      "address": "0xeEd1Fe2dd2C50eD709eDcbdb93E33130Ee988422",
+      "deploymentTx": "0xc25c60bfaa775a7d9f57c5b7cdef2da1eee9415cb8443fea12e27b99e6d6c93c"
+    }
+  },
+  "deployedAt": "2025-11-01T08:42:55.236Z"
+}

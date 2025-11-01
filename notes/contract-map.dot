@@ -1,0 +1,40 @@
+digraph Contracts {
+  rankdir=LR;
+  node [shape=rectangle, style=filled, fillcolor="#f7f7f7", fontname="Helvetica"];
+
+  subgraph cluster_factories {
+    label="Factories";
+    style=dashed;
+    TournamentFactory [shape=component, fillcolor="#e8f0fe", label="TournamentFactory"];
+    ChallengeFactory  [shape=component, fillcolor="#e8f0fe", label="ChallengeFactory"];
+  }
+
+  subgraph cluster_runtime {
+    label="Runtime";
+    style=dashed;
+    Tournament [shape=box, fillcolor="#fff7e6", label="Tournament"];
+    Challenge  [shape=box, fillcolor="#fff7e6", label="Challenge"];
+  }
+
+  // Ownership / linkage
+  Challenge -> Tournament [label="challengeInfo.tournament (address)", color="#888888", fontcolor="#555555"];
+
+  // Challenge -> Tournament interactions
+  Challenge -> Tournament [label="setChallenge(challenge, p1, p2)", color="#34a853", fontcolor="#1b5e20"];
+  Challenge -> Tournament [label="removeActiveParticipant(loser)", color="#34a853", fontcolor="#1b5e20"];
+
+  // Tournament -> Challenge reads
+  Tournament -> Challenge [label="winner()", color="#4285f4", fontcolor="#0d47a1"];
+  Tournament -> Challenge [label="getParticipants()", color="#4285f4", fontcolor="#0d47a1"];
+
+  // Challenge -> ChallengeFactory bookkeeping
+  Challenge -> ChallengeFactory [label="setCompletedChallenge(p1, p2)", color="#fbbc05", fontcolor="#b36b00"];
+  Challenge -> ChallengeFactory [label="setRemoveChallenge(player, challenge, status)", color="#fbbc05", fontcolor="#b36b00"];
+
+  // Tournament authorization via TournamentFactory
+  Tournament -> TournamentFactory [label="getIsChallengeContract(addr)", color="#9c27b0", fontcolor="#4a148c"];
+  Tournament -> TournamentFactory [label="getAdmin(addr)", color="#9c27b0", fontcolor="#4a148c"];
+
+  // Proxy: TournamentFactory -> ChallengeFactory
+  TournamentFactory -> ChallengeFactory [label="getIsChallengeContract(challenge)", color="#9c27b0", fontcolor="#4a148c"];
+}

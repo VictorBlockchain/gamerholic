@@ -1,0 +1,32 @@
+{
+  "network": "localhost",
+  "chainId": 31337,
+  "deployer": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+  "contracts": {
+    "ChallengeFactory": {
+      "address": "0x1429859428C0aBc9C2C47C8Ee9FBaf82cFA0F20f",
+      "deploymentTx": "0x973a952c7627d1ca2c5cbe712ca5435e38245027365b52c40874890937776d2c"
+    },
+    "TournamentFactory": {
+      "address": "0xB0D4afd8879eD9F52b28595d31B441D079B2Ca07",
+      "deploymentTx": "0xb6adcb04a700e0a2b3faf49f345d1cfaca772d37d2f43fcb0973716ecb59098e"
+    },
+    "TournamentDeployer": {
+      "address": "0x162A433068F51e18b7d13932F27e66a3f99E6890",
+      "deploymentTx": "0x4dc97f7019dc1a3789ce0b3780dca5fcdea152d56f85ad8d9653ad22831ebefc"
+    }
+  },
+  "deployedAt": "2025-10-31T20:31:46.913Z",
+  "config": {
+    "challengeFactory": {
+      "feeRecipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "platformFeeRate": "250",
+      "minimumEntryFee": "1000000000000000"
+    },
+    "tournamentFactory": {
+      "feeRecipient": "0xf39Fd6e51aad88F6F4ce6aB8827279cffFb92266",
+      "platformFeeRate": "250",
+      "minimumEntryFee": "1000000000000000"
+    }
+  }
+}
