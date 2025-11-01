@@ -52,6 +52,7 @@ function SeiWalletProvider({ children }: { children: React.ReactNode }) {
 
 export default function Web3Providers({ children }: { children: React.ReactNode }) {
   const dynamicEnvId = dynamicConfig.environmentId
+  const hasDynamicEnv = typeof dynamicEnvId === 'string' && dynamicEnvId.length > 0
 
   if (!dynamicEnvId && typeof window !== 'undefined') {
     console.error('Dynamic: Missing NEXT_PUBLIC_DYNAMIC_ENVIRONMENT_ID. Set it in .env.local.')
@@ -107,21 +108,27 @@ export default function Web3Providers({ children }: { children: React.ReactNode 
   return (
     <WagmiProvider config={wagmiConfig}>
       <QueryClientProvider client={useMemo(() => new QueryClient(), [])}>
-        <DynamicContextProvider
-          settings={{
-            environmentId: dynamicEnvId,
-            walletConnectors: [EthereumWalletConnectors],
-            overrides: {
-              evmNetworks: () => evmNetworks,
-            },
-          }}
-        >
-          <SeiWalletProvider>
-            <UserProvider>
-              <GamerProfileProvider>{children}</GamerProfileProvider>
-            </UserProvider>
-          </SeiWalletProvider>
-        </DynamicContextProvider>
+        {hasDynamicEnv ? (
+          <DynamicContextProvider
+            settings={{
+              environmentId: dynamicEnvId,
+              walletConnectors: [EthereumWalletConnectors],
+              overrides: {
+                evmNetworks: () => evmNetworks,
+              },
+            }}
+          >
+            <SeiWalletProvider>
+              <UserProvider>
+                <GamerProfileProvider>{children}</GamerProfileProvider>
+              </UserProvider>
+            </SeiWalletProvider>
+          </DynamicContextProvider>
+        ) : (
+          // Graceful SSR fallback when Dynamic env ID is not set.
+          // This avoids build-time crashes on Vercel prerender for routes like /_not-found.
+          <>{children}</>
+        )}
       </QueryClientProvider>
     </WagmiProvider>
   )
