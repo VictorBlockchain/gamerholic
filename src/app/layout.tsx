@@ -17,25 +17,51 @@ const geistMono = Geist_Mono({
 })
 
 export const metadata: Metadata = {
-  title: 'Gamerholic - I Win For A Living',
-  description: 'Head Up Battles & Tournaments - Compete, Win SEI, Become Champion',
-  keywords: ['Gamerholic', 'Gaming', 'Tournaments', 'SEI', 'Crypto Gaming', 'Competitive Gaming'],
-  authors: [{ name: 'Gamerholic Team' }],
+  metadataBase: new URL('https://gamerholic.fun'),
+  title: 'Gamerholic',
+  description: 'I Win For A Living - blockchain esports',
+  keywords: [
+    'gamerholic',
+    'esports',
+    'gaming',
+    'tournaments',
+    'SEI',
+    'crypto gaming',
+    'competitive gaming',
+    'blockchain esports',
+  ],
+  authors: [{ name: '9bapa' }],
+  alternates: {
+    canonical: 'https://gamerholic.fun',
+  },
+  manifest: '/manifest.json',
+  themeColor: '#0f0f14',
   icons: {
-    icon: '/favicon.ico',
+    icon: ['/icons/icon-32x32.ico', '/icons/icon-16x16.ico'],
+    apple: '/logo.png',
   },
   openGraph: {
-    title: 'Gamerholic - I Win For A Living',
-    description: 'Head Up Battles & Tournaments - Compete, Win SEI, Become Champion',
-    url: 'https://gamerholic.com',
+    title: 'Gamerholic',
+    description: 'I Win For A Living - blockchain esports',
+    url: 'https://gamerholic.fun',
     siteName: 'Gamerholic',
     type: 'website',
+    images: [
+      {
+        url: '/home.png',
+        width: 1200,
+        height: 630,
+        alt: 'Gamerholic',
+      },
+    ],
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'Gamerholic - I Win For A Living',
-    description: 'Head Up Battles & Tournaments - Compete, Win SEI, Become Champion',
+    title: 'Gamerholic',
+    description: 'I Win For A Living - blockchain esports',
+    images: ['/home.png'],
   },
+  robots: { index: true, follow: true },
 }
 
 export default function RootLayout({

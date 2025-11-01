@@ -1,0 +1,41 @@
+{
+  "name": "Gamerholic",
+  "short_name": "Gamerholic",
+  "description": "Head Up Battles & Tournaments — Compete, Win SEI, Become Champion",
+  "id": "com.gamerholic.app",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "orientation": "portrait",
+  "background_color": "#000000",
+  "theme_color": "#111827",
+  "lang": "en-US",
+  "categories": ["games", "social", "entertainment"],
+  "icons": [
+    {
+      "src": "/logo.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any"
+    },
+    { "src": "/icons/icon-16x16.ico",  "sizes": "16x16",  "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-32x32.ico",  "sizes": "32x32",  "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-48x48.ico",  "sizes": "48x48",  "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-64x64.ico",  "sizes": "64x64",  "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-96x96.ico",  "sizes": "96x96",  "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-128x128.ico", "sizes": "128x128", "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-256x256.ico", "sizes": "256x256", "type": "image/x-icon", "purpose": "any" },
+    { "src": "/icons/icon-512x512.ico", "sizes": "512x512", "type": "image/x-icon", "purpose": "any maskable" }
+  ],
+  "shortcuts": [
+    {
+      "name": "Challenges",
+      "url": "/challenges"
+    },
+    {
+      "name": "Tournaments",
+      "url": "/tournaments"
+    }
+  ],
+  "prefer_related_applications": false
+}
