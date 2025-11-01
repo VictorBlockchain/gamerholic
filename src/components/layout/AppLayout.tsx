@@ -2,9 +2,15 @@
 
 import React, { useState } from 'react'
 import { usePathname } from 'next/navigation'
+import dynamic from 'next/dynamic'
 import { MobileBottomNav } from '@/components/navigation/MobileBottomNav'
-import { Header } from '@/components/navigation/Header'
 import Footer from '@/components/navigation/Footer'
+
+// Avoid SSR for Header to prevent build-time hook errors when Dynamic provider
+// is intentionally not mounted during prerender (e.g., /_not-found route).
+const Header = dynamic(() => import('@/components/navigation/Header').then((m) => m.Header), {
+  ssr: false,
+})
 
 interface AppLayoutProps {
   children: React.ReactNode
