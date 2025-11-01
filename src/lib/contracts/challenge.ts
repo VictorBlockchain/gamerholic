@@ -3,7 +3,7 @@
 import { createPublicClient, http, type WalletClient } from 'viem'
 import { getRpcUrl } from '@/lib/contract-addresses'
 import { getNetworkConfig } from '@/lib/config/deployment'
-import ChallengeArtifact from '@/../contracts/artifacts/contracts/Challenge.sol/Challenge.json'
+import ChallengeArtifact from '@/lib/contracts/abi/Challenge.json'
 
 const ChallengeAbi = ChallengeArtifact.abi
 

@@ -3,7 +3,7 @@
 import { createPublicClient, http, parseEventLogs, type WalletClient } from 'viem'
 import { getRpcUrl, getChallengeFactoryAddress } from '@/lib/contract-addresses'
 import { getNetworkConfig } from '@/lib/config/deployment'
-import ChallengeFactoryArtifact from '@/../contracts/artifacts/contracts/ChallengeFactory.sol/ChallengeFactory.json'
+import ChallengeFactoryArtifact from '@/lib/contracts/abi/ChallengeFactory.json'
 import { ZERO_ADDRESS } from '@/lib/tokens'
 
 const ChallengeFactoryAbi = ChallengeFactoryArtifact.abi

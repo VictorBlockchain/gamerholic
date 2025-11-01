@@ -1,0 +1,99 @@
+{
+  "abi": [
+    {
+      "type": "event",
+      "name": "ChallengeCreated",
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "internalType": "address", "name": "creator", "type": "address" },
+        { "indexed": false, "internalType": "address", "name": "challengeContract", "type": "address" },
+        { "indexed": false, "internalType": "uint256", "name": "entryFee", "type": "uint256" },
+        { "indexed": false, "internalType": "string", "name": "gameType", "type": "string" }
+      ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "platformFeeRate",
+      "inputs": [],
+      "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "minimumEntryFee",
+      "inputs": [],
+      "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "feeRecipient",
+      "inputs": [],
+      "outputs": [ { "internalType": "address", "name": "", "type": "address" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "getMod",
+      "inputs": [ { "internalType": "address", "name": "addr", "type": "address" } ],
+      "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "getAdmin",
+      "inputs": [ { "internalType": "address", "name": "addr", "type": "address" } ],
+      "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "setAdmin",
+      "inputs": [ { "internalType": "address", "name": "target", "type": "address" }, { "internalType": "bool", "name": "isAdminFlag", "type": "bool" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "setMod",
+      "inputs": [ { "internalType": "address", "name": "target", "type": "address" }, { "internalType": "bool", "name": "isModFlag", "type": "bool" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updateFeeRecipient",
+      "inputs": [ { "internalType": "address", "name": "newRecipient", "type": "address" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updateMinimumEntryFee",
+      "inputs": [ { "internalType": "uint256", "name": "newMinimumFeeWei", "type": "uint256" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updatePlatformFeeRate",
+      "inputs": [ { "internalType": "uint256", "name": "newFeeRateBps", "type": "uint256" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "payable",
+      "name": "createHeadsUpChallenge",
+      "inputs": [
+        { "internalType": "uint256", "name": "entryFee", "type": "uint256" },
+        { "internalType": "address", "name": "opponent", "type": "address" },
+        { "internalType": "address", "name": "payToken", "type": "address" },
+        { "internalType": "address", "name": "tournament", "type": "address" },
+        { "internalType": "string", "name": "gameType", "type": "string" },
+        { "internalType": "string", "name": "metadata", "type": "string" }
+      ],
+      "outputs": [ { "internalType": "address", "name": "challengeContract", "type": "address" } ]
+    }
+  ]
+}

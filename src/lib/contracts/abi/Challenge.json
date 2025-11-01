@@ -1,0 +1,78 @@
+{
+  "abi": [
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "getChallengeInfo",
+      "inputs": [],
+      "outputs": [
+        { "internalType": "uint8", "name": "challengeType", "type": "uint8" },
+        { "internalType": "uint8", "name": "status", "type": "uint8" },
+        { "internalType": "address", "name": "creator", "type": "address" },
+        { "internalType": "address", "name": "opponent", "type": "address" },
+        { "internalType": "uint256", "name": "entryFee", "type": "uint256" },
+        { "internalType": "uint256", "name": "totalPrizePool", "type": "uint256" },
+        { "internalType": "uint256", "name": "createdAt", "type": "uint256" },
+        { "internalType": "uint256", "name": "currentParticipants", "type": "uint256" },
+        { "internalType": "uint256", "name": "player1score", "type": "uint256" },
+        { "internalType": "uint256", "name": "player2score", "type": "uint256" },
+        { "internalType": "address", "name": "scoreReporter", "type": "address" },
+        { "internalType": "uint256", "name": "timeScored", "type": "uint256" },
+        { "internalType": "uint256", "name": "timeScoreConfirmed", "type": "uint256" },
+        { "internalType": "string", "name": "gameType", "type": "string" },
+        { "internalType": "string", "name": "metadata", "type": "string" },
+        { "internalType": "address", "name": "tournament", "type": "address" },
+        { "internalType": "address", "name": "payToken", "type": "address" },
+        { "internalType": "uint256", "name": "contractBalance", "type": "uint256" }
+      ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "name": "getParticipant",
+      "inputs": [ { "internalType": "address", "name": "player", "type": "address" } ],
+      "outputs": [
+        { "internalType": "address", "name": "player", "type": "address" },
+        { "internalType": "uint256", "name": "joinedAt", "type": "uint256" },
+        { "internalType": "bool", "name": "hasPaid", "type": "bool" },
+        { "internalType": "uint256", "name": "score", "type": "uint256" },
+        { "internalType": "bool", "name": "scoreConfirmed", "type": "bool" }
+      ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "payable",
+      "name": "joinChallenge",
+      "inputs": [],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "submitScore",
+      "inputs": [ { "internalType": "uint256", "name": "player1score", "type": "uint256" }, { "internalType": "uint256", "name": "player2score", "type": "uint256" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "confirmScore",
+      "inputs": [ { "internalType": "address", "name": "confirmer", "type": "address" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "disputeChallenge",
+      "inputs": [ { "internalType": "string", "name": "reason", "type": "string" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "cancelChallenge",
+      "inputs": [ { "internalType": "string", "name": "reason", "type": "string" } ],
+      "outputs": []
+    }
+  ]
+}
