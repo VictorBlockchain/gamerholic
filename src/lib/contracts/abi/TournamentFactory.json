@@ -1,0 +1,115 @@
+{
+  "abi": [
+    {
+      "type": "event",
+      "name": "TournamentCreated",
+      "anonymous": false,
+      "inputs": [
+        { "indexed": true, "internalType": "address", "name": "creator", "type": "address" },
+        { "indexed": false, "internalType": "address", "name": "tournamentContract", "type": "address" },
+        { "indexed": false, "internalType": "uint256", "name": "entryFee", "type": "uint256" },
+        { "indexed": false, "internalType": "uint256", "name": "maxParticipants", "type": "uint256" },
+        { "indexed": false, "internalType": "bool", "name": "isFFA", "type": "bool" },
+        { "indexed": false, "internalType": "string", "name": "gameType", "type": "string" }
+      ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [ { "internalType": "address", "name": "addr", "type": "address" } ],
+      "name": "isAdmin",
+      "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [ { "internalType": "address", "name": "addr", "type": "address" } ],
+      "name": "getMod",
+      "outputs": [ { "internalType": "bool", "name": "", "type": "bool" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [],
+      "name": "platformFeeRate",
+      "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [],
+      "name": "minimumEntryFee",
+      "outputs": [ { "internalType": "uint256", "name": "", "type": "uint256" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [],
+      "name": "feeRecipient",
+      "outputs": [ { "internalType": "address", "name": "", "type": "address" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "view",
+      "inputs": [],
+      "name": "tournamentDeployer",
+      "outputs": [ { "internalType": "address", "name": "", "type": "address" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "createTournament",
+      "inputs": [
+        { "internalType": "uint256", "name": "entryFee", "type": "uint256" },
+        { "internalType": "address", "name": "payToken", "type": "address" },
+        { "internalType": "uint256", "name": "maxParticipants", "type": "uint256" },
+        { "internalType": "uint256", "name": "xftToJoin", "type": "uint256" },
+        { "internalType": "bool", "name": "isFFA", "type": "bool" },
+        { "internalType": "string", "name": "gameType", "type": "string" },
+        { "internalType": "string", "name": "metadata", "type": "string" }
+      ],
+      "outputs": [ { "internalType": "address", "name": "tournamentContract", "type": "address" } ]
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "setAdmin",
+      "inputs": [
+        { "internalType": "address", "name": "target", "type": "address" },
+        { "internalType": "bool", "name": "isAdminFlag", "type": "bool" }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "setMod",
+      "inputs": [
+        { "internalType": "address", "name": "target", "type": "address" },
+        { "internalType": "bool", "name": "isModFlag", "type": "bool" }
+      ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updateFeeRecipient",
+      "inputs": [ { "internalType": "address", "name": "newRecipient", "type": "address" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updateMinimumEntryFee",
+      "inputs": [ { "internalType": "uint256", "name": "newMinimumFeeWei", "type": "uint256" } ],
+      "outputs": []
+    },
+    {
+      "type": "function",
+      "stateMutability": "nonpayable",
+      "name": "updatePlatformFeeRate",
+      "inputs": [ { "internalType": "uint256", "name": "newFeeRateBps", "type": "uint256" } ],
+      "outputs": []
+    }
+  ]
+}

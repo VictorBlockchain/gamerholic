@@ -3,7 +3,7 @@
 import { getPublicClient, getInjectedWalletClient } from '@/lib/contracts/tournamentFactory'
 import type { WalletClient } from 'viem'
 import { getNetworkConfig } from '@/lib/config/deployment'
-import TournamentArtifact from '@/../contracts/artifacts/contracts/Tournament.sol/Tournament.json'
+import TournamentArtifact from '@/lib/contracts/abi/Tournament.json'
 import { ZERO_ADDRESS } from '@/lib/tokens'
 
 const TournamentAbi = TournamentArtifact.abi

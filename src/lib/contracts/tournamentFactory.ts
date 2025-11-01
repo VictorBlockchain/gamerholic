@@ -3,7 +3,7 @@
 import { createPublicClient, http, parseEventLogs, type WalletClient } from 'viem'
 import { getRpcUrl, getTournamentFactoryAddress } from '@/lib/contract-addresses'
 import { getNetworkConfig } from '@/lib/config/deployment'
-import TournamentFactoryArtifact from '@/../contracts/artifacts/contracts/TournamentFactory.sol/TournamentFactory.json'
+import TournamentFactoryArtifact from '@/lib/contracts/abi/TournamentFactory.json'
 import { ZERO_ADDRESS } from '@/lib/tokens'
 
 const TournamentFactoryAbi = TournamentFactoryArtifact.abi
