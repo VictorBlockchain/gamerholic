@@ -2,12 +2,13 @@
 
 import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
-import { Swords, Trophy, Plus, Users, User, Sparkles } from 'lucide-react'
+import { Swords, Trophy, Plus, Users, User, Sparkles, Menu } from 'lucide-react'
 import { Button } from '@/components/ui/button'
 import Link from 'next/link'
 import { cn } from '@/lib/utils'
 import { CreateBottomSheet } from '@/components/modals/CreateBottomSheet'
-import { useGamerProfile } from '@/context/GamerProfileContext'
+import { useUser } from '@/context/UserContext'
+import { useToast } from '@/hooks/use-toast'
 
 interface MobileBottomNavProps {
   activeTab?: string
@@ -18,7 +19,13 @@ export function MobileBottomNav({ activeTab = 'challenges', onTabChange }: Mobil
   const router = useRouter()
   const [isPulsing, setIsPulsing] = useState(false)
   const [isCreateSheetOpen, setIsCreateSheetOpen] = useState(false)
-  const { address } = useGamerProfile() as any
+  const [isNavHidden, setIsNavHidden] = useState(false)
+  const [slidingOut, setSlidingOut] = useState(false)
+  const [slidingIn, setSlidingIn] = useState(false)
+  const [touchStart, setTouchStart] = useState<{ x: number; y: number } | null>(null)
+  const [touchDelta, setTouchDelta] = useState<{ x: number; y: number }>({ x: 0, y: 0 })
+  const { address: userAddress, isConnected } = useUser()
+  const { toast } = useToast()
 
   useEffect(() => {
     // Pulse effect for center button every 3 seconds
@@ -67,7 +74,7 @@ export function MobileBottomNav({ activeTab = 'challenges', onTabChange }: Mobil
       id: 'profile',
       label: 'Profile',
       icon: User,
-      href: '/profile',
+      href: userAddress ? `/profile/${String(userAddress)}` : '/profile',
       gradient: 'from-amber-600 to-yellow-600',
       glowColor: 'amber',
     },
@@ -88,15 +95,87 @@ export function MobileBottomNav({ activeTab = 'challenges', onTabChange }: Mobil
     } else if (item.id === 'teams') {
       router.push('/teams')
     } else if (item.id === 'profile') {
-      const target = address && String(address).length ? `/profile/${String(address)}` : '/profile'
-      router.push(target)
+      if (!isConnected || !userAddress) {
+        toast({
+          title: 'Log in to view profile',
+          description: 'Connect your wallet to access your profile.',
+        })
+        return
+      }
+      router.push(`/profile/${String(userAddress)}`)
     } else {
       onTabChange?.(item.id)
     }
   }
 
+  const handleTouchStart: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    const t = e.touches[0]
+    setTouchStart({ x: t.clientX, y: t.clientY })
+    setTouchDelta({ x: 0, y: 0 })
+  }
+
+  const handleTouchMove: React.TouchEventHandler<HTMLDivElement> = (e) => {
+    if (!touchStart) return
+    const t = e.touches[0]
+    setTouchDelta({ x: t.clientX - touchStart.x, y: t.clientY - touchStart.y })
+  }
+
+  const handleTouchEnd = () => {
+    if (!touchStart) return
+    const { x, y } = touchDelta
+    // Detect a left swipe with minimal vertical movement
+    const thresholdX = -50 // at least 50px to the left
+    const maxVertical = 30 // ignore if vertical movement is too large
+    if (x < thresholdX && Math.abs(y) < maxVertical) {
+      // Animate slide-out, then hide
+      setSlidingOut(true)
+      setTimeout(() => {
+        setIsNavHidden(true)
+        setSlidingOut(false)
+      }, 300)
+    }
+    setTouchStart(null)
+    setTouchDelta({ x: 0, y: 0 })
+  }
+
   return (
-    <div className="fixed bottom-0 left-0 right-0 z-50 md:hidden">
+    <>
+      {/* Floating Menu button when nav is hidden */}
+      {isNavHidden && (
+        <div className="fixed bottom-6 right-6 z-50 md:hidden">
+          <Button
+            onClick={() => {
+              setIsNavHidden(false)
+              setSlidingIn(true)
+              setTimeout(() => setSlidingIn(false), 300)
+            }}
+            className={cn(
+              'h-16 w-16 rounded-full border-2 border-yellow-300/30 shadow-2xl',
+              'bg-gradient-to-br from-yellow-400 via-amber-500 to-orange-500',
+              'hover:scale-110 hover:shadow-yellow-500/60',
+              'active:scale-95',
+            )}
+            aria-label="Open menu"
+          >
+            <Menu className="h-7 w-7 text-white drop-shadow-lg" />
+          </Button>
+          <div className="absolute -top-6 right-0 select-none text-xs px-2 py-1 rounded-md bg-zinc-900/80 text-zinc-200 border border-zinc-800 shadow-sm">
+            Menu
+          </div>
+        </div>
+      )}
+
+      {/* Bottom nav bar (swipe left to hide) */}
+      {!isNavHidden && (
+        <div
+          className={cn(
+            'fixed bottom-0 left-0 right-0 z-50 md:hidden',
+            slidingOut ? 'nav-slide-out' : slidingIn ? 'nav-slide-in' : ''
+          )}
+          onTouchStart={handleTouchStart}
+          onTouchMove={handleTouchMove}
+          onTouchEnd={handleTouchEnd}
+        >
       {/* Background with blur effect */}
       <div className="absolute inset-0 bg-black/20 backdrop-blur-xl border-t border-white/10" />
 
@@ -235,7 +314,23 @@ export function MobileBottomNav({ activeTab = 'challenges', onTabChange }: Mobil
         .animate-spin-slow-reverse {
           animation: spin-slow-reverse 12s linear infinite;
         }
+        .nav-slide-out {
+          animation: nav-slide-out 300ms ease forwards;
+        }
+        .nav-slide-in {
+          animation: nav-slide-in 300ms ease forwards;
+        }
+        @keyframes nav-slide-out {
+          from { transform: translateX(0); }
+          to { transform: translateX(-100%); }
+        }
+        @keyframes nav-slide-in {
+          from { transform: translateX(-100%); }
+          to { transform: translateX(0); }
+        }
       `}</style>
-    </div>
+        </div>
+      )}
+    </>
   )
 }
