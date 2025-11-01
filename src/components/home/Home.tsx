@@ -330,8 +330,6 @@ export default function Home() {
     <>
       {/* Hero Section */}
       <section className="relative overflow-hidden pt-24 pb-8">
-        <br />
-        <br />
         <div className="absolute inset-0 bg-gradient-to-b from-amber-500/5 to-transparent" />
         <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(ellipse_at_center,rgba(251,191,36,0.08),transparent_60%)]" />
         <div className="relative container mx-auto px-4 py-12 md:py-20">
