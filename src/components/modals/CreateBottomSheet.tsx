@@ -26,7 +26,7 @@ export function CreateBottomSheet({ isOpen, onClose }: CreateBottomSheetProps) {
       description: 'Create intense 1v1 challenges',
       icon: Sword,
       gradient: 'from-red-600 via-orange-500 to-yellow-500',
-      href: '/challenge/create',
+      href: '/challenge/create/0x0000000000000000000000000000000000000000/0x0000000000000000000000000000000000000000',
       glowColor: 'red',
       badge: 'HOT',
       particleColor: 'from-red-500 to-orange-500',

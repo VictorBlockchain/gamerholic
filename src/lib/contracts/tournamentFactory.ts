@@ -233,3 +233,35 @@ export const updatePlatformFeeRate = async (
   const receipt = await publicClient.waitForTransactionReceipt({ hash })
   return { hash, receipt }
 }
+
+// Configure external tournament deployer (admin only)
+export const setTournamentDeployer = async (
+  account: `0x${string}`,
+  deployer: `0x${string}`,
+  walletClient?: WalletClient,
+) => {
+  const wallet = walletClient ?? getInjectedWalletClient()
+  const address = getTournamentFactoryAddress() as `0x${string}`
+  const args: readonly [`0x${string}`] = [deployer]
+  const hash = await wallet.writeContract({ address, abi: TournamentFactoryAbi, functionName: 'setTournamentDeployer', args, account, chain: viemChain })
+  const publicClient = getPublicClient()
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  return { hash, receipt }
+}
+
+// Set required XFT entry count and token contract (mod/admin)
+export const setXFTToJoinEntryCount = async (
+  account: `0x${string}`,
+  xftToJoin: bigint,
+  xftContract: `0x${string}`,
+  entryCount: bigint,
+  walletClient?: WalletClient,
+) => {
+  const wallet = walletClient ?? getInjectedWalletClient()
+  const address = getTournamentFactoryAddress() as `0x${string}`
+  const args: readonly [bigint, `0x${string}`, bigint] = [xftToJoin, xftContract, entryCount]
+  const hash = await wallet.writeContract({ address, abi: TournamentFactoryAbi, functionName: 'setXFTToJoinEntryCount', args, account, chain: viemChain })
+  const publicClient = getPublicClient()
+  const receipt = await publicClient.waitForTransactionReceipt({ hash })
+  return { hash, receipt }
+}

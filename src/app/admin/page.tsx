@@ -107,6 +107,11 @@ export default function AdminPage() {
   const [tournamentRecord, setTournamentRecord] = React.useState<any | null>(null)
   const [gamerWallet, setGamerWallet] = React.useState('')
   const [gamerRecord, setGamerRecord] = React.useState<any | null>(null)
+  // TournamentFactory: XFT entry config & deployer state
+  const [xftToJoinId, setXftToJoinId] = React.useState<string>('')
+  const [xftContractAddress, setXftContractAddress] = React.useState('')
+  const [xftEntryCount, setXftEntryCount] = React.useState<string>('')
+  const [tournamentDeployerAddr, setTournamentDeployerAddr] = React.useState('')
 
   const disabled = !isConnected || !walletClient.data
   const canAdmin = isAdmin
@@ -136,6 +141,12 @@ export default function AdminPage() {
         setTfFeeRecipient(tfRec || '')
       } catch (e) {
         console.warn('Failed to load TournamentFactory config', e)
+      }
+      try {
+        const deployer = await TF.readTournamentDeployer().catch(() => '' as `0x${string}`)
+        setTournamentDeployerAddr(deployer || '')
+      } catch (e) {
+        console.warn('Failed to read tournament deployer', e)
       }
       try {
         const [cfFee, cfMin, cfRec] = await Promise.all([
@@ -190,6 +201,65 @@ export default function AdminPage() {
 
         {/* Main Grid */}
         <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+          {/* TournamentFactory: XFT Entry Config (Mod/Admin) */}
+          <AdminSection
+            title="TournamentFactory: XFT Entry Config"
+            icon={<Shield className="h-4 w-4 text-white" />}
+          >
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium text-gray-300">XFT Token ID</Label>
+                <Input
+                  value={xftToJoinId}
+                  onChange={(e) => setXftToJoinId(e.target.value)}
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 1"
+                  className="mt-1 border-gray-600 bg-gray-800/50 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-300">XFT Contract Address</Label>
+                <Input
+                  value={xftContractAddress}
+                  onChange={(e) => setXftContractAddress(e.target.value)}
+                  placeholder="0x..."
+                  className="mt-1 border-gray-600 bg-gray-800/50 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              <div>
+                <Label className="text-sm font-medium text-gray-300">Required Entry Count</Label>
+                <Input
+                  value={xftEntryCount}
+                  onChange={(e) => setXftEntryCount(e.target.value)}
+                  type="number"
+                  min={0}
+                  placeholder="e.g. 1"
+                  className="mt-1 border-gray-600 bg-gray-800/50 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              <Button
+                disabled={disabled || !canMod || !xftToJoinId || !xftContractAddress}
+                onClick={() =>
+                  handleTx(
+                    () =>
+                      TF.setXFTToJoinEntryCount(
+                        address as `0x${string}`,
+                        BigInt(xftToJoinId || '0'),
+                        xftContractAddress as `0x${string}`,
+                        BigInt(xftEntryCount || '0'),
+                        walletClient.data!,
+                      ),
+                    'TournamentFactory.setXFTToJoinEntryCount',
+                  )
+                }
+                className="w-full bg-gradient-to-r from-purple-600 to-pink-600 hover:from-purple-700 hover:to-pink-700"
+              >
+                Update XFT Entry Config
+              </Button>
+            </div>
+          </AdminSection>
+
           {/* TournamentFactory Section */}
           <AdminSection
             title="TournamentFactory: Admin/Mod"
@@ -407,6 +477,41 @@ export default function AdminPage() {
                 className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700"
               >
                 Update Minimum Entry Fee
+              </Button>
+            </div>
+          </AdminSection>
+
+          {/* TournamentFactory: Deployer */}
+          <AdminSection
+            title="TournamentFactory: Deployer"
+            icon={<Trophy className="h-4 w-4 text-white" />}
+          >
+            <div className="space-y-4">
+              <div>
+                <Label className="text-sm font-medium text-gray-300">Deployer Address</Label>
+                <Input
+                  value={tournamentDeployerAddr}
+                  onChange={(e) => setTournamentDeployerAddr(e.target.value)}
+                  placeholder="0x..."
+                  className="mt-1 border-gray-600 bg-gray-800/50 text-white placeholder-gray-500 focus:border-purple-500 focus:ring-purple-500"
+                />
+              </div>
+              <Button
+                disabled={disabled || !canAdmin || !tournamentDeployerAddr}
+                onClick={() =>
+                  handleTx(
+                    () =>
+                      TF.setTournamentDeployer(
+                        address as `0x${string}`,
+                        tournamentDeployerAddr as `0x${string}`,
+                        walletClient.data!,
+                      ),
+                    'TournamentFactory.setTournamentDeployer',
+                  )
+                }
+                className="w-full bg-gradient-to-r from-cyan-600 to-blue-600 hover:from-cyan-700 hover:to-blue-700"
+              >
+                Update Deployer
               </Button>
             </div>
           </AdminSection>

@@ -191,6 +191,7 @@ export type CreateHeadsUpParams = {
   entryFeeWei: bigint
   opponent: `0x${string}`
   payToken?: `0x${string}` | null
+  tournament?: `0x${string}` | null
   gameType: string
   metadata: string
 }
@@ -206,7 +207,7 @@ export const createHeadsUpChallenge = async (
     params.entryFeeWei,
     params.opponent,
     params.payToken ?? (ZERO_ADDRESS as `0x${string}`),
-    ZERO_ADDRESS as `0x${string}`,
+    (params.tournament ?? ZERO_ADDRESS) as `0x${string}`,
     params.gameType,
     params.metadata,
   ]

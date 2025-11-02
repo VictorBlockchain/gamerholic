@@ -107,12 +107,19 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
     string memory metadata
   ) external payable nonReentrant returns (address challengeContract) {
     uint256 fee = (entryFee * platformFeeRate) / 10000;
-    require(entryFee >= minimumEntryFee, 'Entry fee too low');
+    // Allow zero entry fee when challenge is bound to a tournament; otherwise enforce minimum
+    if (tournament == address(0)) {
+      require(entryFee >= minimumEntryFee, 'Entry fee too low');
+    }
     // Collect only the entry fee from creator; platform fee will be deducted from prize pool at distribution
     if (payToken != address(0)) {
-      require(IERC20(payToken).allowance(msg.sender, address(this)) >= entryFee, 'Not enough tokens');
-      IERC20(payToken).transferFrom(msg.sender, address(this), entryFee);
+      // For ERC20, skip allowance and transfer when entryFee is zero to save gas and avoid non-standard token issues
+      if (entryFee > 0) {
+        require(IERC20(payToken).allowance(msg.sender, address(this)) >= entryFee, 'Not enough tokens');
+        IERC20(payToken).transferFrom(msg.sender, address(this), entryFee);
+      }
     } else {
+      // Enforce exact native amount; when entryFee == 0, require no value sent
       require(msg.value == entryFee, 'Incorrect entry fee sent');
     }
     // Check opponent balance if specified
@@ -173,8 +180,10 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
       // Native SEI: send entry fee to challenge via addCreatorAsParticipant
       Challenge(challengeContract).addCreatorAsParticipant{value: entryFee}(msg.sender);
     } else {
-      // ERC20: transfer entry fee tokens to challenge, then register creator
-      require(IERC20(payToken).transfer(challengeContract, entryFee), 'Token transfer to challenge failed');
+      // ERC20: transfer entry fee tokens to challenge only if non-zero, then register creator
+      if (entryFee > 0) {
+        require(IERC20(payToken).transfer(challengeContract, entryFee), 'Token transfer to challenge failed');
+      }
       Challenge(challengeContract).addCreatorAsParticipant(msg.sender);
     }
 

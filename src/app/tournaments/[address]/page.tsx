@@ -54,6 +54,7 @@ import {
   ChevronRight,
   User,
   Award,
+  Plus,
   History,
   Scan,
   Code,
@@ -1288,21 +1289,34 @@ export default function TournamentDetailsPage() {
                                     </div>
                                   </div>
 
-                                  {/* Minimal Footer - Only for Completed Matches */}
-                                  {match.status === 'completed' && match.challengeAddress && (
-                                    <div className="border-t border-gray-700/50 bg-slate-900/50 p-3 text-center">
-                                      <a
-                                        href={`https://etherscan.io/address/${match.challengeAddress}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="group flex items-center justify-center gap-1 font-mono text-xs text-cyan-300 transition-colors hover:text-cyan-200"
-                                      >
-                                        <Code className="h-3 w-3" />
-                                        <span>View Challenge</span>
-                                        <ExternalLink className="h-3 w-3 opacity-0 transition-opacity group-hover:opacity-100" />
-                                      </a>
-                                    </div>
-                                  )}
+                                  {/* Action Footer */}
+                                  <div className="border-t border-gray-700/50 bg-slate-900/50 p-3 text-center">
+                                    {match.challengeAddress ? (
+                                      <Link href={`/challenges/${match.challengeAddress}`} className="inline-flex">
+                                        <Button variant="secondary" size="sm" className="gap-2">
+                                          <Code className="h-4 w-4" />
+                                          View Challenge
+                                          <ExternalLink className="h-4 w-4" />
+                                        </Button>
+                                      </Link>
+                                    ) : (
+                                      viewerAddress &&
+                                      match.player1 &&
+                                      match.player2 &&
+                                      (viewerAddress.toLowerCase() === match.player1.address.toLowerCase() ||
+                                        viewerAddress.toLowerCase() === match.player2.address.toLowerCase()) && (
+                                        <Link
+                                          href={`/challenge/create/${tournament.game.contractAddress}/${(viewerAddress.toLowerCase() === match.player1.address.toLowerCase() ? match.player2.address : match.player1.address).toLowerCase()}`}
+                                          className="inline-flex"
+                                        >
+                                          <Button variant="default" size="sm" className="gap-2">
+                                            <Plus className="h-4 w-4" />
+                                            Create Challenge
+                                          </Button>
+                                        </Link>
+                                      )
+                                    )}
+                                  </div>
                                 </div>
                                 {/* Desktop Bracket Connectors - These would need more complex logic for a real tree */}
                                 {roundIndex < bracket.length - 1 && (

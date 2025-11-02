@@ -11,12 +11,28 @@ async function main() {
   const balance = await deployer.getBalance()
   console.log('💰 Account balance:', ethers.utils.formatEther(balance), 'ETH')
 
+  // Prepare fee data and overrides to avoid estimateGas rate limits on public RPCs
+  const feeData = await ethers.provider.getFeeData()
+  const fallbackMaxFeeGwei = '50'
+  const fallbackTipGwei = '1'
+  const overrides = {
+    maxFeePerGas: feeData.maxFeePerGas || ethers.utils.parseUnits(fallbackMaxFeeGwei, 'gwei'),
+    maxPriorityFeePerGas:
+      feeData.maxPriorityFeePerGas || ethers.utils.parseUnits(fallbackTipGwei, 'gwei'),
+    gasLimit: 6_000_000,
+  }
+  console.log('⛽ Using overrides:', {
+    maxFeePerGas: overrides.maxFeePerGas.toString(),
+    maxPriorityFeePerGas: overrides.maxPriorityFeePerGas.toString(),
+    gasLimit: overrides.gasLimit,
+  })
+
   // Deploy ChallengeFactory
   console.log('\n📦 Deploying ChallengeFactory...')
   const ChallengeFactory = await ethers.getContractFactory('ChallengeFactory')
 
   // Use deployer as initial fee recipient
-  const challengeFactory = await ChallengeFactory.deploy(deployer.address)
+  const challengeFactory = await ChallengeFactory.deploy(deployer.address, overrides)
   await challengeFactory.deployed()
 
   console.log('✅ ChallengeFactory deployed to:', challengeFactory.address)
@@ -26,19 +42,26 @@ async function main() {
   console.log('\n📦 Deploying TournamentFactory...')
   const TournamentFactory = await ethers.getContractFactory('TournamentFactory')
   // TournamentFactory expects (feeRecipient, challengeFactory)
-  const tournamentFactory = await TournamentFactory.deploy(deployer.address, challengeFactory.address)
+  const tournamentFactory = await TournamentFactory.deploy(
+    deployer.address,
+    challengeFactory.address,
+    overrides
+  )
   await tournamentFactory.deployed()
   console.log('✅ TournamentFactory deployed to:', tournamentFactory.address)
 
   // Deploy TournamentDeployer and configure on factory
   console.log('\n📦 Deploying TournamentDeployer...')
   const TournamentDeployer = await ethers.getContractFactory('TournamentDeployer')
-  const tournamentDeployer = await TournamentDeployer.deploy()
+  const tournamentDeployer = await TournamentDeployer.deploy(overrides)
   await tournamentDeployer.deployed()
   console.log('✅ TournamentDeployer deployed to:', tournamentDeployer.address)
 
   console.log('\n🔧 Setting TournamentDeployer on TournamentFactory...')
-  const txSetDeployer = await tournamentFactory.setTournamentDeployer(tournamentDeployer.address)
+  const txSetDeployer = await tournamentFactory.setTournamentDeployer(
+    tournamentDeployer.address,
+    overrides
+  )
   await txSetDeployer.wait()
   console.log('✅ TournamentDeployer configured on TournamentFactory')
 

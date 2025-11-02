@@ -4,14 +4,13 @@
   "deployer": "0xEA75A97dC0640292E97213C2EAb85d02767c5Fe9",
   "contracts": {
     "ChallengeFactory": {
-      "address": "0xB7E43B0252650354635961236FFAb5459959bba9"
+      "address": "0x1d377A58C5aaE990D33f5B3e6c28Cc3CF516Ec54"
     },
     "TournamentFactory": {
-      "address": "0xcAEfb63951F77663Edde35AbE930cBd8bfCA5952"
+      "address": "0xA6a91FadB97a6bE5b0F31cdf2d143A4533593a98"
     },
     "TournamentDeployer": {
-      "address": "0xeEd1Fe2dd2C50eD709eDcbdb93E33130Ee988422",
-      "deploymentTx": "0xc25c60bfaa775a7d9f57c5b7cdef2da1eee9415cb8443fea12e27b99e6d6c93c"
+      "address": "0x6F5B230602cbf2abeED00DAf018692abc227c289"
     }
   },
   "deployedAt": "2025-11-01T08:42:55.236Z"
