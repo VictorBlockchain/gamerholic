@@ -4,6 +4,7 @@ import React, { useEffect, useMemo, useState } from 'react'
 import TournamentCard from '@/components/cards/TournamentCard'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import Link from 'next/link'
 import {
   Select,
   SelectContent,
@@ -29,6 +30,7 @@ import {
   Calendar,
   DollarSign,
   Crown,
+  PlusCircle,
 } from 'lucide-react'
 import { supabase } from '@/lib/supabase'
 import { ZERO_ADDRESS } from '@/lib/tokens'
@@ -131,11 +133,13 @@ export default function TournamentsPage() {
   }, [])
 
   const tournaments = useMemo(() => {
-    return (rows || []).map((r) => {
+    const now = Date.now()
+    const all = (rows || []).map((r) => {
       let title = r.game_type || ''
       let consoleName = ''
       let image = '/logo.png'
       let startDate = ''
+      let startAtMs: number | null = null
       try {
         const md = r.metadata || {}
         title = String(md?.title || md?.game || title || '').trim()
@@ -143,6 +147,12 @@ export default function TournamentsPage() {
         startDate = md?.startDate
           ? String(md.startDate) + (md?.startTime ? ` ${String(md.startTime)}` : '')
           : ''
+        if (md?.startDate) {
+          const dtStr = String(md.startDate) + (md?.startTime ? ` ${String(md.startTime)}` : '')
+          const dt = new Date(dtStr)
+          const t = dt.getTime()
+          if (!Number.isNaN(t)) startAtMs = t
+        }
       } catch {}
       const entry = weiToEth(r.entry_fee)
       const isNative = String(r.pay_token || '').toLowerCase() === ZERO_ADDRESS.toLowerCase()
@@ -152,10 +162,12 @@ export default function TournamentsPage() {
       const type: 'bracket' | 'free-for-all' = r.is_ffa ? 'free-for-all' : 'bracket'
       const contractStatus = mapStatusToUi(r.status)
       const uiStatus = contractStatus
-      const createdIso = r.created_at ? new Date(r.created_at).toISOString() : new Date().toISOString()
+      const createdIso = r.created_at
+        ? new Date(r.created_at).toISOString()
+        : new Date().toISOString()
       return {
         id: r.contract_address,
-        game: { name: title || (r.game_type || ''), console: consoleName, image },
+        game: { name: title || r.game_type || '', console: consoleName, image },
         type,
         entryFee: { sei: isNative ? entry : 0, gamer: isNative ? 0 : entry },
         players: { current: playersCurrent, max },
@@ -163,8 +175,13 @@ export default function TournamentsPage() {
         host: r.creator,
         status: uiStatus,
         prize,
+        _startAtMs: startAtMs,
       }
     })
+    const upcoming = all.filter(
+      (t) => typeof t._startAtMs === 'number' && (t._startAtMs as number) > now,
+    )
+    return upcoming.map(({ _startAtMs, ...rest }) => rest)
   }, [rows])
 
   const filteredTournaments = tournaments.filter((tournament) => {
@@ -294,21 +311,21 @@ export default function TournamentsPage() {
                   <SelectItem value="all" className="text-xs sm:text-sm">
                     All Status
                   </SelectItem>
-              <SelectItem value="ACTIVE" className="text-xs sm:text-sm">
-                Active
-              </SelectItem>
-              <SelectItem value="STARTED" className="text-xs sm:text-sm">
-                Started
-              </SelectItem>
-              <SelectItem value="COMPLETED" className="text-xs sm:text-sm">
-                Completed
-              </SelectItem>
-              <SelectItem value="DISPUTED" className="text-xs sm:text-sm">
-                Disputed
-              </SelectItem>
-              <SelectItem value="CANCELLED" className="text-xs sm:text-sm">
-                Cancelled
-              </SelectItem>
+                  <SelectItem value="ACTIVE" className="text-xs sm:text-sm">
+                    Active
+                  </SelectItem>
+                  <SelectItem value="STARTED" className="text-xs sm:text-sm">
+                    Started
+                  </SelectItem>
+                  <SelectItem value="COMPLETED" className="text-xs sm:text-sm">
+                    Completed
+                  </SelectItem>
+                  <SelectItem value="DISPUTED" className="text-xs sm:text-sm">
+                    Disputed
+                  </SelectItem>
+                  <SelectItem value="CANCELLED" className="text-xs sm:text-sm">
+                    Cancelled
+                  </SelectItem>
                 </SelectContent>
               </Select>
 
@@ -418,23 +435,46 @@ export default function TournamentsPage() {
       {/* Tournaments Grid */}
       <section className="container mx-auto px-4 pb-8">
         {filteredTournaments.length === 0 ? (
-          <div className="py-16 text-center">
-            <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-gray-800">
-              <Trophy className="h-10 w-10 text-gray-600" />
+          <div className="group relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-amber-900/10 to-slate-900 p-8 text-center shadow-2xl transition-all duration-300 group-hover:scale-[1.02]">
+            {/* Animated Background Pattern */}
+            <div className="absolute inset-0 bg-[url('/grid.svg')] [mask-image:linear-gradient(to_bottom,rgba(251,191,36,0.05),transparent_50%,transparent)] bg-center opacity-5"></div>
+
+            {/* Animated Icon Container */}
+            <div className="mb-4 flex items-center justify-center">
+              <div className="relative">
+                {/* Animated Glow */}
+                <div className="absolute inset-0 animate-pulse rounded-full bg-amber-500/20 blur-xl"></div>
+                <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/50 bg-gradient-to-br from-amber-600/20 to-orange-600/20 shadow-lg shadow-amber-500/50">
+                  <Trophy className="h-8 w-8 text-amber-400" />
+                </div>
+              </div>
             </div>
-            <h3 className="mb-2 text-xl font-semibold text-white">No tournaments found</h3>
-            <p className="mb-6 text-gray-400">Try adjusting your filters or search terms</p>
-            <Button
-              onClick={() => {
-                setSearchTerm('')
-                setTypeFilter('all')
-                setStatusFilter('all')
-                setGameFilter('all')
-              }}
-              className="bg-purple-500 text-white hover:bg-purple-600"
-            >
-              Clear Filters
-            </Button>
+
+            {/* Content */}
+            <div className="space-y-6">
+              <h3 className="text-2xl font-black text-white">No Tournaments Yet</h3>
+              <p className="mx-auto max-w-md text-lg leading-relaxed text-gray-300">
+                Be the first to host. Create your own tournaments, set the rules, and let the games
+                begin.
+              </p>
+
+              {/* Prominent CTA */}
+              <div className="flex items-center justify-center">
+                <Link href="/tournament/create">
+                  <Button
+                    size="lg"
+                    className="group relative overflow-hidden rounded-xl border-2 border-amber-500 bg-gradient-to-r from-amber-500 to-orange-600 px-8 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-amber-500/40"
+                  >
+                    <span className="relative z-10 flex items-center gap-2">
+                      <PlusCircle className="h-5 w-5" />
+                      CREATE TOURNAMENT
+                    </span>
+                    {/* Shining Effect */}
+                    <div className="absolute inset-0 -z-10 translate-x-full -skew-x-12 bg-gradient-to-r from-transparent via-white to-transparent transition-transform duration-700 group-hover:translate-x-0"></div>
+                  </Button>
+                </Link>
+              </div>
+            </div>
           </div>
         ) : (
           <div
