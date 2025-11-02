@@ -138,6 +138,14 @@ export default function ProfileAddressPage() {
   const [error, setError] = useState<string | null>(null)
   const activityScrollRef = useRef<HTMLDivElement>(null)
 
+  // Challenges involving this address (as creator or opponent), excluding canceled
+  const [challenges, setChallenges] = useState<any[]>([])
+  const [challengesLoading, setChallengesLoading] = useState(false)
+
+  // Completed tournaments created by this address (host)
+  const [completedTournaments, setCompletedTournaments] = useState<any[]>([])
+  const [tournamentsLoading, setTournamentsLoading] = useState(false)
+
   const scrollActivity = (direction: 'left' | 'right') => {
     if (activityScrollRef.current) {
       const scrollAmount = 320
@@ -214,6 +222,58 @@ export default function ProfileAddressPage() {
     }
     run()
   }, [target, isSelf])
+
+  // Load challenges where (creator == target OR opponent == target) AND status != canceled (0)
+  useEffect(() => {
+    const run = async () => {
+      if (!target) return
+      try {
+        setChallengesLoading(true)
+        const { data, error } = await supabase
+          .from('challenges')
+          .select(
+            'contract_address, creator, opponent, status, game_type, entry_fee, pay_token, total_prize_pool, metadata, created_at, score_reporter',
+          )
+          .or(`creator.eq.${target},opponent.eq.${target}`)
+          .neq('status', 0)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        setChallenges(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.warn('Failed to load challenges for profile:', e)
+        setChallenges([])
+      } finally {
+        setChallengesLoading(false)
+      }
+    }
+    run()
+  }, [target])
+
+  // Load tournaments created by host address with COMPLETED status (status === 2)
+  useEffect(() => {
+    const run = async () => {
+      if (!target) return
+      try {
+        setTournamentsLoading(true)
+        const { data, error } = await supabase
+          .from('tournaments')
+          .select(
+            'contract_address, creator, entry_fee, max_participants, created_at, game_type, metadata, pay_token, is_ffa, status, total_prize_pool, participants',
+          )
+          .eq('creator', target)
+          .eq('status', 2)
+          .order('created_at', { ascending: false })
+        if (error) throw error
+        setCompletedTournaments(Array.isArray(data) ? data : [])
+      } catch (e) {
+        console.warn('Failed to load completed tournaments for profile:', e)
+        setCompletedTournaments([])
+      } finally {
+        setTournamentsLoading(false)
+      }
+    }
+    run()
+  }, [target])
 
   return (
     <div className="min-h-screen bg-black pt-24 pb-8 text-white">
@@ -451,55 +511,137 @@ export default function ProfileAddressPage() {
                   <Trophy className="mr-2 h-4 w-4" />
                   TOURNAMENTS
                 </TabsTrigger>
-                <TabsTrigger
-                  value="created"
-                  className="font-bold data-[state=active]:bg-gradient-to-r data-[state=active]:from-amber-500 data-[state=active]:to-orange-600 data-[state=active]:text-white"
-                >
-                  <Users className="mr-2 h-4 w-4" />
-                  CREATED
-                </TabsTrigger>
               </TabsList>
 
               <TabsContent value="challenges" className="mt-6">
-                <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
-                  <p className="text-sm text-gray-400">No challenges to show.</p>
-                  <p className="text-xs text-gray-500">
-                    Create or accept a challenge to populate this list.
-                  </p>
-                </div>
+                {challengesLoading ? (
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                    <p className="text-sm text-gray-400">Loading challenges…</p>
+                  </div>
+                ) : challenges.length === 0 ? (
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                    <p className="text-sm text-gray-400">No active challenges for this player.</p>
+                    <p className="text-xs text-gray-500">
+                      Challenges where {walletDisplay} is the creator or opponent will appear here.
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {challenges.map((c) => {
+                      const md = c?.metadata || {}
+                      const title = String(md?.title || c?.game_type || '').trim() || 'Challenge'
+                      const dateStr = c?.created_at
+                        ? new Date(c.created_at).toISOString().slice(0, 10)
+                        : ''
+                      const statusCode = Number(c?.status || 0)
+                      const statusLabel =
+                        statusCode === 4
+                          ? 'COMPLETED'
+                          : statusCode === 3
+                            ? 'SCORED'
+                            : statusCode === 2
+                              ? 'ACCEPTED'
+                              : statusCode === 5
+                                ? 'DISPUTED'
+                                : 'ACTIVE'
+                      return (
+                        <div
+                          key={c?.contract_address}
+                          className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 p-4 transition-all duration-300 hover:border-amber-600"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-semibold text-amber-400">
+                              {statusLabel}
+                            </span>
+                            <span className="text-xs text-gray-400">{dateStr}</span>
+                          </div>
+                          <h4 className="mb-1 line-clamp-1 text-sm font-bold text-white">
+                            {title}
+                          </h4>
+                          <p className="text-xs text-gray-400">
+                            {String(c?.creator || '').slice(0, 6)}…
+                            {String(c?.creator || '').slice(-4)}
+                            {' vs '}
+                            {String(c?.opponent || '').slice(0, 6)}…
+                            {String(c?.opponent || '').slice(-4)}
+                          </p>
+                          <div className="mt-3 flex items-center justify-between">
+                            <Link
+                              href={`/challenges/${c?.contract_address}`}
+                              className="text-xs text-amber-400 hover:text-amber-300"
+                            >
+                              View Details
+                            </Link>
+                            <span className="text-[10px] text-gray-500">
+                              {String(c?.contract_address).slice(0, 6)}…
+                              {String(c?.contract_address).slice(-4)}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
+                  </div>
+                )}
               </TabsContent>
 
               <TabsContent value="tournaments" className="mt-6">
-                <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
-                  <p className="text-sm text-gray-400">No tournaments to show.</p>
-                  <p className="text-xs text-gray-500">
-                    Join or create a tournament to populate this list.
-                  </p>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="created" className="mt-6">
-                {/* Created Challenges */}
-                <div className="mb-8">
-                  <h3 className="mb-4 text-lg font-bold text-white">Created Challenges</h3>
+                {tournamentsLoading ? (
                   <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
-                    <p className="text-sm text-gray-400">No created challenges yet.</p>
+                    <p className="text-sm text-gray-400">Loading tournaments…</p>
+                  </div>
+                ) : completedTournaments.length === 0 ? (
+                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
+                    <p className="text-sm text-gray-400">
+                      No completed tournaments hosted by this player.
+                    </p>
                     <p className="text-xs text-gray-500">
-                      Create a challenge to see it listed here.
+                      Completed tournaments hosted by {walletDisplay} will appear here.
                     </p>
                   </div>
-                </div>
-
-                {/* Created Tournaments */}
-                <div>
-                  <h3 className="mb-4 text-lg font-bold text-white">Created Tournaments</h3>
-                  <div className="rounded-2xl border border-gray-800 bg-gray-900 p-6 text-center">
-                    <p className="text-sm text-gray-400">No created tournaments yet.</p>
-                    <p className="text-xs text-gray-500">
-                      Create a tournament to see it listed here.
-                    </p>
+                ) : (
+                  <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                    {completedTournaments.map((t) => {
+                      const md = t?.metadata || {}
+                      const title = String(md?.title || md?.game || t?.game_type || '').trim()
+                      const dateStr = t?.created_at
+                        ? new Date(t.created_at).toISOString().slice(0, 10)
+                        : ''
+                      const playersCurrent = Array.isArray(t?.participants)
+                        ? t.participants.length
+                        : 0
+                      const max = Number(t?.max_participants || 0) || 0
+                      return (
+                        <div
+                          key={t?.contract_address}
+                          className="group relative overflow-hidden rounded-2xl border border-gray-800 bg-gray-900 p-4 transition-all duration-300 hover:border-amber-600"
+                        >
+                          <div className="mb-2 flex items-center justify-between">
+                            <span className="text-xs font-semibold text-amber-400">COMPLETED</span>
+                            <span className="text-xs text-gray-400">{dateStr}</span>
+                          </div>
+                          <h4 className="mb-1 line-clamp-1 text-sm font-bold text-white">
+                            {title || 'Tournament'}
+                          </h4>
+                          <p className="text-xs text-gray-400">
+                            Players: {playersCurrent}/{max}
+                          </p>
+                          <div className="mt-3 flex items-center justify-between">
+                            <Link
+                              href={`/tournaments/${t?.contract_address}`}
+                              className="text-xs text-amber-400 hover:text-amber-300"
+                            >
+                              View Details
+                            </Link>
+                            <span className="text-[10px] text-gray-500">
+                              {String(t?.contract_address).slice(0, 6)}…
+                              {String(t?.contract_address).slice(-4)}
+                            </span>
+                          </div>
+                        </div>
+                      )
+                    })}
                   </div>
-                </div>
+                )}
               </TabsContent>
             </Tabs>
           </div>

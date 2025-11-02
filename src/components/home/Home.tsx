@@ -287,7 +287,21 @@ export default function Home() {
   }, [])
 
   const homeTournaments = React.useMemo(() => {
-    return (tournamentRows || []).map((r) => {
+    const upcomingRows = (tournamentRows || []).filter((r) => {
+      try {
+        const md = r.metadata || {}
+        const sd = md?.startDate ? String(md.startDate).trim() : ''
+        const st = md?.startTime ? String(md.startTime).trim() : ''
+        if (!sd) return false
+        const dateStr = st ? `${sd} ${st}` : sd
+        const startAt = new Date(dateStr)
+        if (isNaN(startAt.getTime())) return false
+        return startAt.getTime() > Date.now()
+      } catch {
+        return false
+      }
+    })
+    return upcomingRows.map((r) => {
       let title = r.game_type || ''
       let consoleName = ''
       let image = '/logo.png'
