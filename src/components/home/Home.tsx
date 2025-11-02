@@ -579,8 +579,6 @@ export default function Home() {
                   }
                 />
 
-                {/* ... and so on for the other Explainer components ... */}
-
                 <StyledExplainer
                   title="Contract Address"
                   description="Every challenge exposes its address for donations."
@@ -637,15 +635,59 @@ export default function Home() {
             </p>
           </div>
 
-          <div className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
-            {homeTournaments.map((tournament) => (
-              <TournamentCard
-                key={tournament.id}
-                tournament={tournament}
-                onViewTournament={handleViewTournament}
-              />
-            ))}
-          </div>
+          {homeTournaments.length === 0 ? (
+            <div className="group relative overflow-hidden rounded-3xl border border-amber-500/30 bg-gradient-to-br from-slate-900 via-amber-900/10 to-slate-900 p-8 text-center shadow-2xl transition-all duration-300 group-hover:scale-[1.02]">
+              {/* Animated Background Pattern */}
+              <div className="absolute inset-0 bg-[url('/grid.svg')] [mask-image:linear-gradient(to_bottom,rgba(251,191,36,0.05),transparent_50%,transparent)] bg-center opacity-5"></div>
+
+              {/* Animated Icon Container */}
+              <div className="mb-4 flex items-center justify-center">
+                <div className="relative">
+                  {/* Animated Glow */}
+                  <div className="absolute inset-0 animate-pulse rounded-full bg-amber-500/20 blur-xl"></div>
+                  <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl border border-amber-500/50 bg-gradient-to-br from-amber-600/20 to-orange-600/20 shadow-lg shadow-amber-500/50">
+                    <Trophy className="h-8 w-8 text-amber-400" />
+                  </div>
+                </div>
+              </div>
+
+              {/* Content */}
+              <div className="space-y-6">
+                <h3 className="text-2xl font-black text-white">No Tournaments Yet</h3>
+                <p className="mx-auto max-w-md text-lg leading-relaxed text-gray-300">
+                  Be the first to host. Create your own tournaments, set the rules, and let the
+                  games begin.
+                </p>
+
+                {/* Prominent CTA */}
+                <div className="flex items-center justify-center">
+                  <Link href="/tournament/create">
+                    <Button
+                      size="lg"
+                      className="group relative overflow-hidden rounded-xl border-2 border-amber-500 bg-gradient-to-r from-amber-500 to-orange-600 px-8 py-3 font-bold text-white transition-all duration-300 hover:scale-105 hover:shadow-xl hover:shadow-amber-500/40"
+                    >
+                      <span className="relative z-10 flex items-center gap-2">
+                        <PlusCircle className="h-5 w-5" />
+                        CREATE TOURNAMENT
+                      </span>
+                      {/* Shining Effect */}
+                      <div className="absolute inset-0 -z-10 translate-x-full -skew-x-12 bg-gradient-to-r from-transparent via-white to-transparent transition-transform duration-700 group-hover:translate-x-0"></div>
+                    </Button>
+                  </Link>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="mb-12 grid grid-cols-1 gap-8 lg:grid-cols-2 xl:grid-cols-3">
+              {homeTournaments.map((tournament) => (
+                <TournamentCard
+                  key={tournament.id}
+                  tournament={tournament}
+                  onViewTournament={handleViewTournament}
+                />
+              ))}
+            </div>
+          )}
         </div>
       </section>
 
