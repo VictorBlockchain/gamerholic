@@ -529,7 +529,7 @@ export default function Home() {
                         </div>
                         <div className="mt-1 h-0.5 w-10 rounded-full bg-gradient-to-r from-violet-500/60 via-indigo-500/60 to-violet-500/60 opacity-90" />
                         <p className="text-sm leading-tight font-medium tracking-wide text-amber-100">
-                          Tourny creators paid
+                          Tourny hosts paid
                         </p>
                       </div>
                     </GamingCard>
