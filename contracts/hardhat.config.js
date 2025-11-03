@@ -47,6 +47,25 @@ module.exports = {
     currency: 'USD',
   },
   etherscan: {
-    apiKey: process.env.ETHERSCAN_API_KEY,
+    // Seitrace uses Blockscout-style API; API key not required
+    apiKey: process.env.ETHERSCAN_API_KEY || 'dummy',
+    customChains: [
+      {
+        network: 'mainnet',
+        chainId: 1329,
+        urls: {
+          apiURL: 'https://seitrace.com/pacific-1/api',
+          browserURL: 'https://seitrace.com/pacific-1',
+        },
+      },
+      {
+        network: 'testnet',
+        chainId: 1328,
+        urls: {
+          apiURL: 'https://seitrace.com/atlantic-2/api',
+          browserURL: 'https://seitrace.com/atlantic-2',
+        },
+      },
+    ],
   },
 }
