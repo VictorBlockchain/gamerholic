@@ -27,110 +27,13 @@ import {
   Wallet,
 } from 'lucide-react'
 import StyledExplainer from '@/components/home/StyledExpliner'
-
-const featuredChallenges = [
-  {
-    id: 'featured1',
-    challenger: {
-      id: 'user1',
-      username: 'ProGamer42',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=ProGamer42',
-      level: 42,
-      winRate: 78,
-      isVerified: true,
-    },
-    opponent: {
-      id: 'user2',
-      username: 'NoobMaster',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=NoobMaster',
-      level: 28,
-      winRate: 45,
-      isVerified: false,
-    },
-    game: {
-      name: 'Call of Duty: MW3',
-      console: 'PlayStation 5',
-      icon: '🎮',
-    },
-    amount: {
-      sei: 50,
-      gamer: 100,
-    },
-    status: 'accepted' as const,
-    rules: ['First to 25 kills wins', 'No camping allowed', 'Map: Rust', 'Time limit: 10 minutes'],
-    createdAt: '2024-01-15T10:30:00Z',
-  },
-  {
-    id: 'featured2',
-    challenger: {
-      id: 'user3',
-      username: 'ShadowNinja',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=ShadowNinja',
-      level: 56,
-      winRate: 82,
-      isVerified: true,
-    },
-    opponent: {
-      id: 'user4',
-      username: 'PhoenixRise',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=PhoenixRise',
-      level: 61,
-      winRate: 79,
-      isVerified: true,
-    },
-    game: {
-      name: 'Fortnite',
-      console: 'Xbox Series X',
-      icon: '🏝️',
-    },
-    amount: {
-      sei: 75,
-      gamer: 150,
-    },
-    status: 'sent' as const,
-    rules: [
-      'Battle Royale mode',
-      'Solo vs Solo',
-      'First win or elimination',
-      'No building restrictions',
-    ],
-    createdAt: '2024-01-15T09:15:00Z',
-  },
-  {
-    id: 'featured3',
-    challenger: {
-      id: 'user5',
-      username: 'CyberWarrior',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=CyberWarrior',
-      level: 73,
-      winRate: 91,
-      isVerified: true,
-      score: 15,
-    },
-    opponent: {
-      id: 'user6',
-      username: 'TechDestroyer',
-      avatar: 'https://api.dicebear.com/7.x/avataaars/svg?seed=TechDestroyer',
-      level: 68,
-      winRate: 87,
-      isVerified: true,
-      score: 12,
-    },
-    game: {
-      name: 'Cyberpunk 2077',
-      console: 'PC',
-      icon: '🌃',
-    },
-    amount: {
-      sei: 100,
-      gamer: 200,
-    },
-    status: 'completed' as const,
-    winner: 'challenger' as const,
-    rules: ['1v1 duel mode', 'Best of 3 rounds', 'Character level: Max', 'No legendary weapons'],
-    createdAt: '2024-01-14T18:45:00Z',
-  },
-]
+import {
+  getChallengeFactoryAddress,
+  getTournamentFactoryAddress,
+  getBlockExplorer,
+  isMainnet,
+} from '@/lib/contract-addresses'
+import mainnetDeployment from '../../../contracts/deployments/mainnet.json'
 
 function Explainer({
   trigger,
@@ -198,11 +101,94 @@ function Explainer({
   )
 }
 
+// Helper component for the Verified Contracts Section
+function CopyButton({ textToCopy, children }) {
+  const [copied, setCopied] = React.useState(false)
+
+  const handleCopy = async () => {
+    if (copied) return
+    await navigator.clipboard.writeText(textToCopy)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <button
+      type="button"
+      onClick={handleCopy}
+      className={`inline-flex items-center gap-2 rounded-lg border px-3 py-2 text-xs transition-colors ${
+        copied
+          ? 'border-green-500/50 bg-green-500/10 text-green-300'
+          : 'border-gray-700 bg-gray-800/60 text-gray-200 hover:bg-gray-800'
+      }`}
+    >
+      {copied ? 'Copied!' : children}
+    </button>
+  )
+}
+
+// Helper component for the Verified Contracts Section
+function ContractCard({ contract, explorerBase }) {
+  const explorerUrl = `${explorerBase.replace(/\/$/, '')}/address/${contract.address}?tab=contract`
+  const shorten = (a) => `${a.slice(0, 6)}…${a.slice(-4)}`
+
+  return (
+    <div className="group relative overflow-hidden rounded-2xl border border-indigo-500/20 bg-gradient-to-br from-gray-900/70 to-black p-5 shadow-lg transition-shadow duration-300 hover:shadow-xl">
+      <div className="absolute inset-0 -z-10 opacity-0 transition-opacity duration-300 group-hover:opacity-100">
+        <div className="h-full w-full bg-[radial-gradient(ellipse_at_center,rgba(99,102,241,0.12),transparent_60%)]" />
+      </div>
+
+      <div className="mb-3 flex items-start justify-between">
+        <div className="flex items-center gap-2">
+          <div className="flex h-9 w-9 items-center justify-center rounded-lg border border-indigo-500/30 bg-indigo-500/10">
+            <RadioTower className="h-5 w-5 text-indigo-300" />
+          </div>
+          <div>
+            <p className="text-sm font-semibold text-indigo-200">{contract.name}</p>
+            <p className="text-[11px] text-gray-500">Mainnet</p>
+          </div>
+        </div>
+        <div className="rounded-md border border-green-500/30 bg-green-500/10 px-2 py-0.5">
+          <span className="text-[10px] font-medium text-green-400">Verified</span>
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-indigo-500/20 bg-black/30 p-3">
+        <p className="font-mono text-xs text-indigo-300">{shorten(contract.address)}</p>
+      </div>
+
+      <div className="mt-4 flex items-center gap-2">
+        <a
+          href={explorerUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-2 rounded-lg border border-indigo-500/30 bg-indigo-500/10 px-3 py-2 text-xs text-indigo-200 transition-colors hover:bg-indigo-500/20"
+        >
+          Open on Seitrace
+          <ArrowRight className="h-3.5 w-3.5" />
+        </a>
+        <CopyButton textToCopy={contract.address}>Copy address</CopyButton>
+      </div>
+    </div>
+  )
+}
+
 export default function Home() {
   const router = useRouter()
   const handleViewChallenge = (id: string) => {
     console.log('Viewing challenge:', id)
   }
+  const explorerBase = getBlockExplorer()
+  const challengeFactoryAddr = getChallengeFactoryAddress()
+  const tournamentFactoryAddr = getTournamentFactoryAddress()
+  const tournamentDeployerAddr = (mainnetDeployment?.contracts?.TournamentDeployer?.address ??
+    '') as string
+  const verifiedContracts = [
+    { name: 'ChallengeFactory', address: challengeFactoryAddr },
+    { name: 'TournamentFactory', address: tournamentFactoryAddr },
+    { name: 'TournamentDeployer', address: tournamentDeployerAddr },
+  ].filter((c) => c.address && /^0x[a-fA-F0-9]{40}$/.test(c.address))
+  const shorten = (a: string) => `${a.slice(0, 6)}…${a.slice(-4)}`
 
   // Lightweight tournaments fetch to show available tournaments like tournaments page
   type TournamentRow = {
@@ -366,7 +352,7 @@ export default function Home() {
               Play. Win. Get Paid.
             </h1>
 
-            {/* Centered “Create” buttons with battle, trophy, and group icons */}
+            {/* Centered "Create" buttons with battle, trophy, and group icons */}
             <div className="mt-6 hidden justify-center md:flex">
               <div className="flex gap-3">
                 <Tooltip>
@@ -893,6 +879,44 @@ export default function Home() {
               </svg>
             </div>
           </a>
+        </div>
+      </section>
+
+      {/* Verified Contracts Section */}
+      <section className="relative mt-16 pb-20">
+        <div className="absolute inset-0 bg-gradient-to-b from-indigo-500/5 to-transparent" />
+        <div className="relative container mx-auto px-4">
+          <div className="mb-10 text-center">
+            <div className="inline-flex items-center gap-2 rounded-full border border-indigo-500/30 bg-indigo-500/10 px-3 py-1">
+              <ShieldCheck className="h-4 w-4 text-indigo-300" />
+              <span className="text-xs font-medium tracking-wide text-indigo-200">
+                Source Verified
+              </span>
+            </div>
+            <h2 className="font-gaming mt-3 bg-gradient-to-r from-indigo-300 via-rose-300 to-amber-300 bg-clip-text text-3xl font-bold text-transparent sm:text-4xl">
+              Verified Smart Contracts
+            </h2>
+            <p className="mt-2 text-sm text-gray-400">On Sei mainnet via Seitrace explorer</p>
+          </div>
+
+          {verifiedContracts.length > 0 ? (
+            <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
+              {verifiedContracts.map((contract) => (
+                <ContractCard key={contract.name} contract={contract} explorerBase={explorerBase} />
+              ))}
+            </div>
+          ) : (
+            <div className="rounded-2xl border border-gray-800 bg-gray-900/50 p-12 text-center backdrop-blur-sm">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full border border-gray-700 bg-gray-800">
+                <ShieldCheck className="h-8 w-8 text-gray-600" />
+              </div>
+              <p className="mt-4 text-sm text-gray-400">
+                {isMainnet()
+                  ? 'No verified contracts found in deployment JSON.'
+                  : 'Switch to mainnet to view verified contracts.'}
+              </p>
+            </div>
+          )}
         </div>
       </section>
     </>

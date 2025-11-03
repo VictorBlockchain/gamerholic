@@ -38,9 +38,9 @@ const StyledExplainer: React.FC<StyledExplainerProps> = ({
       <div onClick={() => setIsOpen(!isOpen)}>{trigger}</div>
 
       {isOpen && (
-        <div className="animate-fade-in absolute bottom-full left-1/2 z-50 mb-2 w-80 -translate-x-1/2 transform">
+        <div className="animate-fade-in z-50 mb-2 w-[24rem] max-w-[94vw] fixed left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 sm:absolute sm:bottom-full sm:left-1/2 sm:top-auto sm:-translate-y-0 sm:w-[28rem]">
           {/* Tooltip Arrow */}
-          <div className="absolute top-full left-1/2 -mt-2 -translate-x-1/2">
+          <div className="hidden sm:block absolute top-full left-1/2 -mt-2 -translate-x-1/2">
             <div className="h-0 w-0 border-t-[8px] border-r-[8px] border-l-[8px] border-t-slate-800 border-r-transparent border-l-transparent"></div>
           </div>
 
