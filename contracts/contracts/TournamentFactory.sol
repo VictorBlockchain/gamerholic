@@ -1,8 +1,11 @@
+//Gamerholic.fun onchain esports
+//Compete in heads up games & tournaments
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
 // Removed Ownable/ReentrancyGuard to reduce bytecode size
-import '@openzeppelin/contracts/token/ERC1155/IERC1155.sol';
+import "@openzeppelin/contracts/token/ERC1155/IERC1155.sol";
 
 // Tournament is deployed via external TournamentDeployer; no direct reference needed here
 // Externalized deployer to keep factory bytecode minimal
@@ -89,7 +92,7 @@ contract TournamentFactory {
 
   constructor(address _feeRecipient, address _challengeFactory) {
     feeRecipient = _feeRecipient;
-    challengeFactory = _challengeFactory; 
+    challengeFactory = _challengeFactory;
     isMod[msg.sender] = true;
     isAdmin[msg.sender] = true;
   }
@@ -140,17 +143,24 @@ contract TournamentFactory {
     allTournamentsIndex[tournamentContract] = allTournaments.length - 1;
     creatorTournaments[msg.sender].push(tournamentContract);
 
-    emit TournamentCreated(msg.sender, tournamentContract, entryFee, maxParticipants, isFFA, gameType);
+    emit TournamentCreated(
+      msg.sender,
+      tournamentContract,
+      entryFee,
+      maxParticipants,
+      isFFA,
+      gameType
+    );
   }
 
   // Admin management used by Tournament.onlyCreator via IBridge2(factory).getAdmin
-  function setAdmin(address admin, bool isAdminFlag) external{
+  function setAdmin(address admin, bool isAdminFlag) external {
     if (!isAdmin[msg.sender]) revert OnlyAdmin();
     isAdmin[admin] = isAdminFlag;
   }
 
   // Mod management used by Tournament.onlyCreator via IBridge2(factory).getMod
-  function setMod(address mod, bool isModFlag) external{
+  function setMod(address mod, bool isModFlag) external {
     if (!isAdmin[msg.sender]) revert OnlyAdmin();
     isMod[mod] = isModFlag;
   }
@@ -178,7 +188,10 @@ contract TournamentFactory {
   function getXFTToJoinEntryCount(uint256 xftToJoin) external view returns (uint256) {
     return xftToJoinEntryCount[xftToJoin];
   }
-  function getPlayerXFTToJoinEntryCount(address player, uint256 xftToJoin) external view returns (uint256, uint256, bool) {
+  function getPlayerXFTToJoinEntryCount(
+    address player,
+    uint256 xftToJoin
+  ) external view returns (uint256, uint256, bool) {
     uint256 entryCount = playerXftToJoinEntryCount[player][xftToJoin];
     bool expired = entryCount >= xftToJoinEntryCount[xftToJoin];
     uint256 balance = IERC1155(xftContract).balanceOf(player, xftToJoin);
@@ -208,19 +221,20 @@ contract TournamentFactory {
 
   // Optional cleanup hook removed to reduce code size (was not used)
 
-  function setXFTToJoinEntryCount(uint256 xftToJoin, address _xftContract, uint256 entryCount) external onlyMod {
+  function setXFTToJoinEntryCount(
+    uint256 xftToJoin,
+    address _xftContract,
+    uint256 entryCount
+  ) external onlyMod {
     xftToJoinEntryCount[xftToJoin] = entryCount;
     xftContract = _xftContract;
   }
 
-  function setPlayerXFTToJoinEntryCount(
-    address player,
-    uint256 xftToJoin
-  ) external {
+  function setPlayerXFTToJoinEntryCount(address player, uint256 xftToJoin) external {
     if (!isTournamentContract[msg.sender]) revert OnlyTournamentContract();
     playerXftToJoinEntryCount[player][xftToJoin]++;
   }
-  
+
   // Configure external deployer address
   function setTournamentDeployer(address _deployer) external onlyAdmin {
     if (_deployer == address(0)) revert InvalidFeeRecipient();

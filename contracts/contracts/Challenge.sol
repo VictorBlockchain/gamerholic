@@ -331,27 +331,28 @@ contract Challenge is ReentrancyGuard, Ownable {
     require(winner != address(0), "No winner declared");
 
     fundsDistributed = true;
-    uint256 totalPool = challengeInfo.totalPrizePool;
-
-    // Use the pre-calculated platform fee amount
-    uint256 prizeAmount = totalPool - platformFeeAmount;
-
+    // Use actual contract balance (native or ERC20) for distributable amount
+    uint256 prizeAmount;
     if (challengeInfo.payToken == address(0)) {
-      // Transfer platform fee to fee recipient
+      prizeAmount = address(this).balance;
+      // Transfer platform fee to fee recipient first
       if (platformFeeAmount > 0) {
         (bool feeSuccess, ) = payable(feeRecipient).call{value: platformFeeAmount}("");
         require(feeSuccess, "Platform fee transfer failed");
+        prizeAmount = prizeAmount - platformFeeAmount;
       }
 
-      // Transfer prize to winner
+      // Transfer prize to winner (remaining balance after fee)
       (bool prizeSuccess, ) = payable(winner).call{value: prizeAmount}("");
       require(prizeSuccess, "Prize transfer failed");
     } else {
+      prizeAmount = IERC20(challengeInfo.payToken).balanceOf(address(this));
       if (platformFeeAmount > 0) {
         require(
           IERC20(challengeInfo.payToken).transfer(feeRecipient, platformFeeAmount),
           "Fee transfer failed"
         );
+        prizeAmount = prizeAmount - platformFeeAmount;
       }
       require(
         IERC20(challengeInfo.payToken).transfer(winner, prizeAmount),
@@ -526,4 +527,37 @@ contract Challenge is ReentrancyGuard, Ownable {
     challengeInfo.totalPrizePool += contribution;
     emit ParticipantJoined(player1, contribution);
   }
+
+  /**
+   * @dev Allow the winner to withdraw any surplus funds that may remain or
+   *      be sent to the contract after distribution. Mirrors Tournament's
+   *      withdrawSurplus behavior.
+   * @param token address of ERC20 token, or address(0) for native.
+   * @param amount amount to withdraw; if 0, withdraw entire balance for token.
+   */
+  function withdrawSurplus(address token, uint256 amount) external nonReentrant {
+    require(winner != address(0), "No winner");
+    require(challengeInfo.status == ChallengeStatus.SCORE_CONFIRMED, "Challenge not completed");
+    require(msg.sender == winner, "Only winner");
+
+    uint256 balance;
+    if (token == address(0)) {
+      balance = address(this).balance;
+    } else {
+      balance = IERC20(token).balanceOf(address(this));
+    }
+    require(balance > 0, "No surplus");
+
+    uint256 withdrawAmount = amount == 0 ? balance : amount;
+    require(withdrawAmount <= balance, "Amount > balance");
+
+    if (token == address(0)) {
+      (bool ok, ) = payable(winner).call{value: withdrawAmount}("");
+      require(ok, "Transfer failed");
+    } else {
+      require(IERC20(token).transfer(winner, withdrawAmount), "Transfer failed");
+    }
+  }
+
+  
 }

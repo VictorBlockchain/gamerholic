@@ -1,10 +1,13 @@
+//Gamerholic.fun onchain esports
+//Compete in heads up games & tournaments
+
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import '@openzeppelin/contracts/access/Ownable.sol';
-import '@openzeppelin/contracts/security/ReentrancyGuard.sol';
-import '@openzeppelin/contracts/token/ERC20/IERC20.sol';
-import './Challenge.sol';
+import "@openzeppelin/contracts/access/Ownable.sol";
+import "@openzeppelin/contracts/security/ReentrancyGuard.sol";
+import "@openzeppelin/contracts/token/ERC20/IERC20.sol";
+import "./Challenge.sol";
 
 interface IChallenge {
   function getChallengeInfo() external view returns (Challenge.ChallengeInfo memory);
@@ -40,7 +43,7 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
 
   mapping(address => address[]) public playerChallenges;
   mapping(address => mapping(address => uint256)) public playerChallengeIndex;
-  mapping(address=>address[]) public playerCompletedChallenges;
+  mapping(address => address[]) public playerCompletedChallenges;
 
   mapping(address => bool) public isChallengeContract;
 
@@ -83,15 +86,15 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
   }
 
   modifier onlyChallengeContract() {
-    require(isChallengeContract[msg.sender], 'Not a challenge contract');
+    require(isChallengeContract[msg.sender], "Not a challenge contract");
     _;
   }
   modifier onlyAdmin() {
-    require(isAdmin[msg.sender], 'Not admin');
+    require(isAdmin[msg.sender], "Not admin");
     _;
   }
   modifier onlyMod() {
-    require(isMod[msg.sender], 'Not mod');
+    require(isMod[msg.sender], "Not mod");
     _;
   }
 
@@ -109,30 +112,36 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
     uint256 fee = (entryFee * platformFeeRate) / 10000;
     // Allow zero entry fee when challenge is bound to a tournament; otherwise enforce minimum
     if (tournament == address(0)) {
-      require(entryFee >= minimumEntryFee, 'Entry fee too low');
+      require(entryFee >= minimumEntryFee, "Entry fee too low");
     }
     // Collect only the entry fee from creator; platform fee will be deducted from prize pool at distribution
     if (payToken != address(0)) {
       // For ERC20, skip allowance and transfer when entryFee is zero to save gas and avoid non-standard token issues
       if (entryFee > 0) {
-        require(IERC20(payToken).allowance(msg.sender, address(this)) >= entryFee, 'Not enough tokens');
+        require(
+          IERC20(payToken).allowance(msg.sender, address(this)) >= entryFee,
+          "Not enough tokens"
+        );
         IERC20(payToken).transferFrom(msg.sender, address(this), entryFee);
       }
     } else {
       // Enforce exact native amount; when entryFee == 0, require no value sent
-      require(msg.value == entryFee, 'Incorrect entry fee sent');
+      require(msg.value == entryFee, "Incorrect entry fee sent");
     }
     // Check opponent balance if specified
-    require(opponent != address(0), 'Opponent address cannot be zero');
+    require(opponent != address(0), "Opponent address cannot be zero");
     if (payToken != address(0)) {
-      require(IERC20(payToken).balanceOf(opponent) > 0, 'Opponent must have non-zero token balance');
+      require(
+        IERC20(payToken).balanceOf(opponent) > 0,
+        "Opponent must have non-zero token balance"
+      );
     } else {
-      require(opponent.balance > 0, 'Opponent must have non-zero SEI balance');
+      require(opponent.balance > 0, "Opponent must have non-zero SEI balance");
     }
     if (tournament != address(0)) {
       require(
         ITournament(tournament).isActiveParticipant(msg.sender, opponent),
-        'Players must be active participant in tournament'
+        "Players must be active participant in tournament"
       );
     }
     // Calculate platform fee amount based on total expected prize pool (2 * entryFee for heads-up)
@@ -182,7 +191,10 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
     } else {
       // ERC20: transfer entry fee tokens to challenge only if non-zero, then register creator
       if (entryFee > 0) {
-        require(IERC20(payToken).transfer(challengeContract, entryFee), 'Token transfer to challenge failed');
+        require(
+          IERC20(payToken).transfer(challengeContract, entryFee),
+          "Token transfer to challenge failed"
+        );
       }
       Challenge(challengeContract).addCreatorAsParticipant(msg.sender);
     }
@@ -198,7 +210,7 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
     uint256 status
   ) external onlyChallengeContract returns (bool) {
     uint256 index = playerChallengeIndex[player][challengeContract];
-    require(index < playerChallenges[player].length, 'Challenge not found');
+    require(index < playerChallenges[player].length, "Challenge not found");
 
     // Swap with last element and pop
     address lastContract = playerChallenges[player][playerChallenges[player].length - 1];
@@ -243,8 +255,10 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
     return isMod[mod];
   }
 
-  function getChallenge(address challengeContract) external view returns (Challenge.ChallengeInfo memory) {
-    require(isChallengeContract[challengeContract], 'Challenge does not exist');
+  function getChallenge(
+    address challengeContract
+  ) external view returns (Challenge.ChallengeInfo memory) {
+    require(isChallengeContract[challengeContract], "Challenge does not exist");
     return Challenge(challengeContract).getChallengeInfo();
   }
 
@@ -280,7 +294,7 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
    * @dev Update platform fee rate (only owner)
    */
   function updatePlatformFeeRate(uint256 newFeeRate) external onlyAdmin {
-    require(newFeeRate <= 1000, 'Fee rate too high (max 10%)');
+    require(newFeeRate <= 1000, "Fee rate too high (max 10%)");
 
     uint256 oldFeeRate = platformFeeRate;
     platformFeeRate = newFeeRate;
@@ -292,7 +306,7 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
    * @dev Update fee recipient (only owner)
    */
   function updateFeeRecipient(address newFeeRecipient) external onlyAdmin {
-    require(newFeeRecipient != address(0), 'Invalid fee recipient');
+    require(newFeeRecipient != address(0), "Invalid fee recipient");
 
     address oldFeeRecipient = feeRecipient;
     feeRecipient = newFeeRecipient;
@@ -323,7 +337,7 @@ contract ChallengeFactory is Ownable, ReentrancyGuard {
   bool public paused = false;
 
   modifier whenNotPaused() {
-    require(!paused, 'Contract is paused');
+    require(!paused, "Contract is paused");
     _;
   }
 

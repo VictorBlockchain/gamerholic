@@ -279,7 +279,13 @@ contract Tournament is ReentrancyGuard, Ownable {
     tournamentInfo.status = TournamentStatus.COMPLETED;
     emit WinnerDeclared(finalWinner, tournamentInfo.totalPrizePool);
 
-    uint256 prizeAmount = tournamentInfo.totalPrizePool;
+    // Use actual contract balance (native or ERC20) for distributable amount
+    uint256 prizeAmount;
+    if (tournamentInfo.payToken == address(0)) {
+      prizeAmount = address(this).balance;
+    } else {
+      prizeAmount = IERC20(tournamentInfo.payToken).balanceOf(address(this));
+    }
     if (platformFeeAmount > 0) {
       prizeAmount = prizeAmount - platformFeeAmount;
     }
@@ -474,7 +480,13 @@ contract Tournament is ReentrancyGuard, Ownable {
 
     tournamentInfo.status = TournamentStatus.COMPLETED;
 
-    uint256 distributable = tournamentInfo.totalPrizePool;
+    // Use actual contract balance (native or ERC20) for distributable amount
+    uint256 distributable;
+    if (tournamentInfo.payToken == address(0)) {
+      distributable = address(this).balance;
+    } else {
+      distributable = IERC20(tournamentInfo.payToken).balanceOf(address(this));
+    }
     if (platformFeeAmount > 0) {
       distributable = distributable - platformFeeAmount;
     }

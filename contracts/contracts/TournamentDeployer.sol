@@ -1,7 +1,9 @@
+//Gamerholic.fun onchain esports
+//Compete in heads up games & tournaments
 // SPDX-License-Identifier: MIT
 pragma solidity ^0.8.19;
 
-import './Tournament.sol';
+import "./Tournament.sol";
 
 /**
  * @title TournamentDeployer
