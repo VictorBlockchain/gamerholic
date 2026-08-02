@@ -1,16 +1,15 @@
-"use client";
-
-import { use } from "react";
 import { TeamDetailView } from "@/components/teams/team-detail-view";
+import { STATIC_ID_PLACEHOLDER } from "@/lib/static-params";
 
-/**
- * Team detail — cover, logo, stats, roster, match/tournament cards.
- */
-export default function TeamDetailPage({
+export function generateStaticParams() {
+  return STATIC_ID_PLACEHOLDER;
+}
+
+export default async function TeamDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  const { id } = await params;
   return <TeamDetailView teamId={id} />;
 }

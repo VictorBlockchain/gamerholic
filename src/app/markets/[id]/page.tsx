@@ -13,6 +13,7 @@ import {
 
 /**
  * Market detail — no mock books; surface coming soon.
+ * Client params for static export deep links.
  */
 export default function MarketDetailPage() {
   const params = useParams();

@@ -1,17 +1,15 @@
-"use client";
-
-import { use } from "react";
 import { TournamentDetailView } from "@/components/tournaments/tournament-detail-view";
+import { STATIC_ID_PLACEHOLDER } from "@/lib/static-params";
 
-/**
- * Tournament detail — overview, players, bracket, host controls.
- * Path: /tournaments/[id]
- */
-export default function TournamentDetailPage({
+export function generateStaticParams() {
+  return STATIC_ID_PLACEHOLDER;
+}
+
+export default async function TournamentDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  const { id } = await params;
   return <TournamentDetailView tournamentId={id} />;
 }

@@ -1,16 +1,15 @@
-"use client";
-
-import { use } from "react";
 import { ChallengeDetailView } from "@/components/challenges/challenge-detail-view";
+import { STATIC_ID_PLACEHOLDER } from "@/lib/static-params";
 
-/**
- * Heads-up challenge detail — accept with stream URL.
- */
-export default function ChallengeDetailPage({
+export function generateStaticParams() {
+  return STATIC_ID_PLACEHOLDER;
+}
+
+export default async function ChallengeDetailPage({
   params,
 }: {
   params: Promise<{ id: string }>;
 }) {
-  const { id } = use(params);
+  const { id } = await params;
   return <ChallengeDetailView challengeId={id} />;
 }
