@@ -1,8 +1,8 @@
 # High Score Arcade — design notes
 
 **Status:** active (product scaffold + hybrid timer/settle + community approval)  
-**Updated:** 2026-08-01  
-**Routes:** `/arcade`, `/arcade/play/[gameId]`  
+**Updated:** 2026-08-02  
+**Routes:** `/arcade`, `/arcade/play/[id]`, `/arcade/play/?id=` (static-export fallback)  
 **Code:** `src/lib/arcade/*`, `src/components/arcade/*`, `supabase/schema.sql` (arcade section)
 
 ---
@@ -179,11 +179,11 @@ Leaderboard rows show **score + earnings** where available.
 ## 7. Secure session (hybrid)
 
 ```
-Insert fee (client debit demo / future ICP)
-  → gh_arcade_start_session (Supabase now() → t_start, t_end)
+Insert fee (client debit demo / future ICP)  OR free practice
+  → gh_arcade_start_session (Supabase now() → t_start, t_end; client may send seed)
   → play (tick + score events)
   → finalize (final_score on session)
-  → async canister settle
+  → async canister settle (paid only)
   → gh_arcade_confirm_canister
 ```
 
@@ -192,14 +192,34 @@ Insert fee (client debit demo / future ICP)
 | Clock authority | Supabase `now()`, not client wall clock |
 | Canister lag | Supabase keeps final score; UI can show “pending chain” |
 | Resubmit / retry | Idempotent on `sessionId` — `retryCanisterSettle` reuses score, no double fee |
-| Free play | No ranked board / no prize path |
+| Free play | Session still opened on Supabase (timer + practice); no ranked board / no prize path |
+| Session seed | Client sends hex seed via `crypto.getRandomValues`; RPC fallback is `gen_random_uuid()` **not** `gen_random_bytes` (needs pgcrypto — often missing) |
+
+**Hotfix (2026-08-02):** Free play failed with `function gen_random_bytes(integer) does not exist`.  
+Apply `supabase/migrations/fix_start_session_no_pgcrypto.sql` (or full `schema.sql` refresh of `gh_arcade_start_session`).
 
 Client: `src/lib/arcade/secure-session.ts`.  
 SQL: `supabase/schema.sql` (arcade section) · apply notes in `supabase/README.md`.
 
 ---
 
-## 8. UI / UX notes
+## 8. Deep links (static export / IC assets)
+
+Next `output: 'export'` only emits HTML for paths known at build time.
+
+| Path | Role |
+|------|------|
+| `/arcade/play/{id}/` | Prebuilt via `generateStaticParams` → `arcadePlayStaticParams()` loads published `gh_arcade_games.id` at build |
+| `/arcade/play/?id={id}` | Always-available shell (`src/app/arcade/play/page.tsx`) when path not prebuilt |
+| Client resolve | `ArcadePlayClient` reads `?id=`, route param, then pathname segment |
+
+**Gotcha:** unknown `/arcade/play/new_id` on the assets canister may fall through to **home** `index.html` (IC SPA-style fallback). After publishing a new cabinet, rebuild + redeploy `gh_assets`, or share `?id=` links.
+
+Build helper: `src/lib/static-params.ts`.
+
+---
+
+## 9. UI / UX notes
 
 | Surface | Notes |
 |---------|--------|
@@ -208,11 +228,12 @@ SQL: `supabase/schema.sql` (arcade section) · apply notes in `supabase/README.m
 | Preview | Auto-reload on CSS/code change; bridge log; mock ranked/free |
 | Play (testing) | Banner + upvote CTA; creator CSS/code editor; insert coins = real board |
 | Play (live) | Host SCORE/TIME top-left; expand full-screen; equip strip; claim/retry |
+| About this cabinet | **Stacked rows** (Overview, then How to play) — not a 2-column grid |
 | ModeHeader | Arcade uses attr / volt accents |
 
 ---
 
-## 9. Key files
+## 10. Key files
 
 | Area | Path |
 |------|------|
@@ -224,19 +245,23 @@ SQL: `supabase/schema.sql` (arcade section) · apply notes in `supabase/README.m
 | Secure session | `src/lib/arcade/secure-session.ts` |
 | Assets | `src/lib/arcade/assets.ts` |
 | AI prompt | `src/lib/arcade/ai-prompt.ts` |
+| Static play params | `src/lib/static-params.ts` |
+| Play client (id resolve) | `src/components/arcade/arcade-play-client.tsx` |
 | Dexsta label auth | `src/lib/ic/dexsta-xft-service.ts` → `checkLabelAuthority` |
 | Add / preview / play | `src/components/arcade/*` |
 | SQL catalog + status/upvotes | `supabase/schema.sql` (`gh_arcade_games`) |
+| Session RPC hotfixes | `supabase/migrations/*` |
 
 ---
 
-## 10. Open / next
+## 11. Open / next
 
 - [ ] Real Motoko arcade settle (replace demo adapter)  
 - [ ] Internet Identity identity pass-through for Dexsta actor calls  
 - [ ] Bag power enrichment on equip (full Dexsta bag read)  
-- [ ] Apply Supabase arcade SQL in all environments (incl. status/upvotes columns)  
+- [x] Apply Supabase arcade SQL + session RPC (no `gen_random_bytes`)  
 - [ ] Platform claim path for 1.5% rake  
+- [ ] Optional: SPA fallback HTML for unknown play ids (serve play shell, not home)
 - [ ] Optional: server-side upvote RPC (principal auth) instead of client upsert  
 
 ---

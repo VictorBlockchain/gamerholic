@@ -90,6 +90,17 @@ export async function getServerNow(): Promise<Date> {
   }
 }
 
+/** 32-byte hex seed (browser crypto). Avoids SQL gen_random_bytes / pgcrypto. */
+function randomPlaySeed(): string {
+  try {
+    const bytes = new Uint8Array(16);
+    crypto.getRandomValues(bytes);
+    return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
+  } catch {
+    return `s${Date.now().toString(16)}${Math.random().toString(16).slice(2, 14)}`;
+  }
+}
+
 export async function startSecureSession(opts: {
   gameId: string;
   playerPrincipal: string;
@@ -101,6 +112,9 @@ export async function startSecureSession(opts: {
 }): Promise<SecurePlaySession> {
   const sb = getSupabase();
   if (sb && isSupabaseConfigured()) {
+    // Always send seed so the RPC never falls through to gen_random_bytes
+    // (needs pgcrypto — often missing on Supabase until explicitly enabled).
+    const seed = randomPlaySeed();
     const { data, error } = await sb.rpc("gh_arcade_start_session", {
       p: {
         game_id: opts.gameId,
@@ -110,6 +124,7 @@ export async function startSecureSession(opts: {
         play_fee_e8s: Number(feeToE8s(opts.playFee, opts.playFeeToken)),
         play_fee_token: opts.playFeeToken,
         play_time_sec: opts.playTimeSec,
+        seed,
       },
     });
     if (error) throw new Error(error.message);

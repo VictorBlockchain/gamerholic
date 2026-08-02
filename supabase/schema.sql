@@ -8,6 +8,9 @@
 --
 -- Formerly: schema.sql + arcade_schema.sql (merged).
 
+-- Optional (Supabase usually has gen_random_uuid; we avoid gen_random_bytes).
+create extension if not exists pgcrypto with schema extensions;
+
 -- ── Challenges ──────────────────────────────────────────────
 create table if not exists public.gh_challenges (
   id text primary key,
@@ -638,7 +641,11 @@ declare
   v_fee bigint := coalesce((p->>'play_fee_e8s')::bigint, 0);
   v_token text := coalesce(p->>'play_fee_token', 'ICP');
   v_secs int := greatest(10, least(coalesce((p->>'play_time_sec')::int, 180), 900));
-  v_seed text := coalesce(p->>'seed', encode(gen_random_bytes(16), 'hex'));
+  -- Prefer client seed; fallback uses gen_random_uuid (no pgcrypto gen_random_bytes).
+  v_seed text := coalesce(
+    nullif(p->>'seed', ''),
+    replace(gen_random_uuid()::text, '-', '') || substr(replace(gen_random_uuid()::text, '-', ''), 1, 8)
+  );
   v_grace int := coalesce((p->>'grace_sec')::int, 3);
   v_max_rate numeric := coalesce((p->>'max_score_per_sec')::numeric, 500);
   v_start timestamptz := now();

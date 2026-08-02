@@ -455,7 +455,7 @@ function ArcadeGameCard({ game }: { game: ArcadeGame }) {
 
   return (
     <Link
-      href={`/arcade/play/${encodeURIComponent(game.id)}`}
+      href={`/arcade/play/${encodeURIComponent(game.id)}/`}
       style={{ textDecoration: "none", color: "inherit", display: "block" }}
     >
       <Box

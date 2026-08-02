@@ -16,6 +16,14 @@ Design: [`../notes/design/canister-supabase-realtime.md`](../notes/design/canist
    `gh_arcade_sessions`, `gh_arcade_games`, `gh_arcade_score_events`, `gh_arcade_scores`  
    (the script also tries to add them)
 
+### Hotfix: Free play “Could not start session” / `gen_random_bytes`
+
+If free play fails with `function gen_random_bytes(integer) does not exist`, run:
+
+**[`migrations/fix_start_session_no_pgcrypto.sql`](./migrations/fix_start_session_no_pgcrypto.sql)**
+
+That replaces `gh_arcade_start_session` so it no longer needs the `pgcrypto` extension.
+
 ### Arcade storage (no localStorage for content)
 
 | Data | Table / RPC |

@@ -104,9 +104,11 @@ Design: [`high-score-arcade.md`](./high-score-arcade.md) · SQL: `supabase/schem
 | **Supabase** | `gh_arcade_games` (CSS/gameCode catalog — **not on-chain**), session `t_start`/`t_end`, score events, chain confirm |
 | **Canister** | Play fee, per-game escrow, prize settle, claim (demo adapter until Motoko) |
 | **Idempotency** | Settle keyed by `session_id` — retry cannot double-pay |
+| **Session seed** | Client hex seed preferred; RPC must **not** call `gen_random_bytes` (pgcrypto optional / often absent) |
 
 - [x] Client secure session + retry settle  
 - [x] Catalog local / Supabase upsert  
+- [x] `gh_arcade_start_session` without `gen_random_bytes` (migration + client seed)  
 - [ ] Motoko arcade settle + claim  
 
 ## Still incremental

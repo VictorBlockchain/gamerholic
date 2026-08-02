@@ -58,11 +58,39 @@ If `dfx deploy` wants to create canisters: set `canister_ids.json` under the pro
 1. SQL Editor → paste full `supabase/schema.sql` (includes arcade + `gh_arcade_scores`).
 2. Realtime publication includes `gh_arcade_*` tables.
 3. Prefer security-definer RPCs: `upsert_gh_profile`, `gh_arcade_upsert_game`, `gh_arcade_upsert_score`, session RPCs.
+4. **Session start:** do **not** rely on `gen_random_bytes` / pgcrypto. Current RPC uses client seed + `gen_random_uuid()` fallback.  
+   Hotfix file: `supabase/migrations/fix_start_session_no_pgcrypto.sql`  
+   (Symptom: Free play → “Could not start session” / `function gen_random_bytes(integer) does not exist`.)
 
 ## FE static env note
 
 Next.js only inlines `process.env.NEXT_PUBLIC_*` with **static** property access.  
 `canisters.ts` must not use `process.env[dynamicKey]` or the browser sees empty canister IDs.
+
+**Build for IC:** export mainnet `NEXT_PUBLIC_*` in the shell (`.env.local` has local canister IDs and can override `.env.production`).
+
+```bash
+export CI=1 TERM=xterm-256color
+export NEXT_EXPORT=1
+export NEXT_PUBLIC_IC_NETWORK=ic
+export NEXT_PUBLIC_IC_HOST=https://icp0.io
+export NEXT_PUBLIC_GH_BACKEND_CANISTER_ID=u2in7-tiaaa-aaaab-qc2jq-cai
+export NEXT_PUBLIC_GH_MEDIA_CANISTER_ID=ubnr2-jqaaa-aaaab-qc2la-cai
+export NEXT_PUBLIC_II_URL=https://identity.ic0.app
+# plus Supabase URL + anon from .env.local
+npm run build:ic && dfx deploy gh_assets --network ic
+```
+
+Or: `npm run deploy:ic:assets` after ensuring production env wins.
+
+## Deep links on `gh_assets`
+
+- `trailingSlash: true` static export.
+- `generateStaticParams` prebuilds `/arcade/play/{id}/` from `gh_arcade_games` at build time.
+- Fallback: `/arcade/play/?id=…` always works without a prebuilt path.
+- Unknown path assets may return root `index.html` (visitor home) — rebuild after new games.
+
+Live: https://gamerholic.fun · assets `u5jll-6qaaa-aaaab-qc2ja-cai`.
 
 ## Compatibility
 

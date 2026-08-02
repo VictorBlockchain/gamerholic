@@ -1,8 +1,14 @@
-import { ArcadePlayView } from "@/components/arcade/play-view";
-import { STATIC_ID_PLACEHOLDER } from "@/lib/static-params";
+import { Suspense } from "react";
+import { Text } from "@chakra-ui/react";
+import { ArcadePlayClient } from "@/components/arcade/arcade-play-client";
+import { arcadePlayStaticParams } from "@/lib/static-params";
 
-export function generateStaticParams() {
-  return STATIC_ID_PLACEHOLDER;
+/**
+ * Pre-render every known cabinet id at build so IC assets deep links work.
+ * Client also re-reads id from the URL path (handles soft nav + odd hosts).
+ */
+export async function generateStaticParams() {
+  return arcadePlayStaticParams();
 }
 
 export default async function ArcadePlayPage({
@@ -11,5 +17,9 @@ export default async function ArcadePlayPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <ArcadePlayView gameId={decodeURIComponent(id)} />;
+  return (
+    <Suspense fallback={<Text color="fg.muted">Loading play…</Text>}>
+      <ArcadePlayClient routeId={id} />
+    </Suspense>
+  );
 }

@@ -1610,11 +1610,7 @@ export function ArcadePlayView({ gameId }: Props) {
           {/* About / how to play — high contrast cards */}
           <SectionDivider label="About this cabinet" tone="attr" my="0" />
 
-          <Grid
-            templateColumns={{ base: "1fr", md: "1fr 1fr" }}
-            gap="phi3"
-            mt="phi3"
-          >
+          <VStack align="stretch" gap="phi3" mt="phi3">
             <GhSurface variant="elevated" p="phi4">
               <HStack gap="2" mb="phi2">
                 <Box
@@ -1680,7 +1676,7 @@ export function ArcadePlayView({ gameId }: Props) {
                 {game.rules}
               </Text>
             </GhSurface>
-          </Grid>
+          </VStack>
 
           <GhSurface
             variant="prize"
