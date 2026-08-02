@@ -1,0 +1,514 @@
+/* Gamerholic — volt / magenta / violet · φ spacing · custom fonts */
+
+:root {
+  --gh-safe-top: env(safe-area-inset-top, 0px);
+  --gh-safe-bottom: env(safe-area-inset-bottom, 0px);
+  --gh-header-h: 56px;
+  --gh-bottom-nav-h: 72px;
+  /* Wider than 72rem, not full-bleed */
+  --gh-content-max: 84rem;
+  /**
+   * Gap between fixed header bottom and first page content.
+   * Standard on all routes — do not re-pad per page for header clearance.
+   */
+  --gh-content-gap: var(--phi-4); /* ~34px */
+  --gh-content-gap-md: var(--phi-5); /* ~55px desktop */
+
+  /* Golden ratio ladder from 8px */
+  --phi-1: 0.5rem; /* 8 */
+  --phi-2: 0.8125rem; /* 13 */
+  --phi-3: 1.3125rem; /* 21 */
+  --phi-4: 2.125rem; /* 34 */
+  --phi-5: 3.4375rem; /* 55 */
+  --phi-6: 5.5625rem; /* 89 */
+  --phi-section: 3.4375rem; /* section vertical rhythm */
+}
+
+html,
+body {
+  height: 100%;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  overscroll-behavior-y: none;
+  /* Explicit gaming stack — next/font sets --font-* on <html> */
+  font-family: var(--font-body), "Rajdhani", "Segoe UI", sans-serif;
+  /* Hide scrollbars; scrolling still works (touch / wheel / trackpad) */
+  scrollbar-width: none; /* Firefox */
+  -ms-overflow-style: none; /* legacy Edge */
+}
+
+html::-webkit-scrollbar,
+body::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+/* All scroll containers — betable chips, attributes strip, etc. */
+* {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+*::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.gh-scroll-hide {
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.gh-scroll-hide::-webkit-scrollbar {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+.gh-font-display {
+  font-family: var(--font-display), "Orbitron", "Rajdhani", sans-serif;
+  letter-spacing: 0.04em;
+}
+
+.gh-font-mono,
+code,
+.dx-mono {
+  font-family: var(--font-mono), "Share Tech Mono", ui-monospace, monospace;
+}
+
+.gh-app {
+  min-height: 100dvh;
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+  background:
+    radial-gradient(ellipse 90% 55% at 15% -10%, rgba(139, 92, 246, 0.18), transparent 50%),
+    radial-gradient(ellipse 70% 45% at 90% 0%, rgba(163, 255, 61, 0.1), transparent 45%),
+    radial-gradient(ellipse 50% 40% at 80% 100%, rgba(244, 63, 168, 0.1), transparent 50%),
+    #0d0b1a;
+}
+
+.gh-main {
+  flex: 1;
+  width: 100%;
+  max-width: var(--gh-content-max);
+  margin-inline: auto;
+  /* Header height + safe area + standard content gap (all pages) */
+  padding-top: calc(
+    var(--gh-header-h) + var(--gh-safe-top) + var(--gh-content-gap)
+  );
+  /* Footer sits below main and clears the bottom tabs itself */
+  padding-bottom: var(--phi-3);
+  padding-inline: var(--phi-3);
+}
+
+@media (min-width: 768px) {
+  .gh-main {
+    padding-top: calc(
+      var(--gh-header-h) + var(--gh-safe-top) + var(--gh-content-gap-md)
+    );
+    padding-bottom: var(--phi-4);
+    padding-inline: var(--phi-4);
+  }
+}
+
+@media (min-width: 1024px) {
+  .gh-main {
+    padding-inline: var(--phi-4);
+  }
+}
+
+.gh-header {
+  padding-top: var(--gh-safe-top);
+}
+
+.gh-bottom-nav {
+  padding-bottom: var(--gh-safe-bottom);
+}
+
+/* Display gradients — volt / magenta / violet */
+.gh-text-volt,
+.gh-text-brand {
+  background: linear-gradient(100deg, #c8ff7a, #a3ff3d, #7dd41f);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gh-text-prize {
+  background: linear-gradient(100deg, #f9a8d4, #f43fa8, #db2777);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gh-text-attr {
+  background: linear-gradient(100deg, #c4b5fd, #8b5cf6, #6d28d9);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+}
+
+.gh-brand-bar {
+  background: linear-gradient(
+    90deg,
+    #8b5cf6 0%,
+    #a3ff3d 40%,
+    #f43fa8 75%,
+    #22d3ee 100%
+  );
+  box-shadow: 0 0 20px rgba(163, 255, 61, 0.25);
+}
+
+@keyframes gh-pulse-soft {
+  0%,
+  100% {
+    opacity: 0.5;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.06);
+  }
+}
+
+.gh-fab-glow {
+  animation: gh-pulse-soft 2.8s ease-in-out infinite;
+}
+
+/* Floating betable market chip on match cards */
+@keyframes gh-betable-bob {
+  0%,
+  100% {
+    transform: translateY(0);
+  }
+  50% {
+    transform: translateY(-3px);
+  }
+}
+
+.gh-betable-float {
+  animation: gh-betable-bob 2.4s ease-in-out infinite;
+}
+
+.gh-betable-float:hover {
+  animation-play-state: paused;
+}
+
+@keyframes gh-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gh-spin {
+  animation: gh-spin 0.7s linear infinite;
+}
+
+@keyframes gh-shimmer {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(100%);
+  }
+}
+
+.gh-stat-fill {
+  height: 100%;
+  border-radius: inherit;
+}
+
+/* Stack rhythm helpers */
+.gh-stack-phi {
+  display: flex;
+  flex-direction: column;
+  gap: var(--phi-4);
+}
+
+/* Extra breathing room between home “levels” (Dexsta-like scannable rhythm) */
+.gh-stack-phi-lg {
+  display: flex;
+  flex-direction: column;
+  gap: var(--phi-5);
+}
+
+.gh-home-section {
+  margin-bottom: var(--phi-4);
+}
+
+@media (min-width: 768px) {
+  .gh-stack-phi-lg {
+    gap: var(--phi-6);
+  }
+  .gh-home-section {
+    margin-bottom: var(--phi-5);
+  }
+}
+
+/* Button icon gap */
+.gh-btn-icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+/* ── Spectacle: live ticker ── */
+@keyframes gh-ticker {
+  0% {
+    transform: translateX(0);
+  }
+  100% {
+    transform: translateX(-50%);
+  }
+}
+
+.gh-ticker-track {
+  width: max-content;
+  animation: gh-ticker 42s linear infinite;
+}
+
+.gh-ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* ── Mode skins ── */
+.gh-mode-grid-host {
+  background-image:
+    linear-gradient(rgba(217, 119, 6, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(217, 119, 6, 0.04) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.gh-mode-grid-arcade {
+  background-image:
+    linear-gradient(rgba(99, 102, 241, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(99, 102, 241, 0.05) 1px, transparent 1px);
+  background-size: 20px 20px;
+}
+
+.gh-mode-grid-battle {
+  background-image:
+    linear-gradient(rgba(37, 99, 235, 0.05) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(37, 99, 235, 0.05) 1px, transparent 1px);
+  background-size: 24px 24px;
+}
+
+.gh-mode-grid-play {
+  background-image:
+    linear-gradient(rgba(59, 130, 246, 0.04) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(59, 130, 246, 0.04) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Arcade CRT scanlines */
+.gh-crt-scan {
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 2px,
+    rgba(0, 0, 0, 0.06) 2px,
+    rgba(0, 0, 0, 0.06) 4px
+  );
+  opacity: 0.55;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.gh-crt-frame {
+  position: relative;
+  overflow: hidden;
+}
+
+.gh-crt-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: repeating-linear-gradient(
+    0deg,
+    transparent,
+    transparent 3px,
+    rgba(0, 0, 0, 0.04) 3px,
+    rgba(0, 0, 0, 0.04) 6px
+  );
+  pointer-events: none;
+}
+
+@keyframes gh-crown-pulse {
+  0%,
+  100% {
+    filter: drop-shadow(0 0 4px rgba(99, 102, 241, 0.4));
+    transform: scale(1);
+  }
+  50% {
+    filter: drop-shadow(0 0 12px rgba(99, 102, 241, 0.8));
+    transform: scale(1.08);
+  }
+}
+
+.gh-crown-glow {
+  animation: gh-crown-pulse 2.4s ease-in-out infinite;
+}
+
+/* Live radio dot */
+@keyframes gh-live-blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.gh-live-dot {
+  animation: gh-live-blink 1.6s ease-in-out infinite;
+}
+
+/* Radar poly draw-in */
+@keyframes gh-radar-in {
+  from {
+    opacity: 0;
+    transform: scale(0.85);
+    transform-origin: center;
+  }
+  to {
+    opacity: 1;
+    transform: scale(1);
+  }
+}
+
+.gh-radar-poly {
+  animation: gh-radar-in 0.55s ease-out both;
+}
+
+/* Loadout orbit */
+@keyframes gh-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.gh-orbit-spin-slow {
+  animation: gh-orbit 48s linear infinite;
+}
+
+@keyframes gh-orb-pop {
+  0% {
+    transform: translate(-50%, -50%) scale(0.85);
+  }
+  60% {
+    transform: translate(-50%, -50%) scale(1.06);
+  }
+  100% {
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
+.gh-orb-active {
+  animation: gh-orb-pop 0.45s ease-out both;
+}
+
+/* Stat compare winner spark */
+@keyframes gh-spark {
+  0%,
+  100% {
+    text-shadow: none;
+  }
+  50% {
+    text-shadow: 0 0 10px currentColor;
+  }
+}
+
+.gh-stat-spark {
+  animation: gh-spark 1.8s ease-in-out infinite;
+}
+
+/* Host bank chip in header */
+.gh-host-bank-chip {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Game storefront panels */
+.gh-game-panel {
+  box-shadow:
+    0 0 0 1px rgba(59, 130, 246, 0.12),
+    0 24px 64px -28px rgba(0, 0, 0, 0.75);
+}
+
+.gh-pillar-card {
+  position: relative;
+}
+
+.gh-pillar-card::before {
+  content: "";
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(59, 130, 246, 0.5), transparent);
+  opacity: 0;
+  transition: opacity 0.2s;
+}
+
+.gh-pillar-card:hover::before {
+  opacity: 1;
+}
+
+/* Hero HUD corners */
+.gh-hud-corner {
+  position: absolute;
+  width: 1.75rem;
+  height: 1.75rem;
+  pointer-events: none;
+  z-index: 2;
+  border-color: rgba(59, 130, 246, 0.65);
+}
+
+.gh-hud-tl {
+  top: 0.75rem;
+  left: 0.75rem;
+  border-top: 2px solid;
+  border-left: 2px solid;
+  border-color: inherit;
+}
+
+.gh-hud-tr {
+  top: 0.75rem;
+  right: 0.75rem;
+  border-top: 2px solid;
+  border-right: 2px solid;
+  border-color: rgba(217, 119, 6, 0.65);
+}
+
+.gh-hud-bl {
+  bottom: 0.75rem;
+  left: 0.75rem;
+  border-bottom: 2px solid;
+  border-left: 2px solid;
+  border-color: rgba(217, 119, 6, 0.55);
+}
+
+.gh-hud-br {
+  bottom: 0.75rem;
+  right: 0.75rem;
+  border-bottom: 2px solid;
+  border-right: 2px solid;
+  border-color: rgba(59, 130, 246, 0.55);
+}

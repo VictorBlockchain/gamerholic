@@ -1,0 +1,36 @@
+{
+  "version": 1,
+  "canisters": {
+    "gh_backend": {
+      "type": "motoko",
+      "main": "canisters/backend/main.mo",
+      "declarations": {
+        "output": "src/declarations/gh_backend",
+        "node_compatibility": true
+      }
+    },
+    "gh_media": {
+      "type": "motoko",
+      "main": "canisters/media/media.mo",
+      "declarations": {
+        "output": "src/declarations/gh_media",
+        "node_compatibility": true
+      }
+    }
+  },
+  "networks": {
+    "local": {
+      "type": "ephemeral",
+      "bind": "127.0.0.1:4943"
+    },
+    "ic": {
+      "type": "persistent",
+      "providers": ["https://icp0.io"]
+    }
+  },
+  "defaults": {
+    "build": {
+      "packtool": ""
+    }
+  }
+}
