@@ -28,11 +28,15 @@ import {
   GhEmptyState,
   GhField,
   GhInput,
+  GhProcessModal,
   GhSurface,
   GhTextarea,
   ghToast,
+  processBeat,
 } from "@/components/ui";
+import { useProcessModal } from "@/hooks/use-process-modal";
 import { DEMO_GAMES } from "@/lib/chat/demo-data";
+import { teamHref } from "@/lib/deep-links";
 import {
   CONSOLES,
   DEMO_TEAMS,
@@ -50,6 +54,7 @@ import {
  * Teams hub — list, create (cover/avatar/console), manage invite + win split.
  */
 export function TeamsHub() {
+  const { processState, closeProcess, runProcess } = useProcessModal();
   const [teams, setTeams] = useState<Team[]>(DEMO_TEAMS);
   const [createOpen, setCreateOpen] = useState(false);
   const [manageId, setManageId] = useState<string | null>(DEMO_TEAMS[0]?.id ?? null);
@@ -100,16 +105,48 @@ export function TeamsHub() {
         },
       ],
     };
-    setTeams((prev) => [t, ...prev]);
-    setManageId(t.id);
-    setCreateOpen(false);
-    setName("");
-    setTag("");
-    setBio("");
-    ghToast({
-      title: "Team created",
-      description: `${t.name} [${t.tag}] · ${t.console}`,
-      type: "success",
+    void runProcess({
+      title: "Creating team",
+      description: "Setting up your squad roster.",
+      contextLine: `${t.name} [${t.tag}]`,
+      tone: "brand",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating name & tag",
+          detail: "Unique squad identity",
+        },
+        {
+          key: "create",
+          label: "Creating squad",
+          detail: "Captain seat · 100% split",
+        },
+        {
+          key: "done",
+          label: "Ready to invite",
+          detail: "Open manage panel",
+        },
+      ],
+      successTitle: "Team created",
+      successDetail: `${t.name} [${t.tag}] · ${t.console}`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        await processBeat(200);
+        setTeams((prev) => [t, ...prev]);
+        setManageId(t.id);
+        setCreateOpen(false);
+        setName("");
+        setTag("");
+        setBio("");
+        setStep(2);
+        ghToast({
+          title: "Team created",
+          description: `${t.name} [${t.tag}] · ${t.console}`,
+          type: "success",
+        });
+      },
     });
   };
 
@@ -137,18 +174,51 @@ export function TeamsHub() {
       earningsIcp: 0,
       record: "0–0",
     };
-    setTeams((prev) =>
-      prev.map((t) =>
-        t.id === managing.id
-          ? { ...t, members: [...t.members, member] }
-          : t,
-      ),
-    );
-    setInvite("");
-    ghToast({
-      title: "Invite sent",
-      description: `${member.username} · ${split}% of winnings`,
-      type: "info",
+    const teamId = managing.id;
+    void runProcess({
+      title: "Adding team member",
+      description: "Invite with win-split assignment.",
+      contextLine: `@${member.username} · ${split}% · ${managing.name}`,
+      tone: "live",
+      steps: [
+        {
+          key: "split",
+          label: "Checking win split",
+          detail: `Roster at ${others}% · adding ${split}%`,
+        },
+        {
+          key: "invite",
+          label: "Sending invite",
+          detail: "Roster update",
+        },
+        {
+          key: "done",
+          label: "Member added",
+          detail: "They appear on the squad list",
+        },
+      ],
+      successTitle: "Invite sent",
+      successDetail: `${member.username} · ${split}% of winnings`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        setTeams((prev) =>
+          prev.map((t) =>
+            t.id === teamId
+              ? { ...t, members: [...t.members, member] }
+              : t,
+          ),
+        );
+        setInvite("");
+        setStep(2);
+        await processBeat(200);
+        ghToast({
+          title: "Invite sent",
+          description: `${member.username} · ${split}% of winnings`,
+          type: "info",
+        });
+      },
     });
   };
 
@@ -527,7 +597,7 @@ export function TeamsHub() {
                         </Box>
                       </HStack>
                       <HStack gap="2" flexWrap="wrap">
-                        <Link href={`/teams/${t.id}`}>
+                        <Link href={teamHref(t.id)}>
                           <GhButton
                             size="sm"
                             variant="primary"
@@ -585,7 +655,7 @@ export function TeamsHub() {
                     {totalSplit(managing.members)}%
                   </Text>
                 </Box>
-                <Link href={`/teams/${managing.id}`}>
+                <Link href={teamHref(managing.id)}>
                   <GhButton size="sm" variant="outline" rightIcon={<ArrowRight size={14} />}>
                     Full page
                   </GhButton>
@@ -684,6 +754,8 @@ export function TeamsHub() {
           )}
         </Box>
       </Grid>
+
+      <GhProcessModal state={processState} onClose={closeProcess} />
     </VStack>
   );
 }

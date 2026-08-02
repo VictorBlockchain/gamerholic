@@ -69,6 +69,46 @@ export function rowToGamerProfile(row: GhProfileRow): GamerProfile {
 }
 
 /**
+ * Resolve avatar URLs for usernames (challenge cards / VS seats).
+ * Keys are lowercase usernames → avatar_url.
+ */
+export async function fetchAvatarMapByUsernames(
+  usernames: string[],
+): Promise<Record<string, string>> {
+  const names = [
+    ...new Set(
+      usernames
+        .map((u) => u.trim())
+        .filter((u) => u.length > 0),
+    ),
+  ];
+  if (!names.length || !isSupabaseConfigured()) return {};
+  const sb = getSupabase();
+  if (!sb) return {};
+  try {
+    const { data, error } = await sb
+      .from(GH_TABLES.profiles)
+      .select("username, avatar_url")
+      .in("username", names);
+    if (error || !data) return {};
+    const out: Record<string, string> = {};
+    for (const row of data as { username?: string; avatar_url?: string }[]) {
+      const u = String(row.username || "").trim();
+      const a = String(row.avatar_url || "").trim();
+      if (u && a) out[u.toLowerCase()] = a;
+    }
+    // Case-insensitive fill for query variants
+    for (const n of names) {
+      const hit = out[n.toLowerCase()];
+      if (hit) out[n.toLowerCase()] = hit;
+    }
+    return out;
+  } catch {
+    return {};
+  }
+}
+
+/**
  * Load profile for principal. Returns empty shell if missing (first login).
  */
 export async function fetchProfileByPrincipal(

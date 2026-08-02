@@ -34,7 +34,6 @@ import { BetableMarketsSection } from "@/components/home/betable-markets-section
 import { AttributesCurrencyRow } from "@/components/home/attributes-currency-row";
 import { GhBadge, GhButton, GhSurface, SectionDivider } from "@/components/ui";
 import { MatchCard } from "@/components/cards/match-card";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import { CountUp } from "@/components/spectacle/count-up";
 import { ART } from "@/lib/art";
 
@@ -42,33 +41,28 @@ import { ART } from "@/lib/art";
 const VALUE_STRIP = [
   {
     icon: DollarSign,
-    t: "Hosts earn ICP",
-    d: "Tournament fees & room takes when events settle.",
+    t: "Host Tourny",
   },
   {
     icon: Eye,
-    t: "Monitor challenges · earn $$",
-    d: "Watch matches, report scores, settle disputes — get paid.",
+    t: "Game Monitor",
   },
   {
     icon: Joystick,
-    t: "Arcade bank",
-    d: "Post a score. Get paid when challengers fail.",
+    t: "Arcade Games",
   },
   {
     icon: Crosshair,
     t: "XFTs that fight",
-    d: "Attribute tokens turn Dexsta collectibles into battlers.",
+    d: "XFTs = NFT 2.0",
   },
   {
     icon: Swords,
-    t: "Heads-up stakes",
-    d: "1v1 escrow matches — deposit, play, claim.",
+    t: "Heads-Up",
   },
   {
     icon: Shield,
     t: "Non-custodial",
-    d: "ICP on Internet Computer. Wallet is your ID.",
   },
 ] as const;
 
@@ -295,12 +289,16 @@ export function HomeView() {
             xl: "repeat(6, 1fr)",
           }}
         >
-          {VALUE_STRIP.map(({ icon: Icon, t, d }, i) => (
+          {VALUE_STRIP.map((item, i) => {
+            const Icon = item.icon;
+            const t = item.t;
+            const d = "d" in item ? item.d : undefined;
+            return (
             <Flex
               key={t}
               gap="phi2"
               p="phi3"
-              align="flex-start"
+              align={d ? "flex-start" : "center"}
               borderTopWidth={{ base: i > 0 ? "1px" : "0", sm: "0" }}
               borderLeftWidth={{
                 base: "0",
@@ -331,17 +329,16 @@ export function HomeView() {
                 >
                   {t}
                 </Text>
-                <Text fontSize="xs" color="fg.muted" mt="1" lineHeight="1.45">
-                  {d}
-                </Text>
+                {d ? (
+                  <Text fontSize="xs" color="fg.muted" mt="0.5" lineHeight="1.4">
+                    {d}
+                  </Text>
+                ) : null}
               </Box>
             </Flex>
-          ))}
+            );
+          })}
         </Grid>
-      </Box>
-
-      <Box className="gh-home-section">
-        <LiveTicker />
       </Box>
 
       {/* ── Free Tournament + Community Vault (before Why) ── */}
@@ -674,7 +671,7 @@ export function HomeView() {
         <FeaturePanel
           image={ART.headsUp}
           tone="live"
-          kicker="03 · Monitor challenges · earn $$"
+          kicker="03 · Game Monitor"
           title="Watch the match. Cash the call."
           sell="Monitors (referees) watch heads-up and bracket matches, report the score, and settle disputes when players disagree — earn a fee for fair outcomes. Same role as legacy Gamerholic BaseReferee, first-class on the dashboard."
           points={[

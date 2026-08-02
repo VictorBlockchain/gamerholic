@@ -26,7 +26,6 @@ import {
   Gamepad2,
   ChartCandlestick,
   Joystick,
-  RefreshCw,
   Sparkles,
 } from "lucide-react";
 import {
@@ -40,23 +39,18 @@ import {
   GhSurface,
   GhTooltip,
   SectionDivider,
-  ghToast,
 } from "@/components/ui";
 import { MatchCard } from "@/components/cards/match-card";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import { useSession } from "@/components/providers/session-context";
 import { useChat } from "@/components/chat/chat-context";
-import type { ChatUser } from "@/lib/chat/types";
+import { excludeSelfChatUsers, type ChatUser } from "@/lib/chat/types";
 import { chatBackendLabel } from "@/lib/chat/chat-service";
 import { ChallengeQuickForm } from "./challenge-quick-form";
 import { MyArenaPanel } from "./my-arena-panel";
 import { MyMarketsSection } from "./my-markets-section";
 import {
   GameFilterBar,
-  collectGamesFromRooms,
   collectGamesFromUsers,
-  roomMatchesGame,
-  sortRoomsByGameFilter,
   sortUsersByGameFilter,
   userMatchesGame,
   type GameFilterValue,
@@ -69,13 +63,17 @@ import {
   formatWhen,
   tournamentKindLabel,
 } from "@/lib/tournaments";
-import { listRoomsFromCanister, listRoomsFromMirror } from "@/lib/ic/room-service";
-import type { EsportsRoom } from "@/lib/rooms";
 import { listDiscoveryUsers } from "@/lib/ic/gamer-service";
 import { startPresenceHeartbeat } from "@/lib/ic/presence-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
 import { useGhEventStream } from "@/hooks/use-gh-event-stream";
 import { GH_TABLES } from "@/lib/supabase/tables";
+import { tournamentHref, arcadePlayHref } from "@/lib/deep-links";
+import {
+  listPlayerArcadeLeaderboardGames,
+  type PlayerArcadeBoardGame,
+} from "@/lib/arcade/store";
+import { resolveArcadeCoverUrl } from "@/lib/arcade/cover";
 
 type SortKey = "date" | "game" | "title" | "pot";
 
@@ -136,18 +134,19 @@ function toneBg(tone: "brand" | "prize" | "live" | "attr") {
  */
 export function DashboardView() {
   const { isLoggedIn, user, login, principal, profile } = useSession();
-  const { openDm, openRoom } = useChat();
+  const { openDm } = useChat();
   const [challengeOpen, setChallengeOpen] = useState(false);
   const [challengeTarget, setChallengeTarget] = useState<ChatUser | null>(null);
   const [query, setQuery] = useState("");
   const [sortBy, setSortBy] = useState<SortKey>("date");
   const [sortDir, setSortDir] = useState<"asc" | "desc">("asc");
   const [onlineGame, setOnlineGame] = useState<GameFilterValue>("all");
-  const [roomGame, setRoomGame] = useState<GameFilterValue>("all");
 
   const [online, setOnline] = useState<ChatUser[]>([]);
-  const [rooms, setRooms] = useState<EsportsRoom[]>([]);
   const [tournaments, setTournaments] = useState<TournamentDetail[]>([]);
+  const [myArcadeBoards, setMyArcadeBoards] = useState<PlayerArcadeBoardGame[]>(
+    [],
+  );
   const [loading, setLoading] = useState(true);
 
   const myGames = user?.games ?? profile?.games ?? [];
@@ -156,21 +155,13 @@ export function DashboardView() {
   const reload = useCallback(async () => {
     setLoading(true);
     try {
-      const [users, roomList, tourneys] = await Promise.all([
+      const [users, tourneys] = await Promise.all([
         listDiscoveryUsers(),
-        (async () => {
-          if (isCanisterConfigured()) {
-            const fromCanister = await listRoomsFromCanister();
-            if (fromCanister.length) return fromCanister;
-          }
-          return listRoomsFromMirror();
-        })(),
         isCanisterConfigured()
           ? listTournaments().catch(() => [] as TournamentDetail[])
           : Promise.resolve([] as TournamentDetail[]),
       ]);
       setOnline(users);
-      setRooms(roomList);
       setTournaments(tourneys);
     } finally {
       setLoading(false);
@@ -184,20 +175,46 @@ export function DashboardView() {
   useEffect(() => {
     if (!isLoggedIn) return;
     return startPresenceHeartbeat(() => {
-      const p = principal || user?.id;
+      const p = principal || user?.principal || user?.id;
       const name = profile?.username || user?.username || p;
       if (!p || !name) return null;
-      return { principal: p, username: name, game: user?.game };
+      return {
+        principal: p,
+        username: name,
+        game: user?.game || profile?.games?.[0],
+      };
     });
-  }, [isLoggedIn, principal, profile?.username, user]);
+  }, [isLoggedIn, principal, profile?.username, profile?.games, user]);
 
-  useGhEventStream({
-    channel: "gh-dashboard-rooms",
-    table: GH_TABLES.rooms,
-    onChange: () => {
-      void listRoomsFromMirror().then(setRooms);
-    },
-  });
+  // Poll online list — Realtime is best-effort; heartbeat window is 3 min
+  useEffect(() => {
+    const poll = () => {
+      void listDiscoveryUsers().then(setOnline);
+    };
+    poll();
+    const id = window.setInterval(poll, 20_000);
+    return () => window.clearInterval(id);
+  }, []);
+
+  // Arcade cabinets where current user is on the paid leaderboard
+  useEffect(() => {
+    if (!isLoggedIn) {
+      setMyArcadeBoards([]);
+      return;
+    }
+    let cancelled = false;
+    void listPlayerArcadeLeaderboardGames({
+      principal: principal || undefined,
+      username: profile?.username || user?.username || undefined,
+      limit: 12,
+    }).then((rows) => {
+      if (!cancelled) setMyArcadeBoards(rows);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, principal, profile?.username, user?.username]);
+
   useGhEventStream({
     channel: "gh-dashboard-presence",
     table: GH_TABLES.presence,
@@ -217,34 +234,28 @@ export function DashboardView() {
     () => collectGamesFromUsers(online),
     [online],
   );
-  const roomGameOptions = useMemo(
-    () => collectGamesFromRooms(rooms.map((r) => ({ game: r.game }))),
-    [rooms],
-  );
 
   const filteredOnline = useMemo(() => {
+    const withoutMe = excludeSelfChatUsers(online, {
+      id: user?.id,
+      principal: principal || user?.principal,
+      username: profile?.username || user?.username,
+    });
     const base =
       onlineGame === "all"
-        ? online
-        : online.filter((u) => userMatchesGame(u, onlineGame));
+        ? withoutMe
+        : withoutMe.filter((u) => userMatchesGame(u, onlineGame));
     return sortUsersByGameFilter(base, onlineGame, myGames);
-  }, [online, onlineGame, myGames]);
-
-  const filteredRooms = useMemo(() => {
-    const summaries = rooms.map((r) => ({
-      id: r.id,
-      name: r.name,
-      topic: r.topic,
-      members: r.membersCount,
-      live: r.live,
-      game: r.game,
-    }));
-    const base =
-      roomGame === "all"
-        ? summaries
-        : summaries.filter((r) => roomMatchesGame(r, roomGame));
-    return sortRoomsByGameFilter(base, roomGame, myGames);
-  }, [rooms, roomGame, myGames]);
+  }, [
+    online,
+    onlineGame,
+    myGames,
+    principal,
+    profile?.username,
+    user?.id,
+    user?.principal,
+    user?.username,
+  ]);
 
   const filteredTournaments = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -284,7 +295,6 @@ export function DashboardView() {
     }
   };
 
-  const liveRooms = rooms.filter((r) => r.live).length;
   const openTourneys = tournaments.filter(
     (t) => t.status === "open" || t.status === "checkin",
   ).length;
@@ -325,8 +335,8 @@ export function DashboardView() {
               Sign in to open your arena
             </Heading>
             <Text color="fg.muted" fontSize="sm" lineHeight="1.6">
-              Online users, rooms, tournaments, and your arena load from the
-              canister + Supabase when you connect Internet Identity.
+              Online users, tournaments, and your arena load from the canister +
+              Supabase when you connect Internet Identity.
             </Text>
             <GhButton variant="primary" size="lg" onClick={() => void login()}>
               Connect wallet
@@ -391,16 +401,11 @@ export function DashboardView() {
               </Text>
             </Heading>
             <Text fontSize="sm" color="fg.muted" mt="phi2" maxW="32rem" lineHeight="1.55">
-              Discover brackets, lobbies, and opponents — create challenges
-              in-page, host events, and jump into live rooms.
+              Win For A Living
             </Text>
             <HStack gap="2" mt="phi3" flexWrap="wrap">
               <GhBadge tone="prize">
                 <Trophy size={11} /> {filteredTournaments.length} brackets
-              </GhBadge>
-              <GhBadge tone="live">
-                <Hash size={11} /> {rooms.length} rooms
-                {liveRooms > 0 ? ` · ${liveRooms} live` : ""}
               </GhBadge>
               <GhBadge tone="brand">
                 <Wifi size={11} /> {filteredOnline.length} online
@@ -411,14 +416,15 @@ export function DashboardView() {
             </HStack>
           </Box>
           <HStack gap="2" flexShrink={0} flexWrap="wrap">
-            <GhButton
-              size="sm"
-              variant="outline"
-              leftIcon={<RefreshCw size={14} />}
-              onClick={() => void reload()}
-            >
-              Refresh
-            </GhButton>
+            <Link href="/community">
+              <GhButton
+                size="sm"
+                variant="outline"
+                leftIcon={<MessageCircle size={14} />}
+              >
+                Community
+              </GhButton>
+            </Link>
             <GhButton
               size="sm"
               variant="primary"
@@ -513,10 +519,6 @@ export function DashboardView() {
             );
           })}
         </Grid>
-      </Box>
-
-      <Box className="gh-home-section">
-        <LiveTicker label="Arena" />
       </Box>
 
       {/* ── My arena ── */}
@@ -654,7 +656,7 @@ export function DashboardView() {
                   {filteredTournaments.map((t) => (
                     <Link
                       key={t.id}
-                      href={`/tournaments/${encodeURIComponent(t.id)}`}
+                      href={tournamentHref(t.id)}
                       style={{ textDecoration: "none" }}
                     >
                       <MatchCard
@@ -696,171 +698,6 @@ export function DashboardView() {
             </Box>
 
             <MyMarketsSection />
-
-            {/* Chatrooms */}
-            <Box
-              borderRadius="2xl"
-              borderWidth="1px"
-              borderColor="border.default"
-              bg="bg.glass"
-              backdropFilter="blur(16px)"
-              p={{ base: "phi3", md: "phi4" }}
-            >
-              <Flex
-                justify="space-between"
-                align="center"
-                mb="phi3"
-                gap="phi2"
-                flexWrap="wrap"
-              >
-                <HStack gap="2">
-                  <Box
-                    w="9"
-                    h="9"
-                    borderRadius="lg"
-                    bg="live.muted"
-                    color="live.fg"
-                    borderWidth="1px"
-                    borderColor="live.solid"
-                    display="flex"
-                    alignItems="center"
-                    justifyContent="center"
-                  >
-                    <Hash size={16} />
-                  </Box>
-                  <Box>
-                    <Text
-                      fontFamily="heading"
-                      fontWeight="extrabold"
-                      fontSize="md"
-                      letterSpacing="0.02em"
-                    >
-                      Chatrooms
-                    </Text>
-                    <Text fontSize="xs" color="fg.muted">
-                      Group lobbies · pots · live chat
-                    </Text>
-                  </Box>
-                  <GhBadge tone="live">{filteredRooms.length}</GhBadge>
-                </HStack>
-                <Link href="/create?type=room">
-                  <GhButton size="sm" variant="live" leftIcon={<Plus size={14} />}>
-                    Host room
-                  </GhButton>
-                </Link>
-              </Flex>
-              <Box mb="phi3">
-                <GameFilterBar
-                  games={roomGameOptions}
-                  value={roomGame}
-                  onChange={setRoomGame}
-                  myGames={myGames}
-                  label="Filter rooms by game"
-                />
-              </Box>
-              {filteredRooms.length === 0 ? (
-                <GhEmptyState
-                  icon={Hash}
-                  title="No rooms yet"
-                  description="Create a room from Host booth — it appears here live."
-                />
-              ) : (
-                <VStack align="stretch" gap="phi2">
-                  {filteredRooms.map((room) => (
-                    <GhSurface
-                      key={room.id}
-                      variant="elevated"
-                      p="phi3"
-                      borderColor={room.live ? "live.solid" : "border.default"}
-                      _hover={{
-                        borderColor: "live.solid",
-                        boxShadow: "glow",
-                        transform: "translateY(-1px)",
-                      }}
-                      transition="all 0.15s ease"
-                    >
-                      <Flex
-                        justify="space-between"
-                        align={{ base: "flex-start", sm: "center" }}
-                        gap="phi2"
-                        direction={{ base: "column", sm: "row" }}
-                      >
-                        <HStack gap="phi2" minW="0" align="flex-start" flex="1">
-                          <Box
-                            w="8"
-                            h="8"
-                            borderRadius="lg"
-                            bg="live.muted"
-                            color="live.fg"
-                            display="flex"
-                            alignItems="center"
-                            justifyContent="center"
-                            flexShrink={0}
-                          >
-                            <Hash size={14} />
-                          </Box>
-                          <Box minW="0">
-                            <HStack gap="2" mb="1" flexWrap="wrap">
-                              <Text
-                                fontFamily="heading"
-                                fontWeight="bold"
-                                fontSize="sm"
-                              >
-                                #{room.name}
-                              </Text>
-                              {room.live ? (
-                                <GhBadge tone="live" pulse>
-                                  Live
-                                </GhBadge>
-                              ) : null}
-                              {room.game ? (
-                                <GhBadge tone="muted">{room.game}</GhBadge>
-                              ) : null}
-                            </HStack>
-                            <Text fontSize="xs" color="fg.muted" lineClamp={2}>
-                              {room.topic || "Open lobby"}
-                            </Text>
-                            <Text fontSize="2xs" color="fg.subtle" mt="1">
-                              <Users
-                                size={10}
-                                style={{ display: "inline", marginRight: 4 }}
-                              />
-                              {room.members} members
-                            </Text>
-                          </Box>
-                        </HStack>
-                        <HStack gap="2" flexWrap="wrap">
-                          <Link href={`/chat/${encodeURIComponent(room.id)}`}>
-                            <GhButton
-                              size="sm"
-                              variant="primary"
-                              leftIcon={<Hash size={14} />}
-                            >
-                              Open room
-                            </GhButton>
-                          </Link>
-                          <GhButton
-                            size="sm"
-                            variant="soft"
-                            leftIcon={<MessageCircle size={14} />}
-                            onClick={() => {
-                              openRoom({ id: room.id, name: room.name });
-                              ghToast({
-                                title: `Joined #${room.name}`,
-                                description: "Dock chat opened",
-                                type: "info",
-                              });
-                            }}
-                          >
-                            Quick chat
-                          </GhButton>
-                        </HStack>
-                      </Flex>
-                    </GhSurface>
-                  ))}
-                </VStack>
-              )}
-            </Box>
 
             <SectionDivider label="Challenge" tone="brand" my="0" />
 
@@ -949,11 +786,22 @@ export function DashboardView() {
                   label="Filter by game"
                 />
               </Box>
-              <VStack align="stretch" gap="0" maxH="28rem" overflowY="auto">
+
+              {/* Online — compact inline rows, fixed height + hidden scroll */}
+              <Box
+                maxH="16rem"
+                overflowY="auto"
+                className="gh-scroll-hide"
+                css={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  "&::-webkit-scrollbar": { display: "none" },
+                }}
+              >
                 {filteredOnline.length === 0 ? (
-                  <Box p="phi4">
-                    <Text fontSize="sm" color="fg.muted" lineHeight="1.5">
-                      No one online yet. Presence uses Supabase{" "}
+                  <Box p="phi3">
+                    <Text fontSize="xs" color="fg.muted" lineHeight="1.5">
+                      No one online. Sign in to heartbeat{" "}
                       <Text as="span" fontFamily="mono" fontSize="2xs">
                         gh_presence
                       </Text>
@@ -961,30 +809,31 @@ export function DashboardView() {
                     </Text>
                   </Box>
                 ) : (
-                  filteredOnline.map((u, i) => (
-                    <Box
-                      key={u.id}
-                      px="phi3"
-                      py="phi3"
-                      borderTopWidth={i === 0 ? 0 : "1px"}
-                      borderColor="border.default"
-                      bg={i % 2 === 0 ? "transparent" : "whiteAlpha.50"}
-                      transition="background 0.12s"
-                      _hover={{ bg: "brand.muted" }}
-                    >
-                      <HStack gap="2" mb="2">
-                        <Box position="relative">
+                  <VStack align="stretch" gap="0">
+                    {filteredOnline.map((u, i) => (
+                      <HStack
+                        key={u.id}
+                        px="phi3"
+                        py="1.5"
+                        gap="2"
+                        borderTopWidth={i === 0 ? 0 : "1px"}
+                        borderColor="border.default"
+                        bg={i % 2 === 0 ? "transparent" : "whiteAlpha.40"}
+                        _hover={{ bg: "brand.muted" }}
+                        minH="2.75rem"
+                      >
+                        <Box position="relative" flexShrink={0}>
                           <GhAvatar
                             name={u.username}
-                            size="sm"
+                            size="xs"
                             src={u.avatarUrl}
                           />
                           <Box
                             position="absolute"
                             bottom="0"
                             right="0"
-                            w="2"
-                            h="2"
+                            w="1.5"
+                            h="1.5"
                             borderRadius="full"
                             bg={
                               u.status === "online"
@@ -995,7 +844,7 @@ export function DashboardView() {
                             borderColor="bg.elevated"
                           />
                         </Box>
-                        <Box minW="0">
+                        <Box minW="0" flex="1">
                           <Text
                             fontFamily="heading"
                             fontWeight="bold"
@@ -1005,44 +854,196 @@ export function DashboardView() {
                             @{u.username}
                           </Text>
                           <Text fontSize="2xs" color="fg.subtle" lineClamp={1}>
-                            {u.game || "—"} {u.record ? `· ${u.record}` : ""}
+                            {u.game || "—"}
+                            {u.record ? ` · ${u.record}` : ""}
                           </Text>
                         </Box>
+                        <HStack gap="0.5" flexShrink={0}>
+                          <GhTooltip content="Challenge">
+                            <GhButton
+                              size="xs"
+                              variant="primary"
+                              minW="7"
+                              h="7"
+                              px="1.5"
+                              onClick={() => {
+                                setChallengeTarget(u);
+                                setChallengeOpen(true);
+                              }}
+                            >
+                              <Swords size={11} />
+                            </GhButton>
+                          </GhTooltip>
+                          <GhTooltip content="Chat">
+                            <GhButton
+                              size="xs"
+                              variant="soft"
+                              minW="7"
+                              h="7"
+                              px="1.5"
+                              onClick={() => openDm(u)}
+                            >
+                              <MessageCircle size={11} />
+                            </GhButton>
+                          </GhTooltip>
+                          <GhTooltip content="Profile">
+                            <Link
+                              href={`/profile?u=${encodeURIComponent(u.username)}`}
+                            >
+                              <GhButton
+                                size="xs"
+                                variant="outline"
+                                minW="7"
+                                h="7"
+                                px="1.5"
+                              >
+                                <User size={11} />
+                              </GhButton>
+                            </Link>
+                          </GhTooltip>
+                        </HStack>
                       </HStack>
-                      <HStack gap="1">
-                        <GhTooltip content="Challenge">
-                          <GhButton
-                            size="sm"
-                            variant="primary"
-                            onClick={() => {
-                              setChallengeTarget(u);
-                              setChallengeOpen(true);
-                            }}
-                          >
-                            <Swords size={12} />
-                          </GhButton>
-                        </GhTooltip>
-                        <GhTooltip content="Chat">
-                          <GhButton
-                            size="sm"
-                            variant="soft"
-                            onClick={() => openDm(u)}
-                          >
-                            <MessageCircle size={12} />
-                          </GhButton>
-                        </GhTooltip>
-                        <Link
-                          href={`/profile?u=${encodeURIComponent(u.username)}`}
-                        >
-                          <GhButton size="sm" variant="outline">
-                            <User size={12} />
-                          </GhButton>
-                        </Link>
-                      </HStack>
-                    </Box>
-                  ))
+                    ))}
+                  </VStack>
                 )}
-              </VStack>
+              </Box>
+            </GhSurface>
+
+            {/* Arcade boards you're on */}
+            <GhSurface
+              variant="elevated"
+              p="0"
+              overflow="hidden"
+              borderColor="attr.solid"
+              mt="phi3"
+            >
+              <HStack
+                px="phi3"
+                py="phi3"
+                borderBottomWidth="1px"
+                borderColor="border.default"
+                justify="space-between"
+                bg="whiteAlpha.50"
+              >
+                <HStack gap="2">
+                  <Box
+                    w="8"
+                    h="8"
+                    borderRadius="lg"
+                    bg="attr.muted"
+                    color="attr.fg"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                  >
+                    <Joystick size={14} />
+                  </Box>
+                  <Box>
+                    <Text
+                      fontFamily="heading"
+                      fontWeight="extrabold"
+                      fontSize="sm"
+                    >
+                      My arcade boards
+                    </Text>
+                    <Text fontSize="2xs" color="fg.subtle">
+                      Cabinets where you rank on the paid board
+                    </Text>
+                  </Box>
+                </HStack>
+                <Link href="/arcade">
+                  <GhBadge tone="attr">Arcade</GhBadge>
+                </Link>
+              </HStack>
+              <Box
+                maxH="14rem"
+                overflowY="auto"
+                className="gh-scroll-hide"
+                css={{
+                  scrollbarWidth: "none",
+                  msOverflowStyle: "none",
+                  "&::-webkit-scrollbar": { display: "none" },
+                }}
+              >
+                {!isLoggedIn ? (
+                  <Box p="phi3">
+                    <Text fontSize="xs" color="fg.muted">
+                      Sign in to see cabinets you rank on.
+                    </Text>
+                  </Box>
+                ) : myArcadeBoards.length === 0 ? (
+                  <Box p="phi3">
+                    <Text fontSize="xs" color="fg.muted" lineHeight="1.5">
+                      No paid leaderboard placements yet. Insert on a cabinet to
+                      rank.
+                    </Text>
+                    <Link href="/arcade">
+                      <Text
+                        fontSize="xs"
+                        color="attr.fg"
+                        fontWeight="bold"
+                        mt="2"
+                      >
+                        Browse arcade →
+                      </Text>
+                    </Link>
+                  </Box>
+                ) : (
+                  <VStack align="stretch" gap="0">
+                    {myArcadeBoards.map((row, i) => (
+                      <Link
+                        key={row.gameId}
+                        href={arcadePlayHref(row.gameId)}
+                        style={{ textDecoration: "none", color: "inherit" }}
+                      >
+                        <HStack
+                          px="phi3"
+                          py="2"
+                          gap="2"
+                          borderTopWidth={i === 0 ? 0 : "1px"}
+                          borderColor="border.default"
+                          _hover={{ bg: "attr.muted" }}
+                        >
+                          <Box
+                            w="9"
+                            h="9"
+                            borderRadius="md"
+                            overflow="hidden"
+                            flexShrink={0}
+                            bg="blackAlpha.500"
+                          >
+                            {/* eslint-disable-next-line @next/next/no-img-element */}
+                            <img
+                              src={resolveArcadeCoverUrl(row.imageUrl)}
+                              alt=""
+                              style={{
+                                width: "100%",
+                                height: "100%",
+                                objectFit: "cover",
+                              }}
+                            />
+                          </Box>
+                          <Box minW="0" flex="1">
+                            <Text
+                              fontFamily="heading"
+                              fontWeight="bold"
+                              fontSize="xs"
+                              lineClamp={1}
+                            >
+                              {row.title}
+                            </Text>
+                            <Text fontSize="2xs" color="fg.subtle">
+                              Best {row.bestScore.toLocaleString()}
+                              {row.rank != null ? ` · #${row.rank}` : ""}
+                            </Text>
+                          </Box>
+                          <Joystick size={12} style={{ opacity: 0.55 }} />
+                        </HStack>
+                      </Link>
+                    ))}
+                  </VStack>
+                )}
+              </Box>
             </GhSurface>
           </Box>
         </Grid>

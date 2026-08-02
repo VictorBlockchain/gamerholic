@@ -162,7 +162,7 @@ export default function HostPage() {
               : "Pot TBD"
           }
           status={r.live ? "live" : "open"}
-          players={`${r.membersCount}/${r.maxMembers}`}
+          players={`${r.membersCount} members`}
           hostEarn="Room host"
           username={r.host?.username || r.creatorId}
         />,
@@ -177,7 +177,7 @@ export default function HostPage() {
         mode="host"
         icon={Clapperboard}
         title="Take your cut — run the arena"
-        description="Tournaments and game rooms pay the host. Set fees, fill seats, settle on-chain. You're the director, not just another entrant."
+        description="Tournaments and community rooms pay the host. Create a room, then group games with seats & pots. Settle on-chain — you're the director."
         badge="Host-to-earn"
         action={
           <HStack gap="2" flexWrap="wrap">

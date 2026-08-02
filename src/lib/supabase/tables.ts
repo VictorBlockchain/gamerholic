@@ -31,8 +31,10 @@ export const GH_TABLES = {
   tournamentEntrants: "gh_tournament_entrants",
   /** Teams */
   teams: "gh_teams",
-  /** Esports chatrooms / group rooms */
+  /** Esports chatrooms / group rooms (match lobbies) */
   rooms: "gh_rooms",
+  /** Community chat channels (global / game / user-created) */
+  communityRooms: "gh_community_rooms",
   /** Gamer profiles (username / avatar cache) */
   profiles: "gh_profiles",
   /** Sync cursor / health log */
@@ -57,5 +59,6 @@ export const GH_REALTIME_TABLES: GhTableName[] = [
   GH_TABLES.tournaments,
   GH_TABLES.presence,
   GH_TABLES.rooms,
+  GH_TABLES.communityRooms,
   GH_TABLES.arcadeSessions,
 ];

@@ -102,7 +102,7 @@ export async function loadTournament(
   if (!info) return null;
   const t = mapTournament(id, info);
   setTournamentCache(t);
-  await mirrorTournament(t).catch(() => undefined);
+  // Do not mirror on read — Realtime + detail reload would loop.
   return t;
 }
 
@@ -169,6 +169,23 @@ export async function joinTournament(
 ): Promise<boolean> {
   const actor = await requireActor(identity);
   if (!actor) return false;
+
+  // Debit entry fee → tournament escrow before seat
+  const existing = await loadTournament(id, identity);
+  if (existing && existing.entryFeeIcp > 0) {
+    const { debitTournamentEntry } = await import("./settlement-service");
+    const funded = await debitTournamentEntry(
+      id,
+      existing.entryFeeIcp,
+      identity,
+    );
+    if (!funded) {
+      throw new Error(
+        "ICP debit failed — deposit entry fee to your play subaccount first",
+      );
+    }
+  }
+
   const ok = await actor.joinTournament(id, player);
   if (!ok) return false;
 
@@ -384,12 +401,61 @@ export async function claimTournamentSolo(
     await markTournamentBetableSettled(tournamentId, t.hostUsername, true, identity);
   }
 
-  return actor.claimTournament(
+  const claimed = await actor.claimTournament(
     tournamentId,
     icpToE8s(potIcp),
     winner,
     BigInt(0),
   );
+  if (!claimed) return false;
+
+  // Native ICP: winner + tournament host play subs + platform + vault (+ optional mod)
+  if (potIcp > 0 && t) {
+    try {
+      const { distributeTournamentPrize } = await import("./settlement-service");
+      // Prefer principal-shaped addresses; host may be username — skip host cut if invalid
+      let hostPrincipal = "";
+      let winnerPrincipal = winner;
+      try {
+        // Validate principal text
+        const { Principal } = await import("@dfinity/principal");
+        Principal.fromText(winner);
+        winnerPrincipal = winner;
+      } catch {
+        /* winner may be username — distribution needs II principal from caller identity */
+        const id = identity;
+        if (id) {
+          winnerPrincipal = id.getPrincipal().toText();
+        }
+      }
+      try {
+        const { Principal } = await import("@dfinity/principal");
+        Principal.fromText(t.hostUsername);
+        hostPrincipal = t.hostUsername;
+      } catch {
+        /* host username — best-effort: use winner principal skip host */
+      }
+      if (winnerPrincipal && hostPrincipal) {
+        await distributeTournamentPrize({
+          tournamentId,
+          winners: [{ principal: winnerPrincipal, poolBps: 10_000 }],
+          hostPrincipal,
+          identity,
+        });
+      } else if (winnerPrincipal) {
+        // Still attempt with host = winnerPrincipal only if host principal missing (no host cut if same)
+        await distributeTournamentPrize({
+          tournamentId,
+          winners: [{ principal: winnerPrincipal, poolBps: 10_000 }],
+          hostPrincipal: winnerPrincipal,
+          identity,
+        });
+      }
+    } catch (e) {
+      console.warn("[tournament] native distribute", e);
+    }
+  }
+  return true;
 }
 
 /**

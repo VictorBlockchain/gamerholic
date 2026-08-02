@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
+import Link from "next/link";
 import {
   Box,
   Flex,
@@ -260,10 +261,15 @@ export default function ModeratorPage() {
         badge="Monitor · earn"
         action={
           isLoggedIn ? (
-            <HStack gap="2">
+            <HStack gap="2" flexWrap="wrap">
               <GhBadge tone={prefs.available ? "live" : "muted"} pulse={prefs.available}>
                 {prefs.available ? "Available" : "Offline"}
               </GhBadge>
+              <Link href="/moderator/console">
+                <GhButton size="sm" variant="soft" leftIcon={<Shield size={14} />}>
+                  Admin console
+                </GhButton>
+              </Link>
             </HStack>
           ) : (
             <GhButton variant="primary" onClick={() => void login()}>

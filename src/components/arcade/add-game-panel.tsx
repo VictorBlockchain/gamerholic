@@ -13,10 +13,13 @@ import {
   GhButton,
   GhField,
   GhInput,
+  GhProcessModal,
   GhSurface,
   GhTextarea,
   ghToast,
+  processBeat,
 } from "@/components/ui";
+import { useProcessModal } from "@/hooks/use-process-modal";
 import { useSession } from "@/components/providers/session-context";
 import { saveArcadeGameAsync, type ArcadeGame } from "@/lib/arcade/store";
 import type { PlayFeeToken } from "@/lib/arcade/types";
@@ -37,21 +40,21 @@ import {
   ARCADE_COVER_SIZE,
 } from "@/lib/art";
 import {
+  assertCoverPersistable,
+  fileToArcadeCoverDataUrl,
+  isArcadePresetCover,
+  resolveArcadeCoverUrl,
+} from "@/lib/arcade/cover";
+import {
   GamePreview,
   type PreviewIntegrationStatus,
 } from "@/components/arcade/game-preview";
-
-
 
 type Props = {
   open: boolean;
   onClose: () => void;
   onSaved: (g: ArcadeGame, storedOn?: "supabase" | "local") => void;
 };
-
-function isPresetCover(url: string) {
-  return ARCADE_COVER_PRESETS.some((p) => p.src === url);
-}
 
 const selectStyle: CSSProperties = {
   width: "100%",
@@ -72,6 +75,7 @@ const DEFAULT_RULES =
  */
 export function AddGamePanel({ open, onClose, onSaved }: Props) {
   const { profile, principal } = useSession();
+  const { processState, closeProcess, runProcess } = useProcessModal();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
   const [rules, setRules] = useState(DEFAULT_RULES);
@@ -94,11 +98,22 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
 
   const onImage = async (file?: File | null) => {
     if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      if (typeof reader.result === "string") setImageUrl(reader.result);
-    };
-    reader.readAsDataURL(file);
+    try {
+      // Resize/compress so the cover actually persists in gh_arcade_games.image_url
+      const dataUrl = await fileToArcadeCoverDataUrl(file);
+      setImageUrl(dataUrl);
+      ghToast({
+        title: "Cover ready",
+        description: `${ARCADE_COVER_SIZE.label} JPEG — will save with the cabinet`,
+        type: "success",
+      });
+    } catch (e) {
+      ghToast({
+        title: "Cover upload failed",
+        description: e instanceof Error ? e.message : "Could not process image",
+        type: "error",
+      });
+    }
   };
 
   const submit = async () => {
@@ -162,67 +177,104 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
     const code = rawCode || neonTapGameCode(t);
     const styles = normalizeArcadePaste(css, "css") || neonTapCss();
 
-    setBusy(true);
-    try {
-      if (!isSupabaseConfigured()) {
-        ghToast({
-          title: "Supabase required",
-          description:
-            "Arcade cabinets (including game code) save to Supabase only — not localStorage.",
-          type: "error",
-        });
-        return;
-      }
-      const result = await saveArcadeGameAsync({
-        title: t,
-        description: description.trim() || "Phaser 3 arcade game",
-        rules: rules.trim(),
-        imageUrl: imageUrl || ARCADE_COVER_DEFAULT,
-        css: styles,
-        gameCode: code,
-        playFee: fee,
-        playFeeToken,
-        payoutTopN,
-        playTimeSec: Math.round(mins * 60),
-        creator: profile?.username || "player",
-        creatorPrincipal: principal || profile?.principal || "",
-        // Dexsta integration muted for now — re-enable with SHOW_DEXSTA_FIELDS
-        linkedLabelId: 0,
-        acceptedGameAssets: [],
-      });
-      if (!result.game || result.storedOn !== "supabase") {
-        ghToast({
-          title: "Save failed",
-          description:
-            ("error" in result && result.error) ||
-            "Could not write cabinet to Supabase.",
-          type: "error",
-        });
-        return;
-      }
-      onSaved(result.game, "supabase");
-      setTitle("");
-      setDescription("");
-      setCss("");
-      setGameCode("");
-      setPreviewStatus(null);
-      setForcePublish(false);
+    if (!isSupabaseConfigured()) {
       ghToast({
-        title: "Saved to Supabase",
-        description: "Title, cover, CSS, and gameCode stored in gh_arcade_games.",
-        type: "success",
+        title: "Supabase required",
+        description:
+          "Arcade cabinets (including game code) save to Supabase only — not localStorage.",
+        type: "error",
       });
-      if (!previewStatus?.ok) {
-        ghToast({
-          title: "Submitted without verified preview",
-          description:
-            "Cabinet is in testing — insert real coins on the play page and fix bugs before upvotes.",
-          type: "info",
-        });
-      }
-    } finally {
-      setBusy(false);
+      return;
     }
+    const cover = resolveArcadeCoverUrl(imageUrl);
+    try {
+      assertCoverPersistable(cover);
+    } catch (e) {
+      ghToast({
+        title: "Cover not saved",
+        description:
+          e instanceof Error ? e.message : "Pick a preset or re-upload cover",
+        type: "error",
+      });
+      return;
+    }
+
+    setBusy(true);
+    await runProcess({
+      title: "Publishing arcade cabinet",
+      description: "Saving title, cover, CSS, and game code to Supabase.",
+      contextLine: t,
+      tone: "attr",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating game code",
+          detail: "Phaser boot · cover ready",
+        },
+        {
+          key: "save",
+          label: "Writing to Supabase",
+          detail: "gh_arcade_games",
+        },
+        {
+          key: "done",
+          label: "Cabinet ready",
+          detail: "Community testing mode",
+        },
+      ],
+      successTitle: "Saved to Supabase",
+      successDetail: "Title, cover, CSS, and gameCode stored.",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const result = await saveArcadeGameAsync({
+          title: t,
+          description: description.trim() || "Phaser 3 arcade game",
+          rules: rules.trim(),
+          imageUrl: cover,
+          css: styles,
+          gameCode: code,
+          playFee: fee,
+          playFeeToken,
+          payoutTopN,
+          playTimeSec: Math.round(mins * 60),
+          creator: profile?.username || "player",
+          creatorPrincipal: principal || profile?.principal || "",
+          linkedLabelId: 0,
+          acceptedGameAssets: [],
+        });
+        if (!result.game || result.storedOn !== "supabase") {
+          throw new Error(
+            ("error" in result && result.error) ||
+              "Could not write cabinet to Supabase.",
+          );
+        }
+        setStep(2);
+        onSaved(result.game, "supabase");
+        setTitle("");
+        setDescription("");
+        setCss("");
+        setGameCode("");
+        setPreviewStatus(null);
+        setForcePublish(false);
+        ghToast({
+          title: "Saved to Supabase",
+          description:
+            "Title, cover, CSS, and gameCode stored in gh_arcade_games.",
+          type: "success",
+        });
+        if (!previewStatus?.ok) {
+          ghToast({
+            title: "Submitted without verified preview",
+            description:
+              "Cabinet is in testing — insert real coins on the play page and fix bugs before upvotes.",
+            type: "info",
+          });
+        }
+      },
+    });
+    setBusy(false);
   };
 
   /** Force readable white text on dark panel (Chakra tokens can lose contrast). */
@@ -530,17 +582,19 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
                   onChange={(e) => void onImage(e.target.files?.[0])}
                 />
               </Box>
-              {!isPresetCover(imageUrl) && imageUrl ? (
+              {!isArcadePresetCover(imageUrl) && imageUrl ? (
                 <Text fontSize="xs" color="rgba(255,255,255,0.75)">
-                  Custom upload selected
-                  {imageUrl.startsWith("data:") ? " (this browser)" : ""}
+                  Custom cover ready
+                  {imageUrl.startsWith("data:")
+                    ? " · compressed for Supabase"
+                    : ""}
                 </Text>
               ) : (
                 <Text fontSize="xs" color="rgba(255,255,255,0.55)">
                   Or upload your own · best at {ARCADE_COVER_SIZE.label}
                 </Text>
               )}
-              {!isPresetCover(imageUrl) ? (
+              {!isArcadePresetCover(imageUrl) ? (
                 <GhButton
                   size="sm"
                   variant="outline"
@@ -843,6 +897,7 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
           </GhButton>
         </HStack>
       </VStack>
+      <GhProcessModal state={processState} onClose={closeProcess} />
     </GhSurface>
   );
 }

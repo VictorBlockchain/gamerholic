@@ -4,7 +4,6 @@ import Link from "next/link";
 import { Box, Grid, Text, VStack, HStack, SimpleGrid } from "@chakra-ui/react";
 import { ModeHeader } from "@/components/spectacle/mode-header";
 import { LoadoutRing } from "@/components/spectacle/loadout-ring";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import { GhBadge, GhButton, GhSurface, SectionDivider } from "@/components/ui";
 import { ATTRIBUTES } from "@/lib/attributes";
 import { Crosshair, Sparkles } from "lucide-react";
@@ -26,18 +25,6 @@ export default function AttributesPage() {
           </Link>
         }
       />
-
-      <Box mb="phi4">
-        <LiveTicker
-          label="Loadouts"
-          items={[
-            "Neon Fang equipped SPD 88 · ATK 81",
-            "Iron Chorus stacked DEF 92 · VIT 80",
-            "Attribute pack minted · PWR + LCK",
-            "Dexsta media #42 entered loadout board",
-          ]}
-        />
-      </Box>
 
       <Grid
         templateColumns={{ base: "1fr", lg: "1fr 1fr" }}

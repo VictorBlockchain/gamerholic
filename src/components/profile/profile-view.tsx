@@ -29,6 +29,7 @@ import {
   Snowflake,
   Swords,
   Trophy,
+  Upload,
   User,
   Wallet,
   X,
@@ -62,20 +63,35 @@ import {
 } from "@/lib/ic/dexsta-xft-service";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import {
+  AVATAR_OPTIONS,
   CONSOLES,
   COVER_OPTIONS,
   DEFAULT_PROFILE,
   DEMO_EARNINGS_SUMMARY,
+  PROFILE_AVATAR_SIZE,
   PROFILE_COVER_SIZE,
+  USERNAME_MAX_LENGTH,
   formatWhen,
+  getProfileCompleteness,
+  normalizeUsername,
   resolveProfileAvatarUrl,
   shortPrincipal,
   type BetableHistoryItem,
   type ConsoleId,
   type GamerProfile,
   type HeadsUpHistoryItem,
+  type ProfileMissingField,
   type TournamentHistoryItem,
 } from "@/lib/profile";
+import { fileToProfileAvatarDataUrl } from "@/lib/profile-avatar";
+
+const PROFILE_FIELD_ERRORS: Record<ProfileMissingField, string> = {
+  username: "Enter a username (max 13 characters, not your principal)",
+  gamertag: "Enter a gamertag",
+  game: "Pick at least one game",
+  console: "Select your console",
+  avatar: "Upload or choose an avatar",
+};
 
 /**
  * Full esports profile — cover, identity, stats, live history, XFTs.
@@ -86,6 +102,9 @@ export function ProfileView() {
   const p = profile ?? DEFAULT_PROFILE;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<GamerProfile>(p);
+  const [fieldErrors, setFieldErrors] = useState<
+    Partial<Record<ProfileMissingField, string>>
+  >({});
   const [stats, setStats] = useState<ArenaStats>({
     subaccountIcp: 0,
     headsUp: { wins: 0, losses: 0 },
@@ -187,28 +206,77 @@ export function ProfileView() {
 
   const startEdit = () => {
     setDraft(p);
+    setFieldErrors({});
     setEditing(true);
   };
 
   const cancelEdit = () => {
     setDraft(p);
+    setFieldErrors({});
     setEditing(false);
   };
 
+  const clearFieldError = (key: ProfileMissingField) => {
+    setFieldErrors((prev) => {
+      if (!prev[key]) return prev;
+      const next = { ...prev };
+      delete next[key];
+      return next;
+    });
+  };
+
   const save = async () => {
-    if (!draft.username.trim()) {
-      ghToast({ title: "Username required", type: "error" });
-      return;
-    }
+    const username = normalizeUsername(draft.username);
     const next: GamerProfile = {
       ...draft,
-      username: draft.username.trim(),
-      gamertag: draft.gamertag.trim() || draft.username.trim(),
+      username,
+      gamertag: draft.gamertag.trim() || username,
       bio: draft.bio.trim(),
       dexstaXftId: draft.dexstaXftId.trim(),
       dexstaXftContract: draft.dexstaXftContract.trim(),
       avatarUrl: draft.avatarUrl.trim(),
     };
+    if (draft.username.trim().length > USERNAME_MAX_LENGTH) {
+      setFieldErrors((prev) => ({
+        ...prev,
+        username: `Max ${USERNAME_MAX_LENGTH} characters`,
+      }));
+      ghToast({
+        title: "Username too long",
+        description: `Keep it to ${USERNAME_MAX_LENGTH} characters or fewer.`,
+        type: "error",
+      });
+      setEditing(true);
+      return;
+    }
+    const complete = getProfileCompleteness(next);
+    if (!complete.ok) {
+      const errs: Partial<Record<ProfileMissingField, string>> = {};
+      for (const m of complete.missing) {
+        errs[m] =
+          m === "username" && username.length > USERNAME_MAX_LENGTH
+            ? `Max ${USERNAME_MAX_LENGTH} characters`
+            : PROFILE_FIELD_ERRORS[m];
+      }
+      setFieldErrors(errs);
+      ghToast({
+        title: "Profile incomplete",
+        description: complete.message,
+        type: "error",
+      });
+      // Keep edit panel open and scroll to the first invalid field
+      setEditing(true);
+      const first = complete.missing[0];
+      if (first) {
+        requestAnimationFrame(() => {
+          document
+            .getElementById(`profile-field-${first}`)
+            ?.scrollIntoView({ behavior: "smooth", block: "center" });
+        });
+      }
+      return;
+    }
+    setFieldErrors({});
     await updateProfile(next);
     setEditing(false);
     const addr = next.principal || principal;
@@ -220,10 +288,47 @@ export function ProfileView() {
     ghToast({
       title: "Profile saved",
       description: isSupabaseConfigured()
-        ? "Saved to Supabase · games & identity drive match cards."
+        ? "Gamer card ready · you can send & accept challenges."
         : "Saved in session · configure Supabase for shared profiles.",
       type: "success",
     });
+  };
+
+  const onAvatarUpload = async (file?: File | null) => {
+    if (!file) return;
+    try {
+      const dataUrl = await fileToProfileAvatarDataUrl(file);
+      setDraft((d) => ({
+        ...d,
+        avatarUrl: dataUrl,
+        dexstaXftId: "",
+        dexstaXftContract: "",
+        avatarIsGameAsset: false,
+      }));
+      clearFieldError("avatar");
+      ghToast({
+        title: "Avatar ready",
+        description: `${PROFILE_AVATAR_SIZE.label} · saved when you hit Save profile`,
+        type: "success",
+      });
+    } catch (e) {
+      ghToast({
+        title: "Avatar upload failed",
+        description: e instanceof Error ? e.message : "Could not process image",
+        type: "error",
+      });
+    }
+  };
+
+  const selectPresetAvatar = (url: string) => {
+    setDraft((d) => ({
+      ...d,
+      avatarUrl: url,
+      dexstaXftId: "",
+      dexstaXftContract: "",
+      avatarIsGameAsset: false,
+    }));
+    clearFieldError("avatar");
   };
 
   const setAvatarFromXft = async (x: DexstaOwnedXft) => {
@@ -244,6 +349,7 @@ export function ProfileView() {
       };
       if (editing) {
         setDraft((d) => ({ ...d, ...patch }));
+        clearFieldError("avatar");
       } else {
         await updateProfile(patch);
         const addr = p.principal || principal;
@@ -282,6 +388,11 @@ export function ProfileView() {
 
   const patch = <K extends keyof GamerProfile>(key: K, value: GamerProfile[K]) => {
     setDraft((d) => ({ ...d, [key]: value }));
+    if (key === "username") clearFieldError("username");
+    if (key === "gamertag") clearFieldError("gamertag");
+    if (key === "console") clearFieldError("console");
+    if (key === "games") clearFieldError("game");
+    if (key === "avatarUrl" || key === "dexstaXftId") clearFieldError("avatar");
   };
 
   const selectedKey =
@@ -494,6 +605,36 @@ export function ProfileView() {
         </Box>
       </Box>
 
+      {/* Incomplete profile banner */}
+      {!editing && isLoggedIn && !getProfileCompleteness(p).ok ? (
+        <GhSurface variant="prize" p="phi4" borderColor="prize.solid">
+          <HStack gap="phi3" align="flex-start" flexWrap="wrap">
+            <Box flex="1" minW="12rem">
+              <Text
+                fontFamily="heading"
+                fontWeight="extrabold"
+                fontSize="md"
+                mb="1"
+              >
+                Finish your gamer card
+              </Text>
+              <Text fontSize="sm" color="fg.muted" lineHeight="1.55">
+                {getProfileCompleteness(p).message} You cannot send or accept
+                challenges until username, gamertag, game, console, and avatar
+                are set.
+              </Text>
+            </Box>
+            <GhButton
+              variant="prize"
+              leftIcon={<Pencil size={14} />}
+              onClick={startEdit}
+            >
+              Complete profile
+            </GhButton>
+          </HStack>
+        </GhSurface>
+      ) : null}
+
       {/* ── Edit panel (show/hide) ── */}
       {editing ? (
         <GhSurface variant="brand" p="phi4">
@@ -507,26 +648,67 @@ export function ProfileView() {
             Edit identity
           </Text>
           <VStack align="stretch" gap="phi3">
+            {Object.keys(fieldErrors).length > 0 ? (
+              <Box
+                px="phi3"
+                py="phi2"
+                borderRadius="xl"
+                borderWidth="1px"
+                borderColor="danger.solid"
+                bg="rgba(248,113,113,0.12)"
+              >
+                <Text fontSize="sm" color="danger.solid" fontWeight="bold">
+                  Fix highlighted fields to save
+                </Text>
+                <Text fontSize="xs" color="rgba(255,255,255,0.8)" mt="1">
+                  {Object.values(fieldErrors).join(" · ")}
+                </Text>
+              </Box>
+            ) : null}
+
             <HStack gap="phi2" flexWrap="wrap" align="flex-start">
-              <Box flex="1" minW="10rem">
-                <GhField label="Username" required tone="onDark">
+              <Box flex="1" minW="10rem" id="profile-field-username">
+                <GhField
+                  label="Username"
+                  required
+                  tone="onDark"
+                  helperText={
+                    fieldErrors.username
+                      ? undefined
+                      : `Max ${USERNAME_MAX_LENGTH} characters`
+                  }
+                  invalid={Boolean(fieldErrors.username)}
+                  errorText={fieldErrors.username}
+                >
                   <GhInput
                     value={draft.username}
-                    onChange={(e) => patch("username", e.target.value)}
+                    onChange={(e) =>
+                      patch(
+                        "username",
+                        e.target.value.slice(0, USERNAME_MAX_LENGTH),
+                      )
+                    }
                     onFocus={() => {
                       if (!draft.username.trim()) patch("username", "");
                     }}
                     placeholder="gamer"
+                    maxLength={USERNAME_MAX_LENGTH}
                     color="#fff"
+                    aria-invalid={Boolean(fieldErrors.username)}
                     style={{ color: "#fff", WebkitTextFillColor: "#fff" }}
                   />
                 </GhField>
               </Box>
-              <Box flex="1" minW="10rem">
+              <Box flex="1" minW="10rem" id="profile-field-gamertag">
                 <GhField
                   label="Gamertag"
-                  helperText="Display / invite tag"
+                  helperText={
+                    fieldErrors.gamertag ? undefined : "Display / invite tag"
+                  }
+                  required
                   tone="onDark"
+                  invalid={Boolean(fieldErrors.gamertag)}
+                  errorText={fieldErrors.gamertag}
                 >
                   <GhInput
                     value={draft.gamertag}
@@ -536,18 +718,34 @@ export function ProfileView() {
                     }}
                     placeholder="Gamer#0001"
                     color="#fff"
+                    aria-invalid={Boolean(fieldErrors.gamertag)}
                     style={{ color: "#fff", WebkitTextFillColor: "#fff" }}
                   />
                 </GhField>
               </Box>
-              <Box flex="1" minW="8rem">
-                <GhField label="Console">
+              <Box flex="1" minW="8rem" id="profile-field-console">
+                <GhField
+                  label="Console"
+                  required
+                  invalid={Boolean(fieldErrors.console)}
+                  errorText={fieldErrors.console}
+                >
                   <select
                     value={draft.console}
                     onChange={(e) =>
                       patch("console", e.target.value as ConsoleId)
                     }
-                    style={selectStyle}
+                    aria-invalid={Boolean(fieldErrors.console)}
+                    style={{
+                      ...selectStyle,
+                      ...(fieldErrors.console
+                        ? {
+                            border: "1px solid var(--gh-colors-danger-solid, #f87171)",
+                            boxShadow:
+                              "0 0 0 1px var(--gh-colors-danger-solid, #f87171)",
+                          }
+                        : null),
+                    }}
                   >
                     {CONSOLES.map((c) => (
                       <option key={c} value={c} style={{ background: "#16132a" }}>
@@ -571,6 +769,169 @@ export function ProfileView() {
                 style={{ color: "#fff", WebkitTextFillColor: "#fff" }}
               />
             </GhField>
+
+            {/* Avatar presets + upload */}
+            <Box
+              id="profile-field-avatar"
+              p={fieldErrors.avatar ? "phi3" : "0"}
+              borderRadius="xl"
+              borderWidth={fieldErrors.avatar ? "1px" : "0"}
+              borderColor={fieldErrors.avatar ? "danger.solid" : undefined}
+              bg={fieldErrors.avatar ? "rgba(248,113,113,0.08)" : undefined}
+            >
+              <HStack gap="2" mb="phi2">
+                <User size={14} color="var(--gh-colors-brand-fg)" />
+                <Text
+                  fontFamily="heading"
+                  fontSize="2xs"
+                  fontWeight="bold"
+                  letterSpacing="0.1em"
+                  textTransform="uppercase"
+                  color={fieldErrors.avatar ? "danger.solid" : "fg.subtle"}
+                >
+                  Gamer card avatar
+                </Text>
+                <GhBadge tone="brand">{PROFILE_AVATAR_SIZE.label}</GhBadge>
+                <GhBadge tone="muted">Required</GhBadge>
+              </HStack>
+              {fieldErrors.avatar ? (
+                <Text fontSize="xs" color="danger.solid" mb="phi2" fontWeight="bold">
+                  {fieldErrors.avatar}
+                </Text>
+              ) : (
+                <Text fontSize="xs" color="rgba(255,255,255,0.75)" mb="phi2">
+                  Pick a preset or upload your own square portrait. Required to
+                  challenge others.
+                </Text>
+              )}
+              <HStack gap="phi3" align="flex-start" flexWrap="wrap" mb="phi2">
+                <Box
+                  w="5.5rem"
+                  h="5.5rem"
+                  borderRadius="2xl"
+                  overflow="hidden"
+                  borderWidth="2px"
+                  borderColor={
+                    fieldErrors.avatar ? "danger.solid" : "border.brand"
+                  }
+                  bg="blackAlpha.600"
+                  flexShrink={0}
+                >
+                  {resolveProfileAvatarUrl(draft) ? (
+                    // eslint-disable-next-line @next/next/no-img-element
+                    <img
+                      src={resolveProfileAvatarUrl(draft)}
+                      alt=""
+                      style={{
+                        width: "100%",
+                        height: "100%",
+                        objectFit: "cover",
+                      }}
+                    />
+                  ) : (
+                    <Flex
+                      w="100%"
+                      h="100%"
+                      align="center"
+                      justify="center"
+                      color="fg.subtle"
+                    >
+                      <User size={28} />
+                    </Flex>
+                  )}
+                </Box>
+                <VStack align="flex-start" gap="2">
+                  <Box as="label" cursor="pointer">
+                    <Box
+                      as="span"
+                      display="inline-flex"
+                      alignItems="center"
+                      gap="1.5"
+                      px="3"
+                      py="1.5"
+                      borderRadius="full"
+                      bg="brand.solid"
+                      color="black"
+                      fontSize="sm"
+                      fontWeight="bold"
+                    >
+                      <Upload size={14} /> Upload avatar
+                    </Box>
+                    <input
+                      type="file"
+                      accept="image/*"
+                      hidden
+                      onChange={(e) => void onAvatarUpload(e.target.files?.[0])}
+                    />
+                  </Box>
+                  {draft.avatarUrl ? (
+                    <GhButton
+                      size="sm"
+                      variant="ghost"
+                      onClick={() =>
+                        setDraft((d) => ({
+                          ...d,
+                          avatarUrl: "",
+                          dexstaXftId: "",
+                          dexstaXftContract: "",
+                          avatarIsGameAsset: false,
+                        }))
+                      }
+                    >
+                      Clear avatar
+                    </GhButton>
+                  ) : null}
+                </VStack>
+              </HStack>
+              <Grid
+                templateColumns="repeat(auto-fill, minmax(4.25rem, 1fr))"
+                gap="2"
+              >
+                {AVATAR_OPTIONS.map((a) => {
+                  const on = draft.avatarUrl === a.url;
+                  return (
+                    <Box
+                      key={a.id}
+                      as="button"
+                      onClick={() => selectPresetAvatar(a.url)}
+                      borderRadius="xl"
+                      overflow="hidden"
+                      borderWidth="2px"
+                      borderColor={on ? "border.brand" : "border.default"}
+                      position="relative"
+                      aspectRatio="1"
+                      cursor="pointer"
+                      opacity={on ? 1 : 0.8}
+                      _hover={{ opacity: 1, borderColor: "border.brand" }}
+                      title={a.label}
+                    >
+                      {/* eslint-disable-next-line @next/next/no-img-element */}
+                      <img
+                        src={a.url}
+                        alt={a.label}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                        }}
+                      />
+                      {on ? (
+                        <Box
+                          position="absolute"
+                          inset="0"
+                          bg="rgba(163,255,61,0.22)"
+                          display="flex"
+                          alignItems="center"
+                          justifyContent="center"
+                        >
+                          <Check size={16} color="#a3ff3d" />
+                        </Box>
+                      ) : null}
+                    </Box>
+                  );
+                })}
+              </Grid>
+            </Box>
 
             <Box>
               <HStack gap="2" mb="phi2">
@@ -636,7 +997,14 @@ export function ProfileView() {
               </Grid>
             </Box>
 
-            <Box>
+            <Box
+              id="profile-field-game"
+              p={fieldErrors.game ? "phi3" : "0"}
+              borderRadius="xl"
+              borderWidth={fieldErrors.game ? "1px" : "0"}
+              borderColor={fieldErrors.game ? "danger.solid" : undefined}
+              bg={fieldErrors.game ? "rgba(248,113,113,0.08)" : undefined}
+            >
               <HStack gap="2" mb="phi2">
                 <Gamepad2 size={14} color="var(--gh-colors-live-fg)" />
                 <Text
@@ -645,18 +1013,24 @@ export function ProfileView() {
                   fontWeight="bold"
                   letterSpacing="0.1em"
                   textTransform="uppercase"
-                  color="fg.subtle"
+                  color={fieldErrors.game ? "danger.solid" : "fg.subtle"}
                 >
                   Games you play
                 </Text>
                 <GhBadge tone="live">Filters online / rooms</GhBadge>
               </HStack>
+              {fieldErrors.game ? (
+                <Text fontSize="xs" color="danger.solid" mb="phi2" fontWeight="bold">
+                  {fieldErrors.game}
+                </Text>
+              ) : null}
               <GameChipPicker
                 selected={draft.games}
                 onChange={(games) => patch("games", games)}
                 tone="brand"
                 placeholder="e.g. MLB The Show, FC 25…"
                 helperText="Pick from the list or add any title that isn’t listed yet."
+                invalid={Boolean(fieldErrors.game)}
               />
             </Box>
 

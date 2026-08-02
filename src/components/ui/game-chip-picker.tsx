@@ -22,6 +22,8 @@ export type GameChipPickerProps = {
   placeholder?: string;
   /** Optional helper under the add row */
   helperText?: string;
+  /** Highlight chips when parent form validation fails */
+  invalid?: boolean;
 };
 
 const TONE_STYLES = {
@@ -52,6 +54,7 @@ export function GameChipPicker({
   tone = "brand",
   placeholder = "Add another game…",
   helperText = "Pick presets or type a title that isn’t listed yet.",
+  invalid = false,
 }: GameChipPickerProps) {
   const [custom, setCustom] = useState("");
   const [hint, setHint] = useState<string | null>(null);
@@ -98,7 +101,12 @@ export function GameChipPicker({
   };
 
   return (
-    <Box>
+    <Box
+      borderRadius="xl"
+      borderWidth={invalid ? "1px" : "0"}
+      borderColor={invalid ? "danger.solid" : undefined}
+      p={invalid ? "2" : "0"}
+    >
       <Flex gap="2" flexWrap="wrap">
         {options.map((g) => {
           const on = selected.some(
@@ -114,7 +122,13 @@ export function GameChipPicker({
               py="1.5"
               borderRadius="full"
               borderWidth="1px"
-              borderColor={on ? styles.onBorder : "border.default"}
+              borderColor={
+                on
+                  ? styles.onBorder
+                  : invalid
+                    ? "danger.solid"
+                    : "border.default"
+              }
               bg={on ? styles.onBg : "blackAlpha.400"}
               color={on ? styles.onColor : "fg.muted"}
               fontFamily="heading"

@@ -10,21 +10,24 @@ import {
   Users,
   Joystick,
   ExternalLink,
-  Share2,
   Monitor,
   Coins,
   Gem,
   UserPlus,
   ChartCandlestick,
   ArrowUpRight,
-  Crosshair,
-  Network,
   Wallet,
 } from "lucide-react";
 import { GhBadge, GhButton, GhSurface } from "@/components/ui";
 import { useSession } from "@/components/providers/session-context";
+import { marketHref } from "@/lib/deep-links";
 
-export type MatchKind = "challenge" | "tournament" | "room" | "arcade";
+export type MatchKind =
+  | "challenge"
+  | "tournament"
+  | "room"
+  | "group_game"
+  | "arcade";
 
 export type Challenger = {
   username: string;
@@ -74,6 +77,14 @@ export type MatchCardProps = {
    * (triggers Internet Identity) instead of Accept / Join.
    */
   mock?: boolean;
+  /** Override default kind CTA label (e.g. Open match) */
+  ctaLabel?: string;
+  /** Primary CTA click — when set, button is wired (Accept 1v1, etc.) */
+  onCtaClick?: () => void;
+  /** Mute / disable primary CTA (e.g. already seated) */
+  ctaDisabled?: boolean;
+  /** Optional href when CTA should navigate instead of custom handler */
+  href?: string;
 };
 
 const KIND_META = {
@@ -118,11 +129,31 @@ const KIND_META = {
     iconBg: "live.muted",
     iconColor: "live.fg",
     glow: "glow",
-    cta: "Join room",
+    cta: "Open group",
     ctaVariant: "primary" as const,
     feeLabel: "Buy-in",
     potLabel: "Room pot",
     seat0: "Host",
+    seatN: "Seat",
+  },
+  /**
+   * Multi-seat free-for-all inside a community group (poker table, COD FFA, etc.).
+   * Not an elimination bracket — one winner when the table settles.
+   */
+  group_game: {
+    Icon: Users,
+    label: "Group game",
+    short: "Free-for-all",
+    bar: "linear-gradient(90deg, #fbbf24, #f59e0b 45%, #22d3ee)",
+    border: "live.solid",
+    iconBg: "live.muted",
+    iconColor: "live.fg",
+    glow: "glow",
+    cta: "Join table",
+    ctaVariant: "live" as const,
+    feeLabel: "Buy-in",
+    potLabel: "Table pot",
+    seat0: "Host seat",
     seatN: "Seat",
   },
   arcade: {
@@ -177,20 +208,26 @@ export function MatchCard({
   players,
   meta,
   hostEarn,
-  username = "gamerholic",
+  username,
   avatarUrl,
-  record = "12–4",
+  record,
   recordLabel,
   challengers,
   seats,
   betable,
   market,
   mock = false,
+  ctaLabel: ctaLabelProp,
+  onCtaClick,
+  ctaDisabled = false,
+  href,
 }: MatchCardProps) {
   const { login } = useSession();
   const km = KIND_META[kind];
   const Icon = km.Icon;
-  const ctaLabel = mock ? "Connect wallet" : km.cta;
+  const ctaLabel = mock
+    ? "Connect wallet"
+    : ctaLabelProp || km.cta;
   const ctaVariant = mock ? ("primary" as const) : km.ctaVariant;
   const fee = entryFee ?? stake ?? "—";
   const pot =
@@ -200,18 +237,38 @@ export function MatchCard({
       : fee);
 
   const showBetable = Boolean(betable || market);
-  const marketHref =
-    market?.href ?? (market?.id ? `/markets/${market.id}` : "/markets");
+  const marketUrl =
+    market?.href ?? (market?.id ? marketHref(market.id) : "/markets");
   const marketLabel = market?.label ?? "Esports market";
 
-  const seatCount = seats ?? (kind === "room" ? 4 : 2);
+  const seatCount =
+    seats ??
+    (kind === "room" || kind === "group_game"
+      ? 4
+      : kind === "tournament"
+        ? 2
+        : 2);
   const filled: (Challenger | null)[] = (() => {
+    // Explicit seat list (including all-open via [])
     if (challengers !== undefined) {
       const arr: (Challenger | null)[] = [...challengers];
       while (arr.length < seatCount) arr.push(null);
       return arr.slice(0, seatCount);
     }
-    const host: Challenger = { username, avatarUrl, record };
+    // Group FFA: never invent a mock host — open slots only until join data is passed
+    if (kind === "group_game") {
+      return Array.from({ length: seatCount }, () => null);
+    }
+    // Other kinds: only seed seat 0 when a real username is provided
+    const name = (username || "").trim();
+    if (!name || name.toLowerCase() === "gamerholic") {
+      return Array.from({ length: seatCount }, () => null);
+    }
+    const host: Challenger = {
+      username: name,
+      avatarUrl,
+      record: record || undefined,
+    };
     const arr: (Challenger | null)[] = [host];
     while (arr.length < seatCount) arr.push(null);
     return arr;
@@ -221,27 +278,26 @@ export function MatchCard({
     if (kind === "challenge") {
       return i === 0 ? km.seat0 : km.seatN;
     }
-    if (kind === "room") {
-      return i === 0 ? km.seat0 : `${km.seatN} ${i + 1}`;
+    if (kind === "room" || kind === "group_game") {
+      return `Seat ${i + 1}`;
     }
     return i === 0 ? km.seat0 : km.seatN;
   };
 
   const recordFor = (i: number) => {
-    if (i === 0) {
-      return (
-        recordLabel ??
-        (kind === "tournament"
-          ? "Host W–L"
-          : kind === "challenge"
-            ? "Match W–L"
-            : kind === "arcade"
-              ? "Defenses"
-              : "Game W–L")
-      );
-    }
-    return "W–L";
+    const seat = filled[i];
+    // Never show fake W–L; only real record on a filled seat
+    if (seat?.record) return seat.record;
+    if (!seat) return kind === "group_game" ? "Open slot" : "Open";
+    if (recordLabel) return recordLabel;
+    if (kind === "tournament") return "Host";
+    if (kind === "challenge") return "Seated";
+    if (kind === "arcade") return "Crown";
+    if (kind === "group_game") return "Seated";
+    return "Seated";
   };
+
+  const showVs = kind === "challenge" || kind === "arcade";
 
   return (
     <Box position="relative" h="100%">
@@ -255,7 +311,7 @@ export function MatchCard({
           className="gh-betable-float"
         >
           <Link
-            href={marketHref}
+            href={marketUrl}
             title={`Open betable market — ${marketLabel}`}
             style={{ textDecoration: "none" }}
           >
@@ -326,12 +382,12 @@ export function MatchCard({
         <Box h="1.5" bg={km.bar} flexShrink={0} />
 
         <Flex direction="column" flex="1" p="phi3" gap="0" minH="0">
-          {/* Kind identity + status */}
-          <HStack justify="space-between" mb="phi2" gap="2" align="flex-start">
-            <HStack gap="2" minW="0" flex="1">
+          {/* Kind identity + title + status — compact single block */}
+          <HStack justify="space-between" mb="phi2" gap="2" align="center">
+            <HStack gap="2" minW="0" flex="1" align="center">
               <Box
-                w="9"
-                h="9"
+                w="8"
+                h="8"
                 borderRadius="lg"
                 flexShrink={0}
                 bg={km.iconBg}
@@ -342,70 +398,50 @@ export function MatchCard({
                 borderWidth="1px"
                 borderColor={km.border}
               >
-                <Icon size={16} />
+                <Icon size={14} />
               </Box>
-              <Box minW="0">
-                <HStack gap="1.5" mb="0.5" flexWrap="wrap">
-                  <GhBadge
-                    tone={
-                      kind === "tournament"
-                        ? "prize"
-                        : kind === "challenge"
-                          ? "brand"
-                          : kind === "arcade"
-                            ? "attr"
-                            : "live"
-                    }
-                  >
-                    {kind === "challenge" ? (
-                      <Crosshair size={10} />
-                    ) : kind === "tournament" ? (
-                      <Network size={10} />
-                    ) : (
-                      <Icon size={10} />
-                    )}{" "}
-                    {km.label}
-                  </GhBadge>
+              <Box minW="0" flex="1">
+                <HStack gap="1.5" minW="0" align="center">
                   <Text
                     fontFamily="heading"
-                    fontSize="2xs"
-                    color="fg.subtle"
-                    letterSpacing="0.08em"
-                    textTransform="uppercase"
+                    fontWeight="extrabold"
+                    fontSize="sm"
+                    lineClamp={1}
+                    lineHeight="1.2"
+                    minW="0"
                   >
-                    {km.short}
+                    {title}
                   </Text>
+                  <GhBadge
+                    tone={STATUS_TONE[status]}
+                    pulse={status === "live"}
+                    flexShrink={0}
+                  >
+                    {status}
+                  </GhBadge>
                 </HStack>
                 <Text
+                  fontSize="2xs"
+                  color="fg.subtle"
                   fontFamily="heading"
-                  fontWeight="extrabold"
-                  fontSize="sm"
+                  fontWeight="bold"
+                  letterSpacing="0.06em"
+                  textTransform="uppercase"
                   lineClamp={1}
-                  lineHeight="1.2"
+                  mt="0.5"
                 >
-                  {title}
+                  {km.label}
+                  <Text as="span" color="fg.muted" fontWeight="semibold" mx="1">
+                    ·
+                  </Text>
+                  {km.short}
                 </Text>
               </Box>
             </HStack>
-            <GhBadge tone={STATUS_TONE[status]} pulse={status === "live"}>
-              {status}
-            </GhBadge>
           </HStack>
 
           {/* Kind-specific frame note */}
-          {kind === "challenge" ? (
-            <Text
-              fontSize="2xs"
-              color="brand.fg"
-              fontFamily="heading"
-              fontWeight="bold"
-              letterSpacing="0.12em"
-              textTransform="uppercase"
-              mb="phi2"
-            >
-              Escrow money match · winner takes pot
-            </Text>
-          ) : kind === "tournament" ? (
+          {kind === "tournament" ? (
             <Text
               fontSize="2xs"
               color="prize.fg"
@@ -417,22 +453,34 @@ export function MatchCard({
             >
               Bracket event · host fee on settle
             </Text>
+          ) : kind === "group_game" ? (
+            <Text
+              fontSize="2xs"
+              color="live.fg"
+              fontFamily="heading"
+              fontWeight="bold"
+              letterSpacing="0.08em"
+              textTransform="uppercase"
+              mb="phi2"
+            >
+              Free-for-all · one winner · not a bracket
+            </Text>
           ) : (
             <Box mb="phi1" />
           )}
 
           {/* Challenger / field slots */}
-          <Flex gap="2" mb="phi3" align="stretch">
+          <Flex gap="2" mb="phi3" align="stretch" flexWrap="wrap">
             {filled.map((c, i) => (
               <Fragment key={`seat-${i}`}>
-                {seatCount === 2 && i === 1 ? (
+                {showVs && seatCount === 2 && i === 1 ? (
                   <Flex align="center" justify="center" flexShrink={0} px="0.5">
                     <Text
                       fontFamily="heading"
                       fontSize="2xs"
                       fontWeight="extrabold"
                       letterSpacing="0.16em"
-                      color={kind === "tournament" ? "prize.fg" : "brand.fg"}
+                      color="brand.fg"
                     >
                       VS
                     </Text>
@@ -447,7 +495,9 @@ export function MatchCard({
                       ? "prize"
                       : kind === "challenge"
                         ? "brand"
-                        : "default"
+                        : kind === "group_game"
+                          ? "live"
+                          : "default"
                   }
                 />
               </Fragment>
@@ -463,7 +513,9 @@ export function MatchCard({
                 ? "prize.solid"
                 : kind === "challenge"
                   ? "border.brand"
-                  : "border.default"
+                  : kind === "group_game"
+                    ? "live.solid"
+                    : "border.default"
             }
             bg="blackAlpha.400"
             p="phi3"
@@ -528,7 +580,7 @@ export function MatchCard({
               />
             </Flex>
 
-            {(players || meta) && (
+            {(players || meta || showBetable) && (
               <HStack gap="2" flexWrap="wrap" mt="phi2">
                 {players ? (
                   <GhBadge tone="muted">
@@ -545,58 +597,57 @@ export function MatchCard({
             )}
           </Box>
 
-          <Box minH="2.25rem" mb="phi3">
-            {hostEarn && kind === "tournament" ? (
-              <Box
-                w="100%"
-                px="3"
-                py="2"
-                borderRadius="xl"
-                bg="prize.muted"
-                borderWidth="1px"
-                borderColor="prize.solid"
-              >
-                <Text fontSize="xs" fontWeight="bold" color="prize.fg">
-                  Host earns {hostEarn}
-                </Text>
-              </Box>
-            ) : hostEarn ? (
-              <Box
-                w="100%"
-                px="3"
-                py="2"
-                borderRadius="xl"
-                bg="blackAlpha.400"
-                borderWidth="1px"
-                borderColor="border.default"
-              >
-                <Text fontSize="xs" fontWeight="bold" color="fg.muted">
-                  {hostEarn}
-                </Text>
-              </Box>
-            ) : kind === "challenge" ? (
-              <Box
-                w="100%"
-                px="3"
-                py="2"
-                borderRadius="xl"
-                bg="brand.muted"
-                borderWidth="1px"
-                borderColor="border.brand"
-              >
-                <Text fontSize="xs" fontWeight="bold" color="brand.fg">
-                  Both deposit · escrow releases to winner
-                </Text>
-              </Box>
-            ) : null}
-          </Box>
+          {hostEarn && kind === "tournament" ? (
+            <Box
+              w="100%"
+              px="3"
+              py="2"
+              borderRadius="xl"
+              bg="prize.muted"
+              borderWidth="1px"
+              borderColor="prize.solid"
+              mb="phi3"
+            >
+              <Text fontSize="xs" fontWeight="bold" color="prize.fg">
+                Host earns {hostEarn}
+              </Text>
+            </Box>
+          ) : hostEarn ? (
+            <Box
+              w="100%"
+              px="3"
+              py="2"
+              borderRadius="xl"
+              bg="blackAlpha.400"
+              borderWidth="1px"
+              borderColor="border.default"
+              mb="phi3"
+            >
+              <Text fontSize="xs" fontWeight="bold" color="fg.muted">
+                {hostEarn}
+              </Text>
+            </Box>
+          ) : null}
 
           <Flex gap="phi2" mt="auto" flexShrink={0} direction="column">
-            <Flex gap="phi2">
+            {href && !mock && !onCtaClick && !ctaDisabled ? (
+              <Link href={href} style={{ textDecoration: "none", width: "100%" }}>
+                <GhButton
+                  size="sm"
+                  variant={ctaVariant}
+                  w="100%"
+                  leftIcon={<ExternalLink size={14} strokeWidth={2.5} />}
+                >
+                  {ctaLabel}
+                </GhButton>
+              </Link>
+            ) : (
               <GhButton
                 size="sm"
-                variant={ctaVariant}
-                flex="1"
+                variant={ctaDisabled ? "soft" : ctaVariant}
+                w="100%"
+                disabled={ctaDisabled || (!mock && !onCtaClick && !href)}
+                opacity={ctaDisabled ? 0.55 : 1}
                 leftIcon={
                   mock ? (
                     <Wallet size={14} strokeWidth={2.5} />
@@ -605,26 +656,20 @@ export function MatchCard({
                   )
                 }
                 onClick={
-                  mock
-                    ? () => {
-                        void login();
-                      }
-                    : undefined
+                  ctaDisabled
+                    ? undefined
+                    : mock
+                      ? () => {
+                          void login();
+                        }
+                      : onCtaClick
                 }
               >
                 {ctaLabel}
               </GhButton>
-              <GhButton
-                size="sm"
-                variant="outline"
-                flex="1"
-                leftIcon={<Share2 size={14} strokeWidth={2.5} />}
-              >
-                Invite
-              </GhButton>
-            </Flex>
+            )}
             {showBetable ? (
-              <Link href={marketHref} style={{ textDecoration: "none", width: "100%" }}>
+              <Link href={marketUrl} style={{ textDecoration: "none", width: "100%" }}>
                 <GhButton
                   size="sm"
                   variant="soft"
@@ -652,23 +697,29 @@ function ChallengerSlot({
   challenger: Challenger | null;
   seatLabel: string;
   recordLabel: string;
-  accent?: "brand" | "prize" | "default";
+  accent?: "brand" | "prize" | "live" | "default";
 }) {
   const filledBorder =
     accent === "prize"
       ? "prize.solid"
-      : accent === "brand"
-        ? "border.brand"
-        : "border.brand";
+      : accent === "live"
+        ? "live.solid"
+        : accent === "brand"
+          ? "border.brand"
+          : "border.brand";
   const filledBg =
     accent === "prize"
       ? "prize.muted"
-      : accent === "brand"
-        ? "brand.muted"
-        : "brand.muted";
+      : accent === "live"
+        ? "live.muted"
+        : accent === "brand"
+          ? "brand.muted"
+          : "brand.muted";
   const filledColor =
     accent === "prize"
       ? "prize.fg"
+      : accent === "live"
+        ? "live.fg"
       : accent === "brand"
         ? "brand.fg"
         : "brand.fg";

@@ -69,6 +69,7 @@ export function useGhEventStream(opts: {
     opts.filter,
     opts.event,
     opts.enabled,
+    // emit is stable from GhEventProvider — listed for exhaustive-deps
     emit,
   ]);
 }

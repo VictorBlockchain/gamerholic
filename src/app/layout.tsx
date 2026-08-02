@@ -74,6 +74,15 @@ export default function RootLayout({
     >
       {/* body.className applies Rajdhani as the actual computed font-family */}
       <body className={body.className}>
+        {/*
+          IC assets: unknown /{entity}/{id} paths serve root index.html (home).
+          Before React hydrates, rewrite to always-built …/view/?id= shells.
+        */}
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var p=location.pathname||"";var rules=[[/^\\/challenges\\/([^/]+)\\/?$/i,"/challenges/view/"],[/^\\/tournaments\\/([^/]+)\\/?$/i,"/tournaments/view/"],[/^\\/teams\\/([^/]+)\\/?$/i,"/teams/view/"],[/^\\/chat\\/([^/]+)\\/?$/i,"/chat/view/"],[/^\\/markets\\/([^/]+)\\/?$/i,"/markets/view/"],[/^\\/arcade\\/play\\/([^/]+)\\/?$/i,"/arcade/play/"]];for(var i=0;i<rules.length;i++){var m=p.match(rules[i][0]);if(!m)continue;var id=decodeURIComponent(m[1]||"");if(!id||id==="_"||id==="view")return;location.replace(rules[i][1]+"?id="+encodeURIComponent(id));return;}}catch(e){}})();`,
+          }}
+        />
         <GamerholicProvider>
           <AppShell>{children}</AppShell>
         </GamerholicProvider>

@@ -11,7 +11,7 @@ import {
 } from "@/lib/chat/chat-service";
 import { sanitizeChatMessage } from "@/lib/chat/sanitize";
 import { useSession } from "@/components/providers/session-context";
-import { GhAvatar, GhButton, GhInput } from "@/components/ui";
+import { GhAvatar, GhButton, GhInput, ghToast } from "@/components/ui";
 import { useChat } from "./chat-context";
 
 export function ChatWindow({ thread }: { thread: ChatThread }) {
@@ -20,7 +20,8 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [sending, setSending] = useState(false);
-  const bottomRef = useRef<HTMLDivElement>(null);
+  /** Scroll only the window list — avoid page jump from scrollIntoView */
+  const messagesRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -39,18 +40,28 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
   }, [thread.id]);
 
   useEffect(() => {
-    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    if (thread.minimized) return;
+    const el = messagesRef.current;
+    if (!el) return;
+    el.scrollTop = el.scrollHeight;
   }, [messages, thread.minimized]);
 
   const onSend = async () => {
     if (!user || sending) return;
-    const { sanitized, ok } = sanitizeChatMessage(input);
-    if (!ok) return;
+    const { sanitized, ok, reason } = sanitizeChatMessage(input);
+    if (!ok) {
+      ghToast({
+        title: "Message blocked",
+        description: reason || "Invalid message",
+        type: "error",
+      });
+      return;
+    }
     setSending(true);
     try {
       await sendMessage({
         threadId: thread.id,
-        senderId: user.id,
+        senderId: user.id || user.username,
         body: sanitized,
       });
       setInput("");
@@ -163,6 +174,7 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
 
       {/* Messages */}
       <VStack
+        ref={messagesRef}
         align="stretch"
         flex="1"
         gap="2"
@@ -217,7 +229,6 @@ export function ChatWindow({ thread }: { thread: ChatThread }) {
             );
           })
         )}
-        <div ref={bottomRef} />
       </VStack>
 
       {/* Composer */}

@@ -22,6 +22,7 @@ import {
   type ChallengeDispute,
 } from "@/lib/challenges";
 import { mirrorChallenge, fetchChallengeMirror } from "@/lib/supabase/mirror";
+import { fetchAvatarMapByUsernames } from "@/lib/supabase/profile";
 
 export type ChallengeServiceMode = "canister" | "offline";
 
@@ -81,6 +82,30 @@ function mapCanisterChallenge(
     };
   }
 
+  const participants = Number(info.currentParticipants || 1);
+  /**
+   * Canister stores invited opponent name on create while still open (status 1,
+   * participants 1). That is NOT a seated accept — map to invitedUsername only.
+   */
+  const seated =
+    participants >= 2 && Boolean(info.opponent) && Number(info.status) !== 1;
+  // Also treat status 2+ with opponent as seated even if participants lag
+  const seatedOpponent =
+    seated ||
+    (Boolean(info.opponent) &&
+      Number(info.status) !== 1 &&
+      Number(info.status) !== 0 &&
+      Number(info.status) !== 6);
+  const invited =
+    !seatedOpponent && info.opponent ? String(info.opponent) : undefined;
+
+  const reporter = info.scoreReporter || "";
+  const isOfficialReport =
+    scorePending &&
+    reporter &&
+    ((info.monitor && reporter === info.monitor) ||
+      (reporter !== info.creator && reporter !== info.opponent));
+
   return {
     id,
     title: info.title || info.gameType || id,
@@ -95,13 +120,14 @@ function mapCanisterChallenge(
       streamUrl: info.creatorStream || undefined,
       paid: true,
     },
-    opponent: info.opponent
+    opponent: seatedOpponent
       ? {
           username: info.opponent,
           streamUrl: info.opponentStream || undefined,
-          paid: Number(info.currentParticipants) >= 2,
+          paid: participants >= 2,
         }
       : null,
+    invitedUsername: invited,
     scheduledAt: nsToIso(info.scheduledAt),
     createdAt: nsToIso(info.createdAt) ?? new Date().toISOString(),
     betable: info.betable,
@@ -112,20 +138,21 @@ function mapCanisterChallenge(
     potExtraIcp: Math.max(
       0,
       e8sToIcp(info.totalPrizePool) -
-        e8sToIcp(info.entryFee) * Number(info.currentParticipants || 1),
+        e8sToIcp(info.entryFee) * Math.max(1, participants),
     ),
     scoreCreator: Number(info.player1score),
     scoreOpponent: Number(info.player2score),
-    scoreIsFinal: info.scoreIsFinal && status === "settled",
-    pendingReport: scorePending
+    scoreIsFinal:
+      (info.scoreIsFinal && status === "settled") || Number(info.status) === 4,
+    pendingReport: scorePending && !isOfficialReport
       ? {
           creatorScore: Number(info.player1score),
           opponentScore: Number(info.player2score),
           isFinal: info.scoreIsFinal,
-          reportedBy: info.scoreReporter || info.creator,
-          reportedByRole: "player",
+          reportedBy: reporter || info.creator,
+          reportedByRole: "player" as const,
           reportedAt: nsToIso(info.timeScored) ?? new Date().toISOString(),
-          status: "pending",
+          status: "pending" as const,
         }
       : null,
     monitorUsername: info.monitor || undefined,
@@ -188,12 +215,44 @@ export async function loadChallenge(
       };
     }
     const mapped = mapCanisterChallenge(id, info);
-    await mirrorChallenge(mapped).catch(() => undefined);
+    // Do NOT mirror on read — mirrorChallenge upserts Supabase which fires
+    // Realtime → UI reload → loadChallenge → infinite refresh loop.
+    // Mutations (create/join/score/…) call mirrorChallenge after writes.
     return mapped;
   } catch (e) {
     console.error("[challenge-service] load", e);
     throw e;
   }
+}
+
+/** Attach profile avatars to challenge sides (cards / detail). */
+export async function withChallengeAvatars(
+  list: ChallengeDetail[],
+): Promise<ChallengeDetail[]> {
+  const names: string[] = [];
+  for (const c of list) {
+    if (c.creator.username) names.push(c.creator.username);
+    if (c.opponent?.username) names.push(c.opponent.username);
+    if (c.invitedUsername) names.push(c.invitedUsername);
+  }
+  const avatars = await fetchAvatarMapByUsernames(names);
+  if (!Object.keys(avatars).length) return list;
+  return list.map((c) => ({
+    ...c,
+    creator: {
+      ...c.creator,
+      avatarUrl:
+        c.creator.avatarUrl || avatars[c.creator.username.toLowerCase()],
+    },
+    opponent: c.opponent
+      ? {
+          ...c.opponent,
+          avatarUrl:
+            c.opponent.avatarUrl ||
+            avatars[c.opponent.username.toLowerCase()],
+        }
+      : null,
+  }));
 }
 
 export async function listChallenges(
@@ -202,7 +261,10 @@ export async function listChallenges(
   const actor = await requireActor(identity);
   if (!actor) return [];
   const rows = await actor.listChallenges();
-  return rows.map(([id, info]) => mapCanisterChallenge(id, info));
+  const mapped = rows.map(([id, info]: [string, ChallengeInfoCanister]) =>
+    mapCanisterChallenge(id, info),
+  );
+  return withChallengeAvatars(mapped);
 }
 
 export type CreateChallengeInput = {
@@ -245,6 +307,18 @@ export async function createChallenge(
     input.creatorStream ?? "",
     "",
   );
+
+  // Creator funds escrow (play sub → challenge sub) when stake > 0
+  if (input.entryFeeIcp > 0) {
+    const { debitChallengeEntry } = await import("./settlement-service");
+    const funded = await debitChallengeEntry(id, input.entryFeeIcp, identity);
+    if (!funded) {
+      throw new Error(
+        "Challenge created but ICP stake debit failed — deposit to play subaccount, then re-fund or cancel",
+      );
+    }
+  }
+
   const c = await loadChallenge(id, identity);
   if (c) await mirrorChallenge(c, "challenge.created", input.creator);
   return id;
@@ -258,10 +332,43 @@ export async function joinChallenge(
 ): Promise<boolean> {
   const actor = await requireActor(identity);
   if (!actor) return false;
+
+  // Debit entry from caller's play subaccount → challenge escrow (native ICP)
+  const existing = await loadChallenge(id, identity);
+  if (existing && existing.entryFeeIcp > 0) {
+    const { debitChallengeEntry } = await import("./settlement-service");
+    const funded = await debitChallengeEntry(
+      id,
+      existing.entryFeeIcp,
+      identity,
+    );
+    if (!funded) {
+      throw new Error(
+        "ICP debit failed — deposit stake to your play subaccount (wallet) first",
+      );
+    }
+  }
+
   const ok = await actor.joinChallengeEx(id, player, streamUrl);
   if (ok) {
     const c = await loadChallenge(id, identity);
     if (c) await mirrorChallenge(c, "challenge.joined", player);
+  }
+  return ok;
+}
+
+/** Creator cancels an open (unaccepted) challenge on-chain. */
+export async function cancelOpenChallenge(
+  id: string,
+  reason = "Creator cancelled before accept",
+  identity?: Identity | null,
+): Promise<boolean> {
+  const actor = await requireActor(identity);
+  if (!actor) return false;
+  const ok = await actor.cancelChallenge(id, reason);
+  if (ok) {
+    const c = await loadChallenge(id, identity);
+    if (c) await mirrorChallenge(c, "challenge.cancelled");
   }
   return ok;
 }
@@ -332,6 +439,56 @@ export async function confirmScore(
     }
   }
   return ok;
+}
+
+/**
+ * Claim heads-up prize after score is final.
+ * 1) Marks claim on canister (stats)
+ * 2) Distributes native ICP: winner play sub + optional mod + platform + vault
+ */
+export async function claimChallengePrize(opts: {
+  challengeId: string;
+  winnerAddress: string;
+  winnerPrincipal: string;
+  potIcp: number;
+  moderatorPrincipal?: string | null;
+  identity?: Identity | null;
+}): Promise<{ ok: boolean; err?: string }> {
+  const actor = await requireActor(opts.identity);
+  if (!actor) return { ok: false, err: "No actor" };
+
+  const claimed = await (actor as any).claimChallenge(
+    opts.challengeId,
+    icpToE8s(opts.potIcp),
+    opts.winnerAddress,
+    BigInt(0),
+  );
+  if (!claimed) {
+    return {
+      ok: false,
+      err: "claimChallenge failed (score not final / betable not settled)",
+    };
+  }
+
+  if (opts.potIcp > 0 && opts.winnerPrincipal) {
+    const { distributeChallengePrize } = await import("./settlement-service");
+    const dist = await distributeChallengePrize({
+      challengeId: opts.challengeId,
+      winnerPrincipal: opts.winnerPrincipal,
+      moderatorPrincipal: opts.moderatorPrincipal,
+      identity: opts.identity,
+    });
+    if (!dist.ok && !/already paid/i.test(dist.err)) {
+      return {
+        ok: false,
+        err: dist.err || "Native ICP distribute failed after claim",
+      };
+    }
+  }
+
+  const c = await loadChallenge(opts.challengeId, opts.identity);
+  if (c) await mirrorChallenge(c, "challenge.claimed", opts.winnerAddress);
+  return { ok: true };
 }
 
 /** Reject a pending score report — opens score dispute (legacy path). */

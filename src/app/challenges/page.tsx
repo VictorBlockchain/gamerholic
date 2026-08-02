@@ -25,7 +25,6 @@ import {
   X,
 } from "lucide-react";
 import { ModeHeader } from "@/components/spectacle/mode-header";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import { MatchCard } from "@/components/cards/match-card";
 import { ChallengeQuickForm } from "@/components/dashboard/challenge-quick-form";
 import {
@@ -36,10 +35,17 @@ import {
   GhSurface,
   SectionDivider,
 } from "@/components/ui";
-import { formatIcp, formatWhen, type ChallengeDetail } from "@/lib/challenges";
+import {
+  canAcceptChallenge,
+  challengeHref,
+  formatIcp,
+  formatWhen,
+  type ChallengeDetail,
+} from "@/lib/challenges";
 import { listChallenges } from "@/lib/ic/challenge-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
 import { useSession } from "@/components/providers/session-context";
+import { AcceptChallengeModal } from "@/components/challenges/accept-challenge-modal";
 
 function matchStatus(
   status: ChallengeDetail["status"],
@@ -51,11 +57,16 @@ function matchStatus(
 }
 
 export default function ChallengesPage() {
-  const { isLoggedIn, login } = useSession();
+  const { isLoggedIn, login, profile, principal, user } = useSession();
   const [items, setItems] = useState<ChallengeDetail[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [createOpen, setCreateOpen] = useState(false);
+  const [acceptTarget, setAcceptTarget] = useState<ChallengeDetail | null>(
+    null,
+  );
+  const viewer = profile?.username || user?.username || principal || "";
+  const mePrincipal = principal || user?.principal || "";
 
   const openCreate = () => {
     if (!isLoggedIn) {
@@ -241,10 +252,6 @@ export default function ChallengesPage() {
         </Grid>
       </GhSurface>
 
-      <Box mb="phi4">
-        <LiveTicker label="Play" />
-      </Box>
-
       <SectionDivider label="Active board" tone="brand" my="0" />
 
       {loading ? (
@@ -320,10 +327,27 @@ export default function ChallengesPage() {
                   players={c.opponent ? "2/2" : "1/2"}
                   username={c.creator.username}
                   challengers={[
-                    { username: c.creator.username },
+                    {
+                      username: c.creator.username,
+                      avatarUrl: c.creator.avatarUrl,
+                      record: c.creator.record,
+                    },
                     ...(c.opponent
-                      ? [{ username: c.opponent.username }]
-                      : []),
+                      ? [
+                          {
+                            username: c.opponent.username,
+                            avatarUrl: c.opponent.avatarUrl,
+                            record: c.opponent.record,
+                          },
+                        ]
+                      : c.invitedUsername
+                        ? [
+                            {
+                              username: c.invitedUsername,
+                              // Invite not seated yet — still show name if known
+                            },
+                          ]
+                        : []),
                   ]}
                   seats={2}
                   betable={c.betable}
@@ -337,11 +361,27 @@ export default function ChallengesPage() {
                       : undefined
                   }
                   meta={formatWhen(c.scheduledAt)}
+                  ctaLabel={
+                    canAcceptChallenge(c, viewer, mePrincipal)
+                      ? "Accept 1v1"
+                      : "Open match"
+                  }
+                  onCtaClick={() => {
+                    if (!isLoggedIn) {
+                      void login();
+                      return;
+                    }
+                    if (canAcceptChallenge(c, viewer, mePrincipal)) {
+                      setAcceptTarget(c);
+                    } else {
+                      window.location.assign(challengeHref(c.id));
+                    }
+                  }}
                 />
               </Box>
               <HStack mt="2" gap="2" flexWrap="wrap">
                 <Link
-                  href={`/challenges/${encodeURIComponent(c.id)}`}
+                  href={challengeHref(c.id)}
                   style={{ flex: 1, minWidth: "8rem" }}
                 >
                   <GhButton
@@ -405,83 +445,96 @@ export default function ChallengesPage() {
             {items
               .filter((c) => c.status === "open" && !c.opponent)
               .map((c) => (
-                <Link
+                <GhSurface
                   key={`row-${c.id}`}
-                  href={`/challenges/${encodeURIComponent(c.id)}`}
-                  style={{ textDecoration: "none" }}
+                  variant="elevated"
+                  p="phi3"
+                  _hover={{
+                    borderColor: "border.brand",
+                    boxShadow: "glow",
+                    transform: "translateY(-1px)",
+                  }}
+                  transition="all 0.15s ease"
                 >
-                  <GhSurface
-                    variant="elevated"
-                    p="phi3"
-                    _hover={{
-                      borderColor: "border.brand",
-                      boxShadow: "glow",
-                      transform: "translateY(-1px)",
-                    }}
-                    transition="all 0.15s ease"
+                  <HStack
+                    justify="space-between"
+                    gap="phi3"
+                    flexWrap="wrap"
+                    align="center"
                   >
-                    <HStack
-                      justify="space-between"
-                      gap="phi3"
-                      flexWrap="wrap"
-                      align="center"
-                    >
-                      <HStack gap="phi3" minW="0" flex="1" align="flex-start">
-                        <Box
-                          w="9"
-                          h="9"
-                          borderRadius="lg"
-                          bg="brand.muted"
-                          color="brand.fg"
-                          borderWidth="1px"
-                          borderColor="border.brand"
-                          display="flex"
-                          alignItems="center"
-                          justifyContent="center"
-                          flexShrink={0}
-                        >
-                          <Swords size={16} />
-                        </Box>
-                        <Box minW="0">
-                          <HStack gap="2" mb="1" flexWrap="wrap">
-                            <GhBadge tone="brand">Open seat</GhBadge>
-                            {c.betable ? (
-                              <GhBadge tone="prize">
-                                <ChartCandlestick size={10} /> Betable
-                              </GhBadge>
-                            ) : null}
-                            <Text
-                              fontFamily="heading"
-                              fontWeight="extrabold"
-                              fontSize="sm"
-                              lineClamp={1}
-                            >
-                              {c.title}
-                            </Text>
-                          </HStack>
-                          <Text fontSize="xs" color="fg.muted">
-                            {c.game}
-                            {c.console ? ` · ${c.console}` : ""} ·{" "}
-                            <Text as="span" color="brand.fg" fontWeight="bold">
-                              {formatIcp(c.entryFeeIcp)}
-                            </Text>{" "}
-                            · vs @{c.creator.username}
-                            {c.scheduledAt
-                              ? ` · ${formatWhen(c.scheduledAt)}`
-                              : ""}
+                    <HStack gap="phi3" minW="0" flex="1" align="flex-start">
+                      <Box
+                        w="9"
+                        h="9"
+                        borderRadius="lg"
+                        bg="brand.muted"
+                        color="brand.fg"
+                        borderWidth="1px"
+                        borderColor="border.brand"
+                        display="flex"
+                        alignItems="center"
+                        justifyContent="center"
+                        flexShrink={0}
+                      >
+                        <Swords size={16} />
+                      </Box>
+                      <Box minW="0">
+                        <HStack gap="2" mb="1" flexWrap="wrap">
+                          <GhBadge tone="brand">Open seat</GhBadge>
+                          {c.betable ? (
+                            <GhBadge tone="prize">
+                              <ChartCandlestick size={10} /> Betable
+                            </GhBadge>
+                          ) : null}
+                          <Text
+                            fontFamily="heading"
+                            fontWeight="extrabold"
+                            fontSize="sm"
+                            lineClamp={1}
+                          >
+                            {c.title}
                           </Text>
-                        </Box>
-                      </HStack>
+                        </HStack>
+                        <Text fontSize="xs" color="fg.muted">
+                          {c.game}
+                          {c.console ? ` · ${c.console}` : ""} ·{" "}
+                          <Text as="span" color="brand.fg" fontWeight="bold">
+                            {formatIcp(c.entryFeeIcp)}
+                          </Text>{" "}
+                          · vs @{c.creator.username}
+                          {c.scheduledAt
+                            ? ` · ${formatWhen(c.scheduledAt)}`
+                            : ""}
+                        </Text>
+                      </Box>
+                    </HStack>
+                    <HStack gap="2" flexShrink={0}>
+                      <Link href={challengeHref(c.id)}>
+                        <GhButton size="sm" variant="outline">
+                          View
+                        </GhButton>
+                      </Link>
                       <GhButton
                         size="sm"
                         variant="primary"
                         rightIcon={<ArrowRight size={14} />}
+                        onClick={() => {
+                          if (!isLoggedIn) {
+                            void login();
+                            return;
+                          }
+                          if (canAcceptChallenge(c, viewer, mePrincipal)) {
+                            setAcceptTarget(c);
+                          } else {
+                            window.location.assign(challengeHref(c.id));
+                          }
+                        }}
                       >
                         Accept
                       </GhButton>
                     </HStack>
-                  </GhSurface>
-                </Link>
+                  </HStack>
+                </GhSurface>
               ))}
           </VStack>
         </>
@@ -507,6 +560,13 @@ export default function ChallengesPage() {
           </Text>
         </HStack>
       </GhSurface>
+
+      <AcceptChallengeModal
+        challenge={acceptTarget}
+        open={Boolean(acceptTarget)}
+        onClose={() => setAcceptTarget(null)}
+        onAccepted={() => void load()}
+      />
     </VStack>
   );
 }

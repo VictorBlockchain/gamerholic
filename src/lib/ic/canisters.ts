@@ -178,6 +178,7 @@ export type GamerholicBackend = {
     player: string,
     opponentStream: string,
   ) => Promise<boolean>;
+  cancelChallenge: (id: string, reason: string) => Promise<boolean>;
   submitScoreEx: (
     id: string,
     p1: bigint,

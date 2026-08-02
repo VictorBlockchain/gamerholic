@@ -26,6 +26,8 @@ import {
   GhCheckbox,
   GhField,
   GhInput,
+  GhModal,
+  GhSpinner,
   GhSurface,
   GhSwitch,
   GhTextarea,
@@ -45,6 +47,7 @@ import {
 } from "@/lib/profile";
 import { useSession } from "@/components/providers/session-context";
 import { createChallenge } from "@/lib/ic/challenge-service";
+import { friendlyIcError } from "@/lib/ic/local-identity";
 import {
   getUserPlayIcpBalance,
   ICP_TRANSFER_FEE,
@@ -52,7 +55,43 @@ import {
   searchChallengeUsers,
 } from "@/lib/ic/gamer-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
-import { useRouter } from "next/navigation";
+import { challengeHref } from "@/lib/challenges";
+import { getProfileCompleteness } from "@/lib/profile";
+
+type CreatePhase =
+  | "idle"
+  | "validating"
+  | "submitting"
+  | "confirming"
+  | "redirecting"
+  | "error";
+
+const CREATE_STEPS: {
+  key: Exclude<CreatePhase, "idle" | "error">;
+  label: string;
+  detail: string;
+}[] = [
+  {
+    key: "validating",
+    label: "Checking balance & form",
+    detail: "Entry fee, stake, and ICP transfer fee",
+  },
+  {
+    key: "submitting",
+    label: "Submitting to canister",
+    detail: "Creating the challenge on-chain via Internet Computer",
+  },
+  {
+    key: "confirming",
+    label: "Challenge recorded",
+    detail: "On-chain id confirmed — preparing your match page",
+  },
+  {
+    key: "redirecting",
+    label: "Opening challenge",
+    detail: "Taking you to the live challenge page",
+  },
+];
 
 /**
  * Quick challenge create — **show/hide panel** (not a modal).
@@ -71,7 +110,6 @@ export function ChallengeQuickForm({
   opponent?: ChatUser | null;
 }) {
   const { principal, profile, isLoggedIn, login, identity } = useSession();
-  const router = useRouter();
   const who = profile?.username || principal || "";
   /** Squads where user is captain or roster member */
   const userTeams = useMemo(() => {
@@ -106,6 +144,9 @@ export function ChallengeQuickForm({
   const [streamUrl, setStreamUrl] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [createPhase, setCreatePhase] = useState<CreatePhase>("idle");
+  const [createError, setCreateError] = useState<string | null>(null);
+  const [createdId, setCreatedId] = useState<string | null>(null);
 
   // Opponent user typeahead (solo)
   const [suggestions, setSuggestions] = useState<ChatUser[]>([]);
@@ -454,6 +495,16 @@ export function ChallengeQuickForm({
       void login();
       return;
     }
+    const complete = getProfileCompleteness(profile);
+    if (!complete.ok) {
+      setError(complete.message);
+      ghToast({
+        title: "Complete your profile",
+        description: complete.message,
+        type: "error",
+      });
+      return;
+    }
     if (!isCanisterConfigured()) {
       setError(
         "Canister not configured. Deploy gh_backend and set NEXT_PUBLIC_GH_BACKEND_CANISTER_ID.",
@@ -508,7 +559,13 @@ export function ChallengeQuickForm({
     setLoading(true);
     setError(null);
     setBalanceError(null);
+    setCreateError(null);
+    setCreatedId(null);
+    setCreatePhase("validating");
     try {
+      // Brief beat so the modal shows the first step
+      await new Promise((r) => setTimeout(r, 280));
+      setCreatePhase("submitting");
       const creator = profile?.username || principal;
       const teamNote =
         mode === "team" && selectedTeam
@@ -534,6 +591,8 @@ export function ChallengeQuickForm({
         },
         identity,
       );
+      setCreatedId(id);
+      setCreatePhase("confirming");
       ghToast({
         title: "Challenge created on-chain",
         description: `${title} · ${feeNum} ICP · id ${id}`,
@@ -546,12 +605,19 @@ export function ChallengeQuickForm({
       setOpponentTeam("");
       setStreamUrl("");
       setEntryFee("0");
-      router.push(`/challenges/${encodeURIComponent(id)}`);
+      setCreatePhase("redirecting");
+      // Hard navigate to always-built shell (static export / IC assets)
+      const href = challengeHref(id);
+      await new Promise((r) => setTimeout(r, 450));
+      window.location.assign(href);
     } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
+      const msg = friendlyIcError(e);
+      setError(msg);
+      setCreateError(msg);
+      setCreatePhase("error");
       ghToast({
         title: "Create failed",
-        description: e instanceof Error ? e.message : String(e),
+        description: msg,
         type: "error",
       });
     } finally {
@@ -559,8 +625,201 @@ export function ChallengeQuickForm({
     }
   };
 
+  const createModalOpen = createPhase !== "idle";
+  const stepIndex = CREATE_STEPS.findIndex((s) => s.key === createPhase);
+
   return (
     <Box id="gh-challenge-create-panel" scrollMarginTop="5.5rem">
+      <GhModal
+        open={createModalOpen}
+        onOpenChange={(open) => {
+          if (!open && (createPhase === "error" || createPhase === "idle")) {
+            setCreatePhase("idle");
+            setCreateError(null);
+          }
+        }}
+        title={
+          createPhase === "error"
+            ? "Challenge not created"
+            : createPhase === "redirecting"
+              ? "Challenge ready"
+              : "Creating challenge"
+        }
+        description={
+          createPhase === "error"
+            ? "Something went wrong while posting on-chain."
+            : createPhase === "redirecting"
+              ? "Opening your challenge page…"
+              : "Posting to the Internet Computer. Keep this tab open."
+        }
+        tone={createPhase === "error" ? "prize" : "brand"}
+        hideClose={
+          createPhase !== "error" && createPhase !== "idle"
+        }
+        size="md"
+        footer={
+          createPhase === "error" ? (
+            <GhButton
+              variant="primary"
+              onClick={() => {
+                setCreatePhase("idle");
+                setCreateError(null);
+              }}
+            >
+              Close
+            </GhButton>
+          ) : createPhase === "redirecting" && createdId ? (
+            <GhButton
+              variant="primary"
+              onClick={() => window.location.assign(challengeHref(createdId))}
+            >
+              Open challenge
+            </GhButton>
+          ) : undefined
+        }
+      >
+        <VStack align="stretch" gap="phi3" py="phi1">
+          {createPhase !== "error" ? (
+            <HStack gap="phi3" align="center">
+              <Box
+                w="12"
+                h="12"
+                borderRadius="xl"
+                display="flex"
+                alignItems="center"
+                justifyContent="center"
+                bg="brand.muted"
+                color="brand.fg"
+                borderWidth="1px"
+                borderColor="border.brand"
+                flexShrink={0}
+              >
+                {createPhase === "redirecting" ||
+                createPhase === "confirming" ? (
+                  <Swords size={22} />
+                ) : (
+                  <GhSpinner size="md" />
+                )}
+              </Box>
+              <Box minW="0">
+                <Text
+                  fontFamily="heading"
+                  fontWeight="extrabold"
+                  fontSize="sm"
+                  letterSpacing="0.04em"
+                >
+                  {CREATE_STEPS[Math.max(0, stepIndex)]?.label ||
+                    "Working…"}
+                </Text>
+                <Text fontSize="xs" color="fg.muted" mt="0.5" lineHeight="1.5">
+                  {CREATE_STEPS[Math.max(0, stepIndex)]?.detail}
+                </Text>
+                {title.trim() ? (
+                  <Text
+                    fontSize="xs"
+                    color="brand.fg"
+                    mt="1"
+                    fontWeight="bold"
+                    lineClamp={1}
+                  >
+                    {title.trim()}
+                    {feeNum > 0 ? ` · ${feeNum} ICP` : " · free entry"}
+                  </Text>
+                ) : null}
+              </Box>
+            </HStack>
+          ) : (
+            <GhAlert tone="error" title="Create failed">
+              {createError || "Unknown error"}
+            </GhAlert>
+          )}
+
+          <VStack align="stretch" gap="2">
+            {CREATE_STEPS.map((step, i) => {
+              const active = step.key === createPhase;
+              const done =
+                createPhase !== "error" &&
+                stepIndex > i &&
+                createPhase !== "idle";
+              return (
+                <HStack
+                  key={step.key}
+                  gap="phi2"
+                  px="phi3"
+                  py="2"
+                  borderRadius="xl"
+                  borderWidth="1px"
+                  borderColor={
+                    active
+                      ? "border.brand"
+                      : done
+                        ? "border.default"
+                        : "transparent"
+                  }
+                  bg={active ? "brand.muted" : "transparent"}
+                  opacity={createPhase === "error" ? 0.45 : done || active ? 1 : 0.5}
+                >
+                  <Box
+                    w="6"
+                    h="6"
+                    borderRadius="full"
+                    display="flex"
+                    alignItems="center"
+                    justifyContent="center"
+                    fontSize="2xs"
+                    fontWeight="extrabold"
+                    fontFamily="heading"
+                    bg={
+                      done
+                        ? "brand.solid"
+                        : active
+                          ? "bg.elevated"
+                          : "whiteAlpha.100"
+                    }
+                    color={done ? "black" : "fg.default"}
+                    borderWidth="1px"
+                    borderColor={active ? "border.brand" : "transparent"}
+                    flexShrink={0}
+                  >
+                    {done ? "✓" : i + 1}
+                  </Box>
+                  <Box minW="0">
+                    <Text
+                      fontSize="xs"
+                      fontWeight="bold"
+                      fontFamily="heading"
+                      letterSpacing="0.03em"
+                    >
+                      {step.label}
+                    </Text>
+                    {active ? (
+                      <Text fontSize="2xs" color="fg.muted">
+                        {step.detail}
+                      </Text>
+                    ) : null}
+                  </Box>
+                  {active && createPhase !== "redirecting" ? (
+                    <Box ml="auto" flexShrink={0}>
+                      <GhSpinner size="sm" />
+                    </Box>
+                  ) : null}
+                </HStack>
+              );
+            })}
+          </VStack>
+
+          {createdId ? (
+            <Text
+              fontSize="2xs"
+              fontFamily="mono"
+              color="fg.subtle"
+              wordBreak="break-all"
+            >
+              id · {createdId}
+            </Text>
+          ) : null}
+        </VStack>
+      </GhModal>
       <GhSurface
         variant={open ? "brand" : "glass"}
         p="0"
@@ -618,6 +877,14 @@ export function ChallengeQuickForm({
             borderTopWidth="1px"
             borderColor="border.default"
           >
+            {!getProfileCompleteness(profile).ok ? (
+              <GhAlert tone="warning" title="Profile incomplete" mb="phi3" mt="phi2">
+                {getProfileCompleteness(profile).message}{" "}
+                <Link href="/profile" style={{ color: "inherit", fontWeight: 700 }}>
+                  Complete profile →
+                </Link>
+              </GhAlert>
+            ) : null}
             <HStack justify="flex-end" pt="phi2" mb="phi2">
               <GhButton
                 size="sm"

@@ -9,6 +9,7 @@ import { getSupabase } from "@/lib/supabase/client";
 import { GH_TABLES } from "@/lib/supabase/tables";
 import { useSession } from "@/components/providers/session-context";
 import { useGhEventStream } from "@/hooks/use-gh-event-stream";
+import { marketHref } from "@/lib/deep-links";
 
 type MarketRow = {
   id: string;
@@ -146,7 +147,7 @@ export function MyMarketsSection() {
           {markets.map((m) => (
             <Link
               key={m.id}
-              href={`/markets/${encodeURIComponent(m.id)}`}
+              href={marketHref(m.id)}
               style={{ textDecoration: "none" }}
             >
               <GhSurface

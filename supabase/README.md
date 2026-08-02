@@ -24,6 +24,23 @@ If free play fails with `function gen_random_bytes(integer) does not exist`, run
 
 That replaces `gh_arcade_start_session` so it no longer needs the `pgcrypto` extension.
 
+### Hotfix: Dashboard online list never updates
+
+Heartbeats were blocked by RLS (`new row violates row-level security policy for table "gh_presence"`).
+
+Run **[`migrations/fix_presence_upsert_rpc.sql`](./migrations/fix_presence_upsert_rpc.sql)**
+
+Adds security-definer `upsert_gh_presence` + Realtime publication. Client: `src/lib/ic/presence-service.ts`.
+
+### Community chat
+
+Run **[`migrations/fix_community_chat.sql`](./migrations/fix_community_chat.sql)** for:
+
+- `insert_gh_message` (chat writes under RLS)
+- `gh_community_rooms` + unique names + `upsert_gh_community_room`
+
+Page: `/community`
+
 ### Arcade storage (no localStorage for content)
 
 | Data | Table / RPC |

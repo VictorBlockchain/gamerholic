@@ -20,7 +20,6 @@ import {
   Gamepad2,
 } from "lucide-react";
 import { ModeHeader } from "@/components/spectacle/mode-header";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import {
   GhBadge,
   GhButton,
@@ -169,10 +168,6 @@ export default function MarketsPage() {
           </Grid>
         </Box>
       </GhSurface>
-
-      <Box mb="phi4">
-        <LiveTicker label="Markets" />
-      </Box>
 
       {/* How it pays — muted coming-soon flow */}
       <GhSurface

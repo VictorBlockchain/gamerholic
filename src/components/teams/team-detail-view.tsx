@@ -33,6 +33,7 @@ import {
   ghToast,
 } from "@/components/ui";
 import { MatchCard } from "@/components/cards/match-card";
+import { teamShareUrl } from "@/lib/deep-links";
 import {
   formatWhen,
   getTeamById,
@@ -83,7 +84,7 @@ export function TeamDetailView({ teamId }: { teamId: string }) {
     const url =
       typeof window !== "undefined"
         ? window.location.href
-        : `/teams/${team.id}`;
+        : teamShareUrl(team.id);
     void navigator.clipboard?.writeText(url);
     ghToast({
       title: "Team link copied",

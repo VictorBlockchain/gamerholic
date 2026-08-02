@@ -7,6 +7,7 @@ import {
   Joystick,
   LifeBuoy,
   Trophy,
+  Users,
   type LucideIcon,
 } from "lucide-react";
 
@@ -66,13 +67,22 @@ export const PRIMARY_NAV: NavItem[] = [
     mobile: true,
   },
   {
+    id: "community",
+    label: "Community",
+    href: "/community",
+    icon: Users,
+    description: "Global chat & channels",
+    desktop: true,
+    mobile: true,
+  },
+  {
     id: "rooms",
     label: "Rooms",
     href: "/rooms",
     icon: Gamepad2,
-    description: "Group lobbies",
+    description: "Match lobbies",
     desktop: true,
-    mobile: true,
+    mobile: false,
   },
 ];
 
@@ -100,7 +110,7 @@ export const ACCOUNT_MENU = [
 ] as const;
 
 /**
- * Mobile Create FAB options (host tournament / room).
+ * Mobile Create FAB options (host tournament / room / community).
  */
 export const CREATE_OPTIONS = [
   {
@@ -121,12 +131,32 @@ export const CREATE_OPTIONS = [
       "Lobby rules · entry stakes · you take a host cut when the room settles.",
     href: "/create?type=room",
     icon: Gamepad2,
-    tone: "prize" as const,
+    tone: "live" as const,
+  },
+  {
+    id: "community",
+    title: "Community chatroom",
+    subtitle: "Free talk",
+    description:
+      "Create a named channel on Community — unique names, game tags optional.",
+    href: "/community",
+    icon: Users,
+    tone: "brand" as const,
+  },
+  {
+    id: "challenge",
+    title: "Heads-up challenge",
+    subtitle: "1v1",
+    description: "Open the challenge board to create a direct match.",
+    href: "/challenges",
+    icon: Swords,
+    tone: "attr" as const,
   },
 ] as const;
 
 export function tabFromPath(pathname: string): string {
   if (pathname.startsWith("/dashboard")) return "dashboard";
+  if (pathname.startsWith("/community")) return "community";
   if (pathname.startsWith("/rooms")) return "rooms";
   if (pathname.startsWith("/arcade")) return "arcade";
   if (pathname.startsWith("/profile")) return "profile";

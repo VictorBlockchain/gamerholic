@@ -55,6 +55,7 @@ export async function fetchMessages(
 
 /**
  * Send a message — Supabase insert on `gh_messages` or local emit.
+ * Prefer RPC `insert_gh_message` (RLS blocks direct insert).
  */
 export async function sendMessage(opts: {
   threadId: string;
@@ -66,9 +67,34 @@ export async function sendMessage(opts: {
 
   const sb = getSupabase();
   if (sb) {
+    const id = `msg_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 8)}`;
+    const { data: rpcData, error: rpcErr } = await sb.rpc("insert_gh_message", {
+      p: {
+        id,
+        thread_id: opts.threadId,
+        sender_id: opts.senderId,
+        body,
+      },
+    });
+    if (!rpcErr && rpcData) {
+      const row = rpcData as Record<string, unknown>;
+      if (row.ok === false) {
+        console.warn("[chat] sendMessage rpc", row.error);
+      } else {
+        return {
+          id: String(row.id || id),
+          threadId: opts.threadId,
+          senderId: opts.senderId,
+          body,
+          createdAt: String(row.created_at || new Date().toISOString()),
+        };
+      }
+    }
+
     const { data, error } = await sb
       .from(MSG_TABLE)
       .insert({
+        id,
         thread_id: opts.threadId,
         sender_id: opts.senderId,
         body,
@@ -76,7 +102,7 @@ export async function sendMessage(opts: {
       .select("id,thread_id,sender_id,body,created_at")
       .single();
     if (error) {
-      console.warn("[chat] sendMessage", error.message);
+      console.warn("[chat] sendMessage", error.message, rpcErr?.message);
     } else if (data) {
       return mapDb(data as DbMessage);
     }

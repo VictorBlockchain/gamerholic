@@ -28,21 +28,26 @@ import {
   Users,
 } from "lucide-react";
 import {
+  GameChipPicker,
   GhAlert,
   GhBadge,
   GhButton,
   GhEmptyState,
   GhField,
   GhInput,
+  GhProcessModal,
   GhSurface,
   GhSwitch,
   GhTextarea,
   ghToast,
+  processBeat,
 } from "@/components/ui";
+import { useProcessModal } from "@/hooks/use-process-modal";
 import { myTeams } from "@/lib/teams";
 import { useSession } from "@/components/providers/session-context";
 import { createTournament, listTournaments } from "@/lib/ic/tournament-service";
 import {
+  createRoomGameOnChain,
   createRoomOnChain,
   listRoomsFromCanister,
 } from "@/lib/ic/room-service";
@@ -50,6 +55,11 @@ import { listOfficialGameNames } from "@/lib/ic/gamer-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
 import type { EsportsRoom } from "@/lib/rooms";
 import type { TournamentDetail } from "@/lib/tournaments";
+import { chatHref, tournamentHref } from "@/lib/deep-links";
+import {
+  GROUP_AVATAR_DEFAULT,
+  GROUP_COVER_DEFAULT,
+} from "@/lib/rooms";
 
 export type HostCreateMode = "tournament" | "room";
 
@@ -66,6 +76,7 @@ export function HostCreateView() {
   const params = useSearchParams();
   const router = useRouter();
   const { principal, profile, isLoggedIn, login, identity } = useSession();
+  const { processState, closeProcess, runProcess } = useProcessModal();
   const raw = params.get("type");
   const mode: HostCreateMode = raw === "room" ? "room" : "tournament";
   const [gameOptions, setGameOptions] = useState<string[]>([]);
@@ -102,18 +113,26 @@ export function HostCreateView() {
   }, [userTeams, tHostTeamId]);
   const hostTeam = userTeams.find((t) => t.id === tHostTeamId);
 
-  // Room
+  // Room (community group) — games from profile; no max seats here
   const [rName, setRName] = useState("");
+  const [rGames, setRGames] = useState<string[]>([]);
   const [rGame, setRGame] = useState<string>("");
   const [rConsole, setRConsole] = useState("PC");
+  // Group game (inside a selected room) — max seats / pot apply here only
   const [rMax, setRMax] = useState("8");
-  const [rGroupPot, setRGroupPot] = useState(true);
   const [rBuyIn, setRBuyIn] = useState("1.5");
   const [rTakePct, setRTakePct] = useState("5");
   const [rRules, setRRules] = useState("");
   const [rBetable, setRBetable] = useState(false);
   const [rDate, setRDate] = useState("");
   const [rTime, setRTime] = useState("");
+
+  /** Games the user plays (profile) — room tags & group-game picker */
+  const profileGames = useMemo(() => {
+    const fromProfile = profile?.games?.filter(Boolean) ?? [];
+    if (fromProfile.length) return fromProfile;
+    return gameOptions;
+  }, [profile?.games, gameOptions]);
 
   const tournamentEarnings = useMemo(() => {
     const entry = parseFloat(tEntry);
@@ -144,7 +163,6 @@ export function HostCreateView() {
   }, [tEntry, tMax, tHostPct]);
 
   const roomEarnings = useMemo(() => {
-    if (!rGroupPot) return null;
     const buyIn = parseFloat(rBuyIn);
     const seats = parseInt(rMax, 10);
     const takePct = parseFloat(rTakePct);
@@ -158,6 +176,8 @@ export function HostCreateView() {
     ) {
       return null;
     }
+    // 0 buy-in = free game (no pot preview needed beyond seats)
+    if (buyIn === 0) return null;
     const pot = buyIn * seats;
     const hostCut = pot * (Math.min(takePct, HOST_FEE_MAX_PCT) / 100);
     const prizePool = pot - hostCut;
@@ -170,9 +190,15 @@ export function HostCreateView() {
       prizePool,
       ready: true as const,
     };
-  }, [rGroupPot, rBuyIn, rMax, rTakePct]);
+  }, [rBuyIn, rMax, rTakePct]);
 
-  const earnings = mode === "tournament" ? tournamentEarnings : roomEarnings;
+  // Earnings preview only when configuring a group game (room selected)
+  const earnings =
+    mode === "tournament"
+      ? tournamentEarnings
+      : selectedRoom
+        ? roomEarnings
+        : null;
 
   const applyRecreate = (t: TournamentDetail) => {
     setRecreateFrom(t);
@@ -200,9 +226,14 @@ export function HostCreateView() {
       if (names.length) {
         setGameOptions(names);
         setTGame((g) => (g && names.includes(g) ? g : names[0]!));
-        setRGame((g) => (g && names.includes(g) ? g : names[0]!));
       }
     });
+    // Prefer profile games for room / group-game pickers
+    const pg = profile?.games?.filter(Boolean) ?? [];
+    if (pg.length) {
+      setRGames((prev) => (prev.length ? prev : [...pg]));
+      setRGame((g) => (g && pg.includes(g) ? g : pg[0]!));
+    }
     if (!isCanisterConfigured()) return;
     const whoName = profile?.username || principal || "";
     void listRoomsFromCanister(identity).then((rooms) => {
@@ -228,20 +259,25 @@ export function HostCreateView() {
         : settled;
       setPastTournaments(mine);
     });
-  }, [identity, principal, profile?.username]);
+  }, [identity, principal, profile?.username, profile?.games]);
 
-  const selectRoomForPot = (room: EsportsRoom) => {
+  /** Select room to create a group game (not re-create the room). */
+  const selectRoomForGame = (room: EsportsRoom) => {
     setSelectedRoom(room);
     setMode("room");
     setRName(room.name);
-    setRGame(room.game);
+    const roomGames = room.games?.length
+      ? room.games
+      : room.game
+        ? [room.game]
+        : profileGames;
+    setRGame(roomGames[0] || profileGames[0] || "");
     setRConsole(room.console || "PC");
-    setRMax(String(room.maxMembers));
-    setRGroupPot(true);
+    setRMax("8");
     setFormOpen(true);
     ghToast({
       title: "Room selected",
-      description: `Group pot setup for “${room.name}”`,
+      description: `Create a group game for “${room.name}”`,
       type: "info",
     });
     document
@@ -304,84 +340,271 @@ export function HostCreateView() {
     }
     let scheduled: Date | null = null;
     if (tDate && tTime) scheduled = new Date(`${tDate}T${tTime}:00`);
-    try {
-      const creator = profile?.username || principal;
-      const id = await createTournament({
-        creator,
-        title: tTitle.trim(),
-        game: tGame,
-        console: tConsole,
-        entryFeeIcp: parseFloat(tEntry) || 0,
-        maxPlayers: parseInt(tMax, 10) || 16,
-        hostFeePct: parseFloat(tHostPct) || 2.5,
-        description: tDesc,
-        scheduledAt: scheduled,
-        betable: tBetable,
-        teamEntry: tTeamMode,
-      });
-      ghToast({
-        title: "Tournament created on-chain",
-        description: `${tTitle} · ${tEntry} ICP · host ${tHostPct}%${
-          tBetable ? " · betable" : ""
-        }`,
-        type: "success",
-      });
-      router.push(`/tournaments/${encodeURIComponent(id)}`);
-    } catch (e) {
-      ghToast({
-        title: "Create failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    const creator = profile?.username || principal;
+    await runProcess({
+      title: "Creating tournament",
+      description: "Posting bracket to Internet Computer.",
+      contextLine: tTitle.trim(),
+      tone: "prize",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating host settings",
+          detail: "Entry · schedule · host fee",
+        },
+        {
+          key: "create",
+          label: "Create on canister",
+          detail: "createTournamentEx",
+        },
+        {
+          key: "redirect",
+          label: "Opening tournament",
+          detail: "Redirect to bracket page",
+        },
+      ],
+      successTitle: "Tournament created",
+      successDetail: `${tTitle} · ${tEntry} ICP · host ${tHostPct}%`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const id = await createTournament({
+          creator,
+          title: tTitle.trim(),
+          game: tGame,
+          console: tConsole,
+          entryFeeIcp: parseFloat(tEntry) || 0,
+          maxPlayers: parseInt(tMax, 10) || 16,
+          hostFeePct: parseFloat(tHostPct) || 2.5,
+          description: tDesc,
+          scheduledAt: scheduled,
+          betable: tBetable,
+          teamEntry: tTeamMode,
+        });
+        setStep(2);
+        ghToast({
+          title: "Tournament created on-chain",
+          description: `${tTitle} · ${tEntry} ICP · host ${tHostPct}%${
+            tBetable ? " · betable" : ""
+          }`,
+          type: "success",
+        });
+        await processBeat(400);
+        window.location.assign(tournamentHref(id));
+      },
+    });
   };
 
+  /** Step 1 — create community room only (no seats / pot). */
   const submitRoom = async () => {
+    if (selectedRoom) {
+      await submitRoomGame();
+      return;
+    }
     if (!rName.trim()) {
       ghToast({ title: "Room name required", type: "error" });
+      return;
+    }
+    if (!rGames.length) {
+      ghToast({
+        title: "Pick at least one game",
+        description:
+          "Games come from your profile. Edit profile if the list is empty.",
+        type: "error",
+      });
       return;
     }
     if (!isCanisterConfigured()) {
       ghToast({
         title: "Canister not configured",
-        description: "Deploy gh_backend and set NEXT_PUBLIC_GH_BACKEND_CANISTER_ID",
+        description:
+          "Deploy gh_backend and set NEXT_PUBLIC_GH_BACKEND_CANISTER_ID",
         type: "error",
       });
       return;
     }
-    try {
-      const creator = profile?.username || principal || "";
-      if (!creator) throw new Error("Sign in required");
-      const id = await createRoomOnChain({
-        creator,
-        name: rName.trim(),
-        description: rRules || `${rGame} room`,
-        gameTypes: [rGame],
-        console: rConsole,
-        rules: rRules,
-        imageUrl: "",
-      });
+    const creator = profile?.username || principal || "";
+    if (!creator) {
+      ghToast({ title: "Sign in required", type: "error" });
+      return;
+    }
+    await runProcess({
+      title: "Creating community room",
+      description: "Rooms are groups first — add table games after.",
+      contextLine: rName.trim(),
+      tone: "live",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating community",
+          detail: "Name · profile games · no seat cap yet",
+        },
+        {
+          key: "create",
+          label: "Create room on canister",
+          detail: "createRoom · community group",
+        },
+        {
+          key: "redirect",
+          label: "Opening room",
+          detail: "Then create group games inside",
+        },
+      ],
+      successTitle: "Room created",
+      successDetail: `${rName.trim()} · ${rGames.length} game tag(s)`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const id = await createRoomOnChain(
+          {
+            creator,
+            name: rName.trim(),
+            description: rRules || `${rName.trim()} community`,
+            gameTypes: rGames,
+            console: rConsole || "Multi",
+            rules: rRules,
+            coverUrl: GROUP_COVER_DEFAULT,
+            avatarUrl: GROUP_AVATAR_DEFAULT,
+          },
+          identity,
+        );
+        setStep(2);
+        ghToast({
+          title: "Community group created",
+          description:
+            "Opening group page — chat, members, then create tables inside.",
+          type: "success",
+        });
+        await processBeat(400);
+        window.location.assign(chatHref(id));
+      },
+    });
+  };
+
+  /** Step 2 — group game inside a selected room (max seats + buy-in). */
+  const submitRoomGame = async () => {
+    if (!selectedRoom) {
       ghToast({
-        title: "Room created on-chain",
-        description: rGroupPot
-          ? `${rName} · buy-in ${rBuyIn} ICP · take ${rTakePct}%${
-              rBetable ? " · betable" : ""
-            }`
-          : `${rName}`,
-        type: "success",
-      });
-      router.push(`/chat/${encodeURIComponent(id)}`);
-    } catch (e) {
-      ghToast({
-        title: "Create room failed",
-        description: e instanceof Error ? e.message : String(e),
+        title: "Select a room first",
+        description: "Create the community room, then host a group game.",
         type: "error",
       });
+      return;
     }
+    if (!rGame.trim()) {
+      ghToast({ title: "Pick a game", type: "error" });
+      return;
+    }
+    if (
+      groupGameOptions.length &&
+      !groupGameOptions.includes(rGame.trim())
+    ) {
+      ghToast({
+        title: "Game not in this room",
+        description:
+          "Group games must use a title tagged on the room (from your profile).",
+        type: "error",
+      });
+      return;
+    }
+    const seats = parseInt(rMax, 10);
+    if (!Number.isFinite(seats) || seats < 2 || seats > 8) {
+      ghToast({
+        title: "Max seats 2–8",
+        description: "Seat cap is for the group game, not the room.",
+        type: "error",
+      });
+      return;
+    }
+    if (!isCanisterConfigured()) {
+      ghToast({ title: "Canister not configured", type: "error" });
+      return;
+    }
+    const creator = profile?.username || principal || "";
+    if (!creator) {
+      ghToast({ title: "Sign in required", type: "error" });
+      return;
+    }
+    const buyIn = Math.max(0, parseFloat(rBuyIn) || 0);
+    const takeNote =
+      buyIn > 0 && rTakePct
+        ? `Host take target ${rTakePct}% (policy).`
+        : buyIn === 0
+          ? "Free game (0 ICP buy-in)."
+          : "";
+    await runProcess({
+      title: "Creating group game",
+      description: `Table / FFA inside “${selectedRoom.name}”.`,
+      contextLine: `${rGame} · ${seats} seats`,
+      tone: "prize",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating game",
+          detail: `Max seats ${seats} · buy-in ${buyIn} ICP`,
+        },
+        {
+          key: "create",
+          label: "Create room challenge",
+          detail: "createRoomChallenge on canister",
+        },
+        {
+          key: "done",
+          label: "Game open",
+          detail: "Members can join the table",
+        },
+      ],
+      successTitle: "Group game created",
+      successDetail: `${rGame} in ${selectedRoom.name}`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const id = await createRoomGameOnChain(
+          {
+            creator,
+            roomId: selectedRoom.id,
+            gameType: rGame.trim(),
+            console: rConsole || "PC",
+            maxPlayers: seats,
+            entryFeeIcp: buyIn,
+            rules: [rRules.trim(), takeNote].filter(Boolean).join(" · "),
+          },
+          identity,
+        );
+        setStep(2);
+        ghToast({
+          title: "Group game created",
+          description: `${rGame} · id ${id}`,
+          type: "success",
+        });
+        await processBeat(400);
+        window.location.assign(chatHref(selectedRoom.id));
+      },
+    });
   };
 
   const modeLabel =
-    mode === "tournament" ? "Host tournament" : "Host game room";
+    mode === "tournament"
+      ? "Host tournament"
+      : selectedRoom
+        ? "Create group game"
+        : "Create community room";
+
+  /** Games available when hosting a table inside a room — room tags first, else profile only */
+  const groupGameOptions = useMemo(() => {
+    if (!selectedRoom) return profileGames;
+    const roomTags =
+      selectedRoom.games?.length > 0
+        ? selectedRoom.games
+        : selectedRoom.game
+          ? [selectedRoom.game]
+          : [];
+    if (roomTags.length) return roomTags;
+    return profileGames;
+  }, [selectedRoom, profileGames]);
 
   return (
     <VStack
@@ -423,9 +646,9 @@ export function HostCreateView() {
             </Text>
           </Heading>
           <Text fontSize="md" color="fg.muted" maxW="32rem" lineHeight="1.6">
-            Host a bracket or game room. Set host fee as a percentage of the pot.
-            Optional betable markets need a scheduled start — participants register
-            on the market too.
+            Host a bracket, or a community room first — then table games for that
+            group. Host fee is a percentage of the pot. Optional betable markets
+            need a scheduled start.
           </Text>
           <HStack gap="phi2" mt="phi3" flexWrap="wrap">
             <GhButton
@@ -460,9 +683,9 @@ export function HostCreateView() {
         <ModeCard
           active={mode === "room"}
           icon={Gamepad2}
-          title="Host game room"
-          subtitle="Lobby · group pot"
-          body="Custom lobbies with optional group pot. Pick an existing room to open or refresh a pot game."
+          title="Community room"
+          subtitle="Group first · games later"
+          body="Community first, then free-for-all tables (not brackets) — poker, COD FFA, spades… one winner per table."
           onClick={() => setMode("room")}
         />
       </SimpleGrid>
@@ -530,14 +753,14 @@ export function HostCreateView() {
         <Box>
           <SectionLabel
             icon={<Gamepad2 size={14} />}
-            title="Your game rooms"
-            hint="Select a room to create or update a group pot game"
+            title="Your community rooms"
+            hint="Select a room to create a group game (seats · buy-in)"
           />
           {hostedRooms.length === 0 ? (
             <GhEmptyState
               icon={Gamepad2}
-              title="No game rooms yet"
-              description="Create a room below — lives on gh_backend createRoom."
+              title="No rooms yet"
+              description="Create a community room below first, then add group games inside it."
             />
           ) : (
             <VStack align="stretch" gap="phi2">
@@ -583,21 +806,24 @@ export function HostCreateView() {
                           </Text>
                         </HStack>
                         <Text fontSize="xs" color="fg.muted">
-                          {room.game} · {room.console || "PC"} ·{" "}
-                          {room.membersCount}/{room.maxMembers} players
+                          {(room.games?.length
+                            ? room.games.join(", ")
+                            : room.game) || "Multi"}{" "}
+                          · {room.console || "PC"} · {room.membersCount} member
+                          {room.membersCount === 1 ? "" : "s"}
                           {room.activePots[0]
-                            ? ` · pot ${room.activePots[0].potIcp} ICP`
-                            : ""}
+                            ? ` · live table ${room.activePots[0].game} (${room.activePots[0].players})`
+                            : " · no open games yet"}
                         </Text>
                       </Box>
                       <GhButton
                         size="sm"
                         variant={selected ? "prize" : "outline"}
                         leftIcon={<Plus size={14} />}
-                        onClick={() => selectRoomForPot(room)}
+                        onClick={() => selectRoomForGame(room)}
                         flexShrink={0}
                       >
-                        {selected ? "Selected" : "Group pot for room"}
+                        {selected ? "Selected" : "Create group game"}
                       </GhButton>
                     </Flex>
                   </GhSurface>
@@ -635,11 +861,11 @@ export function HostCreateView() {
             </Text>
           </HStack>
           <Text fontSize="sm" color="fg.muted" lineHeight="1.5">
-            Enter{" "}
             {mode === "tournament"
-              ? "entry fee, max players, and host fee %"
-              : "buy-in, seats, and room take %"}{" "}
-            below to preview your cut at a full lobby.
+              ? "Enter entry fee, max players, and host fee % below to preview your cut at a full lobby."
+              : selectedRoom
+                ? "Enter buy-in, max seats, and host take % for this group game to preview pot split."
+                : "Create the community room first. Host earnings preview appears when you create a group game (seats + buy-in) inside a room."}
           </Text>
         </GhSurface>
       )}
@@ -689,12 +915,18 @@ export function HostCreateView() {
                   {recreateFrom && mode === "tournament"
                     ? " · recreate"
                     : selectedRoom && mode === "room"
-                      ? " · room pot"
-                      : ""}
+                      ? ` · ${selectedRoom.name}`
+                      : mode === "room"
+                        ? " · step 1"
+                        : ""}
                 </Text>
                 <Text fontSize="xs" color="fg.muted">
                   {formOpen
-                    ? "In-page form · no modal (II-safe)"
+                    ? mode === "room" && !selectedRoom
+                      ? "Community only · no seats · games from profile"
+                      : mode === "room" && selectedRoom
+                        ? "Step 2 · max seats + buy-in for this table"
+                        : "In-page form · no modal (II-safe)"
                     : "Show form to continue"}
                 </Text>
               </Box>
@@ -924,134 +1156,207 @@ export function HostCreateView() {
               ) : (
                 <VStack align="stretch" gap="phi3" pt="phi3">
                   {selectedRoom ? (
-                    <GhAlert tone="live" title="Room selected for group pot">
-                      Configuring pot for “{selectedRoom.name}”. Create a new
-                      room instead by clearing selection.
+                    <GhAlert tone="live" title="Create free-for-all table">
+                      “{selectedRoom.name}” is selected. This is{" "}
+                      <Text as="span" fontWeight="bold">
+                        not a bracket
+                      </Text>{" "}
+                      — multi-seat FFA, one winner. Max seats & buy-in apply to
+                      this table only.
                     </GhAlert>
-                  ) : null}
-                  <GhField label="Room name" required>
-                    <GhInput
-                      value={rName}
-                      onChange={(e) => setRName(e.target.value)}
-                      placeholder="Warzone customs"
-                    />
-                  </GhField>
-                  <HStack gap="phi2" flexWrap="wrap" align="flex-start">
-                    <Box flex="1" minW="10rem">
-                      <GhField label="Game" required>
-                        <NativeSelect
-                          value={rGame}
-                          onChange={setRGame}
-                          options={[...gameOptions]}
+                  ) : (
+                    <GhAlert tone="live" title="Step 1 · Community room">
+                      Rooms are groups. Tag games you play (from your profile).
+                      After the room exists, select it above to create table
+                      games (poker, FFA, spades…).
+                    </GhAlert>
+                  )}
+
+                  {!selectedRoom ? (
+                    <>
+                      <GhField label="Room name" required>
+                        <GhInput
+                          value={rName}
+                          onChange={(e) => setRName(e.target.value)}
+                          placeholder="Friday night crew"
                         />
                       </GhField>
-                    </Box>
-                    <Box flex="1" minW="8rem">
-                      <GhField label="Console">
+                      <GhField
+                        label="Games this room plays"
+                        required
+                        helperText={
+                          profileGames.length
+                            ? "From your profile · pick one or more tags"
+                            : "Add games on your profile first"
+                        }
+                      >
+                        {profileGames.length ? (
+                          <GameChipPicker
+                            selected={rGames}
+                            onChange={setRGames}
+                            catalog={profileGames}
+                            tone="live"
+                            placeholder="Add another title from your list…"
+                            helperText="Only games you listed on profile."
+                          />
+                        ) : (
+                          <GhAlert tone="warning" title="No profile games">
+                            Edit your profile and select games you play, then
+                            return here.
+                          </GhAlert>
+                        )}
+                      </GhField>
+                      <GhField label="Primary console (optional)">
                         <GhInput
                           value={rConsole}
                           onChange={(e) => setRConsole(e.target.value)}
+                          placeholder="PC · Multi · PS5…"
                         />
                       </GhField>
-                    </Box>
-                    <Box flex="1" minW="7rem">
-                      <GhField label="Max seats">
-                        <GhInput
-                          type="number"
-                          min="2"
-                          max="64"
-                          value={rMax}
-                          onChange={(e) => setRMax(e.target.value)}
+                      <GhField label="About / rules (optional)">
+                        <GhTextarea
+                          value={rRules}
+                          onChange={(e) => setRRules(e.target.value)}
+                          placeholder="Vibe, schedule, how to join…"
                         />
                       </GhField>
-                    </Box>
-                  </HStack>
-
-                  <Box
-                    p="phi3"
-                    borderRadius="xl"
-                    borderWidth="1px"
-                    borderColor={rGroupPot ? "prize.solid" : "border.default"}
-                    bg={rGroupPot ? "prize.muted" : "blackAlpha.400"}
-                  >
-                    <HStack justify="space-between" mb="phi2">
-                      <Text
-                        fontFamily="heading"
-                        fontSize="sm"
-                        fontWeight="bold"
-                        color={rGroupPot ? "prize.fg" : "fg.default"}
-                      >
-                        Group pot game
-                      </Text>
-                      <GhSwitch
-                        checked={rGroupPot}
-                        onCheckedChange={setRGroupPot}
-                        tone="prize"
-                      />
-                    </HStack>
-                    <Text fontSize="xs" color="fg.muted" mb="phi2">
-                      Players buy in; host take % applies when the room settles.
-                    </Text>
-                    {rGroupPot ? (
+                    </>
+                  ) : (
+                    <>
                       <HStack gap="phi2" flexWrap="wrap" align="flex-start">
-                        <Box flex="1" minW="7rem">
-                          <GhField label="Buy-in (ICP)">
+                        <Box flex="1" minW="10rem">
+                          <GhField
+                            label="Game"
+                            required
+                            helperText="From this room’s tags (set from your profile when the room was created)"
+                          >
+                            {groupGameOptions.length ? (
+                              <NativeSelect
+                                value={
+                                  groupGameOptions.includes(rGame)
+                                    ? rGame
+                                    : groupGameOptions[0]!
+                                }
+                                onChange={setRGame}
+                                options={[...groupGameOptions]}
+                              />
+                            ) : (
+                              <GhAlert tone="warning" title="No games on this room">
+                                Room has no game tags. Edit the room or create a
+                                new community with profile games first.
+                              </GhAlert>
+                            )}
+                          </GhField>
+                        </Box>
+                        <Box flex="1" minW="8rem">
+                          <GhField label="Console">
                             <GhInput
-                              type="number"
-                              min="0"
-                              step="0.01"
-                              value={rBuyIn}
-                              onChange={(e) => setRBuyIn(e.target.value)}
-                              tone="prize"
+                              value={rConsole}
+                              onChange={(e) => setRConsole(e.target.value)}
                             />
                           </GhField>
                         </Box>
                         <Box flex="1" minW="7rem">
                           <GhField
-                            label="Room take (%)"
-                            helperText={`e.g. 1 · 5 · max ${HOST_FEE_MAX_PCT}%`}
+                            label="Max seats"
+                            required
+                            helperText="2–8 for this game"
                           >
                             <GhInput
                               type="number"
-                              min="0"
-                              max={HOST_FEE_MAX_PCT}
-                              step="0.1"
-                              value={rTakePct}
-                              onChange={(e) => setRTakePct(e.target.value)}
-                              tone="prize"
+                              min="2"
+                              max="8"
+                              value={rMax}
+                              onChange={(e) => setRMax(e.target.value)}
                             />
                           </GhField>
                         </Box>
                       </HStack>
-                    ) : null}
-                  </Box>
 
-                  <BetableBlock
-                    betable={rBetable}
-                    onBetable={(on) => setRBetable(on)}
-                    date={rDate}
-                    time={rTime}
-                    onDate={setRDate}
-                    onTime={setRTime}
-                    eventLabel="group game"
-                  />
+                      <Box
+                        p="phi3"
+                        borderRadius="xl"
+                        borderWidth="1px"
+                        borderColor="prize.solid"
+                        bg="prize.muted"
+                      >
+                        <Text
+                          fontFamily="heading"
+                          fontSize="sm"
+                          fontWeight="bold"
+                          color="prize.fg"
+                          mb="1"
+                        >
+                          Buy-in / pot
+                        </Text>
+                        <Text fontSize="xs" color="fg.muted" mb="phi2">
+                          Enter 0 for a free game. Seat cap is always required.
+                        </Text>
+                        <HStack gap="phi2" flexWrap="wrap" align="flex-start">
+                          <Box flex="1" minW="7rem">
+                            <GhField
+                              label="Buy-in (ICP)"
+                              helperText="0 = free"
+                            >
+                              <GhInput
+                                type="number"
+                                min="0"
+                                step="0.01"
+                                value={rBuyIn}
+                                onChange={(e) => setRBuyIn(e.target.value)}
+                                tone="prize"
+                              />
+                            </GhField>
+                          </Box>
+                          <Box flex="1" minW="7rem">
+                            <GhField
+                              label="Host take (%)"
+                              helperText={`Note only · max ${HOST_FEE_MAX_PCT}%`}
+                            >
+                              <GhInput
+                                type="number"
+                                min="0"
+                                max={HOST_FEE_MAX_PCT}
+                                step="0.1"
+                                value={rTakePct}
+                                onChange={(e) => setRTakePct(e.target.value)}
+                                tone="prize"
+                              />
+                            </GhField>
+                          </Box>
+                        </HStack>
+                      </Box>
 
-                  <GhField label="Lobby rules">
-                    <GhTextarea
-                      value={rRules}
-                      onChange={(e) => setRRules(e.target.value)}
-                      placeholder="Squad size, maps, stream required…"
-                    />
-                  </GhField>
+                      <BetableBlock
+                        betable={rBetable}
+                        onBetable={(on) => setRBetable(on)}
+                        date={rDate}
+                        time={rTime}
+                        onDate={setRDate}
+                        onTime={setRTime}
+                        eventLabel="group game"
+                      />
+
+                      <GhField label="Game rules (optional)">
+                        <GhTextarea
+                          value={rRules}
+                          onChange={(e) => setRRules(e.target.value)}
+                          placeholder="Buy-in rules, format, stream…"
+                        />
+                      </GhField>
+                    </>
+                  )}
 
                   <HStack gap="phi2" flexWrap="wrap">
                     <GhButton
-                      variant="live"
+                      variant={selectedRoom ? "prize" : "live"}
                       leftIcon={<Gamepad2 size={16} />}
                       rightIcon={<ArrowRight size={16} />}
                       onClick={submitRoom}
                     >
-                      {selectedRoom ? "Save group pot" : "Create game room"}
+                      {selectedRoom
+                        ? "Create group game"
+                        : "Create community room"}
                     </GhButton>
                     {selectedRoom ? (
                       <GhButton
@@ -1059,9 +1364,10 @@ export function HostCreateView() {
                         onClick={() => {
                           setSelectedRoom(null);
                           setRName("");
+                          setRRules("");
                         }}
                       >
-                        New room instead
+                        Create new room instead
                       </GhButton>
                     ) : null}
                     <GhButton
@@ -1080,6 +1386,8 @@ export function HostCreateView() {
 
       {/* Helper notes (replaces Teams moved banner) */}
       <HelperNotes mode={mode} />
+
+      <GhProcessModal state={processState} onClose={closeProcess} />
     </VStack>
   );
 }
@@ -1374,29 +1682,29 @@ function HelperNotes({ mode }: { mode: HostCreateMode }) {
         ]
       : [
           {
-            icon: ChartCandlestick,
-            title: "Betable group games",
-            body: `Enable betable to open a market on the room outcome. Winner share (~${BETABLE_WINNER_PCT}% of volume) is independent of room take %.`,
-          },
-          {
             icon: Users,
-            title: "Lobby + market registration",
-            body: "Players join the room and must register on the betable market if one is attached — same principal for both.",
+            title: "Room first, games second",
+            body: "A room is a community group. Create it with name + games you play (from profile). No seat cap on the room.",
           },
           {
-            icon: CalendarClock,
-            title: "Schedule group pot start",
-            body: "Betable group games require a scheduled start ≥ 1 hour out so spectators can find the market.",
+            icon: Gamepad2,
+            title: "Group games inside the room",
+            body: "Select your room, then create free-for-all tables (poker, COD FFA, spades…). Not an elimination bracket — one winner when the table settles. Max seats 2–8 + buy-in (0 = free).",
           },
           {
             icon: Coins,
-            title: "Room take is % of pot",
-            body: `Buy-in × seats = pot. Your take is a percent (e.g. 5). Preview max earnings when seats, buy-in, and take % are set.`,
+            title: "Buy-in is per game",
+            body: "Optional buy-in × seats previews pot for that table. Host take % is noted for settlement policy.",
+          },
+          {
+            icon: ChartCandlestick,
+            title: "Betable (optional)",
+            body: `Spectator markets on group games are optional and muted product-wide for now. Winner share policy ~${BETABLE_WINNER_PCT}%.`,
           },
           {
             icon: Info,
-            title: "Teams",
-            body: "Squad create/manage lives on /teams. Use this booth only for rooms and pots.",
+            title: "Profile games",
+            body: "Game tags on create come from games you selected on your profile. Update profile to add titles.",
           },
         ];
 

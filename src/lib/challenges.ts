@@ -25,6 +25,8 @@ export type ChallengeSide = {
   record?: string;
   paid: boolean;
   gameStats?: GameFormStats;
+  /** Profile avatar URL when resolved */
+  avatarUrl?: string;
 };
 
 export type MonitorProfile = {
@@ -119,6 +121,12 @@ export type ChallengeDetail = {
 /** Session identity until II is fully wired — use profile principal */
 export const DEMO_VIEWER = "you";
 
+// Re-export static-export safe URLs (canonical: lib/deep-links.ts)
+export {
+  challengeHref,
+  challengeShareUrl,
+} from "./deep-links";
+
 export function challengeEscrowAddress(id: string) {
   const slug = id.replace(/[^a-z0-9]/gi, "").slice(0, 12).padEnd(12, "0");
   return `rdmx6-gh-chal-${slug}-suba-e5c70w-escrow01`;
@@ -130,22 +138,121 @@ export function basePotIcp(c: ChallengeDetail) {
   return c.entryFeeIcp * paid + c.potExtraIcp;
 }
 
-export function isPlayer(c: ChallengeDetail, username = DEMO_VIEWER) {
+/**
+ * Match canister-stored actor strings against the signed-in user.
+ * Canister may store username OR principal text depending on create/join path.
+ */
+export function matchesActor(
+  stored: string | undefined | null,
+  username: string,
+  principal?: string,
+): boolean {
+  if (!stored) return false;
+  const s = stored.trim().toLowerCase();
+  if (!s) return false;
+  const candidates = [username, principal]
+    .filter(Boolean)
+    .map((x) => String(x).trim().toLowerCase());
+  return candidates.some((c) => c.length > 0 && c === s);
+}
+
+export function isCreator(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  return matchesActor(c.creator.username, username, principal);
+}
+
+export function isPlayer(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
   return (
-    c.creator.username === username ||
-    c.opponent?.username === username
+    matchesActor(c.creator.username, username, principal) ||
+    matchesActor(c.opponent?.username, username, principal)
   );
 }
 
-export function isMonitor(c: ChallengeDetail, username = DEMO_VIEWER) {
-  return c.monitorUsername === username;
+export function isMonitor(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  return matchesActor(c.monitorUsername, username, principal);
 }
 
-export function isTournamentHost(c: ChallengeDetail, username = DEMO_VIEWER) {
-  return c.tournamentHostUsername === username;
+export function isTournamentHost(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  return matchesActor(c.tournamentHostUsername, username, principal);
 }
 
-export function canReportScore(c: ChallengeDetail, username = DEMO_VIEWER) {
+/**
+ * True when both seats are filled (accepted / live / scored…).
+ * Open challenges may store an invite name on-chain without a seated opponent.
+ */
+export function hasSeatedOpponent(c: ChallengeDetail): boolean {
+  return Boolean(c.opponent?.username);
+}
+
+/** Creator may cancel a standalone open challenge before anyone accepts. */
+export function canCreatorCancelOpen(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  if (c.tournamentId) return false;
+  if (c.status !== "open") return false;
+  if (hasSeatedOpponent(c)) return false;
+  return isCreator(c, username, principal);
+}
+
+/** Opponent (or open seat) may accept when still open. */
+export function canAcceptChallenge(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  if (c.status !== "open") return false;
+  if (hasSeatedOpponent(c)) return false;
+  // Creator already in the match
+  if (isCreator(c, username, principal)) return false;
+  // If invited, only invitee (or anyone if no invite)
+  if (c.invitedUsername) {
+    return matchesActor(c.invitedUsername, username, principal);
+  }
+  return true;
+}
+
+/**
+ * Monitor may report scores when assigned and at least one player has a stream
+ * (live match observability). Tournament hosts use canReportScore separately.
+ */
+export function canMonitorReport(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
+  if (!isMonitor(c, username, principal)) return false;
+  if (!c.opponent) return false;
+  if (c.status === "open" || c.status === "settled" || c.status === "cancelled") {
+    return false;
+  }
+  const streaming =
+    Boolean(c.creator.streamUrl?.trim()) ||
+    Boolean(c.opponent.streamUrl?.trim());
+  return streaming || c.status === "live" || c.status === "accepted";
+}
+
+export function canReportScore(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
   if (
     c.status === "settled" ||
     c.status === "cancelled" ||
@@ -154,24 +261,32 @@ export function canReportScore(c: ChallengeDetail, username = DEMO_VIEWER) {
   ) {
     return false;
   }
-  if (!c.opponent) return false;
+  if (!hasSeatedOpponent(c)) return false;
   if (c.scoreIsFinal) return false;
   if (c.cancelRequest?.status === "pending") return false;
-  return (
-    isPlayer(c, username) ||
-    isMonitor(c, username) ||
-    isTournamentHost(c, username)
-  );
+  // Pending player report → only officials may override; others confirm
+  if (c.pendingReport?.status === "pending") {
+    return isOfficialScoreReporter(c, username, principal);
+  }
+  if (isPlayer(c, username, principal)) return true;
+  if (isTournamentHost(c, username, principal)) return true;
+  if (canMonitorReport(c, username, principal)) return true;
+  return false;
 }
 
 export function hasPostedScore(c: ChallengeDetail) {
   return c.scoreCreator > 0 || c.scoreOpponent > 0;
 }
 
-export function canMutualCancel(c: ChallengeDetail, username = DEMO_VIEWER) {
+export function canMutualCancel(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
   if (c.tournamentId) return false;
-  if (!isPlayer(c, username)) return false;
-  if (!c.opponent) return false;
+  if (!isPlayer(c, username, principal)) return false;
+  // Only after both players have accepted (seated) — not while open/invite
+  if (!hasSeatedOpponent(c)) return false;
   if (
     c.status === "open" ||
     c.status === "settled" ||
@@ -182,7 +297,23 @@ export function canMutualCancel(c: ChallengeDetail, username = DEMO_VIEWER) {
   }
   if (c.scoreIsFinal) return false;
   if (c.dispute?.status === "open") return false;
+  // Hide mutual cancel while a score report is waiting for confirm
+  if (c.pendingReport?.status === "pending") return false;
   return true;
+}
+
+/**
+ * Official reporters (monitor / tournament host / non-player admin) settle
+ * on submit — no second-player confirm required.
+ */
+export function isOfficialScoreReporter(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+): boolean {
+  if (isTournamentHost(c, username, principal)) return true;
+  if (isMonitor(c, username, principal)) return true;
+  return false;
 }
 
 export function otherPlayer(c: ChallengeDetail, username: string) {
@@ -191,11 +322,15 @@ export function otherPlayer(c: ChallengeDetail, username: string) {
   return undefined;
 }
 
-export function canDisputeCancel(c: ChallengeDetail, username = DEMO_VIEWER) {
+export function canDisputeCancel(
+  c: ChallengeDetail,
+  username = DEMO_VIEWER,
+  principal?: string,
+) {
   const req = c.cancelRequest;
   if (!req || req.status !== "pending") return false;
-  if (req.requestedBy === username) return false;
-  if (!isPlayer(c, username)) return false;
+  if (matchesActor(req.requestedBy, username, principal)) return false;
+  if (!isPlayer(c, username, principal)) return false;
   if (!hasPostedScore(c)) return false;
   if (c.tournamentId) return false;
   return true;
@@ -216,10 +351,11 @@ export function isValidVideoProofUrl(raw: string): boolean {
 export function reportRoleFor(
   c: ChallengeDetail,
   username = DEMO_VIEWER,
+  principal?: string,
 ): ScoreReportRole | null {
-  if (isTournamentHost(c, username)) return "tournament_host";
-  if (isMonitor(c, username)) return "monitor";
-  if (isPlayer(c, username)) return "player";
+  if (isTournamentHost(c, username, principal)) return "tournament_host";
+  if (isMonitor(c, username, principal)) return "monitor";
+  if (isPlayer(c, username, principal)) return "player";
   return null;
 }
 
@@ -243,6 +379,7 @@ export function needsConfirmFrom(
 export function canConfirmReport(
   c: ChallengeDetail,
   username = DEMO_VIEWER,
+  principal?: string,
 ): boolean {
   const r = c.pendingReport;
   if (!r || r.status !== "pending") return false;
@@ -252,7 +389,8 @@ export function canConfirmReport(
   ) {
     return false;
   }
-  return needsConfirmFrom(c, r).includes(username);
+  const needed = needsConfirmFrom(c, r);
+  return needed.some((n) => matchesActor(n, username, principal));
 }
 
 export function canCreateBetable(
@@ -289,6 +427,7 @@ export function canCreateBetable(
       reason: "Challenge must be accepted / live before opening a market",
     };
   }
+  // principal optional — callers that only pass username still work
   if (!isPlayer(c, username)) {
     return { ok: false, reason: "Only players in the match can open betable" };
   }
@@ -336,7 +475,7 @@ export function getMonitorProfile(
 }
 
 export function formatWhen(iso: string | null) {
-  if (!iso) return "ASAP / flex";
+  if (!iso) return "";
   try {
     return new Date(iso).toLocaleString(undefined, {
       weekday: "short",

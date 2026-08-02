@@ -146,6 +146,79 @@ export const PROFILE_COVER_SIZE = {
   label: "1600 × 600",
 } as const;
 
+/**
+ * Gamer-card style avatar presets (square crop).
+ * Paths under /public — no remote CDN required.
+ */
+export const AVATAR_OPTIONS = [
+  {
+    id: "neon-fang",
+    label: "Neon Fang",
+    url: "/art/battle/neon-fang.jpg",
+  },
+  {
+    id: "iron-chorus",
+    label: "Iron Chorus",
+    url: "/art/battle/iron-chorus.jpg",
+  },
+  {
+    id: "heads-up",
+    label: "Heads-up",
+    url: "/art/chibi-heads-up.jpg",
+  },
+  {
+    id: "arcade-crew",
+    label: "Arcade crew",
+    url: "/art/chibi-arcade-friends.jpg",
+  },
+  {
+    id: "squad-win",
+    label: "Squad win",
+    url: "/art/chibi-team-win.jpg",
+  },
+  {
+    id: "high-five",
+    label: "High five",
+    url: "/art/chibi-team-highfive.jpg",
+  },
+  {
+    id: "gear",
+    label: "Gear",
+    url: "/art/gear-icp.jpg",
+  },
+  {
+    id: "volt-card",
+    label: "Volt card",
+    url: "/art/profile-covers/gamerholic-volt.jpg",
+  },
+  {
+    id: "prize-card",
+    label: "Prize card",
+    url: "/art/profile-covers/gamerholic-prize.jpg",
+  },
+  {
+    id: "cyan-card",
+    label: "Cyan card",
+    url: "/art/profile-covers/gamer-cyan.jpg",
+  },
+  {
+    id: "brand-mark",
+    label: "Power G",
+    url: "/brand/gamerholic-mark-128.jpg",
+  },
+] as const;
+
+export const PROFILE_AVATAR_SIZE = {
+  width: 512,
+  height: 512,
+  label: "512 × 512",
+} as const;
+
+export function isPresetAvatar(url: string | null | undefined): boolean {
+  if (!url) return false;
+  return AVATAR_OPTIONS.some((a) => a.url === url);
+}
+
 export const CONSOLES: ConsoleId[] = [
   "PC",
   "PS5",
@@ -217,14 +290,94 @@ export function shortPrincipal(principal: string, head = 5, tail = 4): string {
 }
 
 export function emptyProfileForPrincipal(principal: string): GamerProfile {
-  const short = shortPrincipal(principal) || "gamer";
   return {
     ...DEFAULT_PROFILE,
     principal,
-    username: short,
-    gamertag: short,
+    // Force user to set identity before challenges
+    username: "",
+    gamertag: "",
     coverUrl: COVER_OPTIONS[0].url,
   };
+}
+
+/** Max length for public @username (header chip + profile) */
+export const USERNAME_MAX_LENGTH = 13;
+
+/** Normalize + enforce username max length */
+export function normalizeUsername(raw: string): string {
+  return raw.trim().replace(/\s+/g, "").slice(0, USERNAME_MAX_LENGTH);
+}
+
+/** Auto shell used before first save — not a finished identity */
+export function isPlaceholderIdentity(
+  value: string,
+  principal: string,
+): boolean {
+  const v = (value || "").trim();
+  if (!v) return true;
+  const p = (principal || "").trim();
+  if (p && (v === p || v === shortPrincipal(p))) return true;
+  return false;
+}
+
+export type ProfileMissingField =
+  | "username"
+  | "gamertag"
+  | "game"
+  | "console"
+  | "avatar";
+
+/**
+ * Challenge send/accept requires a complete gamer card identity.
+ */
+export function getProfileCompleteness(p: GamerProfile | null | undefined): {
+  ok: boolean;
+  missing: ProfileMissingField[];
+  message: string;
+} {
+  const missing: ProfileMissingField[] = [];
+  if (!p) {
+    return {
+      ok: false,
+      missing: ["username", "gamertag", "game", "console", "avatar"],
+      message: "Complete your profile before challenges.",
+    };
+  }
+  if (isPlaceholderIdentity(p.username, p.principal)) missing.push("username");
+  else if ((p.username || "").trim().length > USERNAME_MAX_LENGTH) {
+    missing.push("username");
+  }
+  if (isPlaceholderIdentity(p.gamertag, p.principal)) missing.push("gamertag");
+  if (!p.games?.length) missing.push("game");
+  if (!p.console) missing.push("console");
+  if (!resolveProfileAvatarUrl(p)) missing.push("avatar");
+
+  const labels: Record<ProfileMissingField, string> = {
+    username: "username",
+    gamertag: "gamertag",
+    game: "at least one game",
+    console: "console",
+    avatar: "avatar",
+  };
+  let message =
+    missing.length === 0
+      ? ""
+      : `Finish your profile first: add ${missing.map((m) => labels[m]).join(", ")}.`;
+  if (
+    p &&
+    (p.username || "").trim().length > USERNAME_MAX_LENGTH &&
+    !isPlaceholderIdentity(p.username, p.principal)
+  ) {
+    message = `Username must be ${USERNAME_MAX_LENGTH} characters or fewer.`;
+  }
+
+  return { ok: missing.length === 0, missing, message };
+}
+
+export function isProfileComplete(
+  p: GamerProfile | null | undefined,
+): boolean {
+  return getProfileCompleteness(p).ok;
 }
 
 export type MatchResult = "W" | "L" | "D" | "void";

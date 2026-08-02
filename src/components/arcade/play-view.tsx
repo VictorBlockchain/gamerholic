@@ -79,6 +79,7 @@ import {
   type SecurePlaySession,
 } from "@/lib/arcade/secure-session";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { resolveArcadeCoverUrl } from "@/lib/arcade/cover";
 import { bindArcadeKeyboardCapture } from "@/lib/arcade/keyboard";
 import type {
   ArcadeGame,
@@ -104,7 +105,7 @@ function formatClock(sec: number) {
  * Arcade play cabinet — insert fee, countdown, HTML5 iframe, leaderboard.
  */
 export function ArcadePlayView({ gameId }: Props) {
-  const { isLoggedIn, loginDemo, profile, principal } = useSession();
+  const { isLoggedIn, loginDemo, profile, principal, identity } = useSession();
   const [game, setGame] = useState<ArcadeGame | null>(null);
   const [board, setBoard] = useState<LeaderboardPlayerRow[]>([]);
   const [payouts, setPayouts] = useState<ArcadePayoutEvent[]>([]);
@@ -485,18 +486,36 @@ export function ArcadePlayView({ gameId }: Props) {
     [gameId, postToGame, refreshEconomy],
   );
 
-  const onClaim = () => {
+  const onClaim = async () => {
     const p = principal || profile?.principal || "";
     if (!p || !game) return;
     setClaimBusy(true);
     try {
       const r = claimGameEarnings(game.id, p);
       setBalances(r.balances);
-      refreshEconomy();
       if (!r.ok) {
         ghToast({ title: "Nothing to claim", description: r.error, type: "info" });
         return;
       }
+      // Native ICP: arcade escrow → play subaccount on gh_backend
+      if (r.claimedIcp > 0 && identity) {
+        const { claimGameEarningsIcpOnChain } = await import(
+          "@/lib/arcade/store"
+        );
+        const chain = await claimGameEarningsIcpOnChain(
+          game.id,
+          r.claimedIcp,
+          identity,
+        );
+        if (!chain.ok) {
+          ghToast({
+            title: "Local claim ok · on-chain ICP failed",
+            description: chain.error || "Deposit/escrow may be empty on ledger",
+            type: "warning",
+          });
+        }
+      }
+      refreshEconomy();
       const parts = [
         r.claimedIcp > 0 ? `${r.claimedIcp} ICP` : "",
         r.claimedGamer > 0 ? `${r.claimedGamer} GAMER` : "",
@@ -651,9 +670,37 @@ export function ArcadePlayView({ gameId }: Props) {
     const username = profile?.username || "player";
 
     if (paid) {
+      if (game.playFeeToken === "ICP" && identity && game.playFee > 0) {
+        try {
+          const { debitArcadePlayFee } = await import(
+            "@/lib/ic/settlement-service"
+          );
+          const ok = await debitArcadePlayFee(
+            game.id,
+            game.playFee,
+            identity,
+          );
+          if (!ok) {
+            ghToast({
+              title: "ICP insert failed",
+              description:
+                "Debit from play subaccount failed — deposit ICP to your Gamerholic play balance first",
+              type: "error",
+            });
+            return;
+          }
+        } catch (e) {
+          ghToast({
+            title: "ICP insert failed",
+            description: e instanceof Error ? e.message : String(e),
+            type: "error",
+          });
+          return;
+        }
+      }
       const deb = debitPlayFee(game.playFeeToken, game.playFee);
       setBalances(deb.balances);
-      if (!deb.ok) {
+      if (!deb.ok && game.playFeeToken !== "ICP") {
         ghToast({
           title: "Insert failed",
           description: deb.error,
@@ -1467,6 +1514,7 @@ export function ArcadePlayView({ gameId }: Props) {
       >
         {/* Cabinet */}
         <VStack align="stretch" gap="phi4">
+          {/* Cabinet: session header + game only (cover/details live under About) */}
           <GhSurface
             variant="elevated"
             p="0"
@@ -1474,79 +1522,6 @@ export function ArcadePlayView({ gameId }: Props) {
             borderColor="border.brand"
             boxShadow="glow"
           >
-            <Box
-              position="relative"
-              h={{ base: "7rem", md: "9rem" }}
-              overflow="hidden"
-              display={{ base: playing ? "none" : "block", md: "block" }}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={game.imageUrl}
-                alt=""
-                style={{
-                  width: "100%",
-                  height: "100%",
-                  objectFit: "cover",
-                  filter: "brightness(0.4) saturate(1.15)",
-                }}
-              />
-              <Box
-                position="absolute"
-                inset="0"
-                bg="linear-gradient(180deg, rgba(7,6,18,0.2) 0%, rgba(7,6,18,0.92) 100%)"
-              />
-              <Box
-                position="absolute"
-                inset="0"
-                p={{ base: "phi3", md: "phi4" }}
-                display="flex"
-                flexDirection="column"
-                justifyContent="flex-end"
-              >
-                <HStack gap="2" mb="2" flexWrap="wrap">
-                  <GhBadge tone="attr">HTML5 cabinet</GhBadge>
-                  {isTesting ? (
-                    <GhBadge tone="prize" pulse>
-                      Testing · {upvoteCount}/{ARCADE_LIVE_UPVOTE_THRESHOLD}
-                    </GhBadge>
-                  ) : (
-                    <GhBadge tone="live">Live</GhBadge>
-                  )}
-                  {session?.paid ? (
-                    <GhBadge tone="prize" pulse>
-                      Ranked
-                    </GhBadge>
-                  ) : phase === "playing" ? (
-                    <GhBadge tone="muted">Free play</GhBadge>
-                  ) : (
-                    <GhBadge tone="muted">Ready</GhBadge>
-                  )}
-                </HStack>
-                <Heading
-                  fontFamily="heading"
-                  fontSize={{ base: "xl", md: "2xl" }}
-                  fontWeight="extrabold"
-                  color="white"
-                  letterSpacing="0.03em"
-                  textShadow="0 2px 16px rgba(0,0,0,0.65)"
-                >
-                  {game.title}
-                </Heading>
-                <Text
-                  mt="1"
-                  fontSize="sm"
-                  color="white"
-                  opacity={0.92}
-                  lineHeight="1.5"
-                  maxW="36rem"
-                  textShadow="0 1px 8px rgba(0,0,0,0.8)"
-                >
-                  {game.description}
-                </Text>
-              </Box>
-            </Box>
-
             {phase === "idle" ? (
               <Flex
                 px={{ base: "phi3", md: "phi4" }}
@@ -1593,6 +1568,22 @@ export function ArcadePlayView({ gameId }: Props) {
                       {feeLabel}
                     </Text>
                   </Box>
+                  <HStack gap="2" flexWrap="wrap" alignSelf="flex-end" pb="0.5">
+                    {session?.paid ? (
+                      <GhBadge tone="prize" pulse>
+                        Ranked
+                      </GhBadge>
+                    ) : (
+                      <GhBadge tone="muted">Ready</GhBadge>
+                    )}
+                    {isTesting ? (
+                      <GhBadge tone="prize" pulse>
+                        Testing
+                      </GhBadge>
+                    ) : (
+                      <GhBadge tone="live">Live</GhBadge>
+                    )}
+                  </HStack>
                 </HStack>
                 <Text fontSize="xs" color="fg.muted" maxW="16rem" lineHeight="1.45">
                   {isTesting
@@ -1602,15 +1593,67 @@ export function ArcadePlayView({ gameId }: Props) {
               </Flex>
             ) : null}
 
-            <Box borderTopWidth={phase === "idle" ? "0" : "1px"} borderColor="border.default">
-              {gameStage}
-            </Box>
+            <Box>{gameStage}</Box>
           </GhSurface>
 
-          {/* About / how to play — high contrast cards */}
+          {/* About — cover, overview, rules (moved out of cabinet card) */}
           <SectionDivider label="About this cabinet" tone="attr" my="0" />
 
           <VStack align="stretch" gap="phi3" mt="phi3">
+            <GhSurface variant="elevated" p="0" overflow="hidden">
+              <Box
+                position="relative"
+                h={{ base: "9rem", md: "11rem" }}
+                overflow="hidden"
+              >
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={resolveArcadeCoverUrl(game.imageUrl)}
+                  alt={game.title}
+                  style={{
+                    width: "100%",
+                    height: "100%",
+                    objectFit: "cover",
+                    filter: "brightness(0.45) saturate(1.15)",
+                  }}
+                />
+                <Box
+                  position="absolute"
+                  inset="0"
+                  bg="linear-gradient(180deg, rgba(7,6,18,0.15) 0%, rgba(7,6,18,0.92) 100%)"
+                />
+                <Box
+                  position="absolute"
+                  inset="0"
+                  p={{ base: "phi3", md: "phi4" }}
+                  display="flex"
+                  flexDirection="column"
+                  justifyContent="flex-end"
+                >
+                  <HStack gap="2" mb="2" flexWrap="wrap">
+                    <GhBadge tone="attr">HTML5 cabinet</GhBadge>
+                    {isTesting ? (
+                      <GhBadge tone="prize" pulse>
+                        Testing · {upvoteCount}/{ARCADE_LIVE_UPVOTE_THRESHOLD}
+                      </GhBadge>
+                    ) : (
+                      <GhBadge tone="live">Live</GhBadge>
+                    )}
+                  </HStack>
+                  <Heading
+                    fontFamily="heading"
+                    fontSize={{ base: "xl", md: "2xl" }}
+                    fontWeight="extrabold"
+                    color="white"
+                    letterSpacing="0.03em"
+                    textShadow="0 2px 16px rgba(0,0,0,0.65)"
+                  >
+                    {game.title}
+                  </Heading>
+                </Box>
+              </Box>
+            </GhSurface>
+
             <GhSurface variant="elevated" p="phi4">
               <HStack gap="2" mb="phi2">
                 <Box

@@ -120,9 +120,10 @@ export function GhAlert({
           </Text>
         ) : null}
         {children ? (
-          <Text fontSize="sm" color="fg.muted" lineHeight="1.5">
+          // Box (div), not Text (p) — alerts often nest buttons / block UI
+          <Box fontSize="sm" color="fg.muted" lineHeight="1.5">
             {children}
-          </Text>
+          </Box>
         ) : null}
       </Box>
     </Flex>

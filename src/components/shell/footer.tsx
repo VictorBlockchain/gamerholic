@@ -7,7 +7,8 @@ import { primaryNavForSession } from "@/lib/nav";
 import { useSession } from "@/components/providers/session-context";
 
 /**
- * Shared site footer — mobile-first, rendered on all pages (above bottom tabs).
+ * Site footer — full-bleed bar (edge-to-edge like the header),
+ * inner content aligned to the same max width / padding.
  */
 export function Footer() {
   const { isLoggedIn } = useSession();
@@ -18,37 +19,44 @@ export function Footer() {
     <Box
       as="footer"
       className="gh-footer"
+      w="100%"
       mt="phi4"
-      px={{ base: 3, md: 6, xl: 10 }}
-      pt="phi4"
-      pb={{
-        base: "calc(var(--gh-bottom-nav-h, 72px) + var(--gh-safe-bottom, 0px) + 1rem)",
-        md: "phi5",
-      }}
       borderTopWidth="1px"
       borderColor="border.default"
-      bg="rgba(7,6,18,0.55)"
+      bg="rgba(12,12,14,0.88)"
+      backdropFilter="blur(18px)"
     >
-      <Box maxW="84rem" mx="auto" w="100%">
-        <Box className="gh-brand-bar" h="1" mb="phi3" opacity={0.7} borderRadius="full" />
+      {/* Full-width brand rail — same language as header */}
+      <Box className="gh-brand-bar" h="1" w="100%" />
 
+      <Box
+        maxW="84rem"
+        mx="auto"
+        w="100%"
+        px={{ base: 3, md: 6, xl: 10 }}
+        pt="phi5"
+        pb={{
+          base: "calc(var(--gh-bottom-nav-h, 72px) + var(--gh-safe-bottom, 0px) + 1.25rem)",
+          md: "phi6",
+        }}
+      >
         {/* Brand row */}
         <Flex
           direction={{ base: "column", sm: "row" }}
           align={{ base: "flex-start", sm: "center" }}
           justify="space-between"
-          gap="phi3"
-          mb="phi4"
+          gap="phi4"
+          mb="phi5"
         >
-          <HStack gap="phi2">
+          <HStack gap="phi3">
             <Box
-              w="8"
-              h="8"
-              borderRadius="lg"
+              w="10"
+              h="10"
+              borderRadius="xl"
               overflow="hidden"
               borderWidth="1px"
               borderColor="border.brand"
-              boxShadow="0 0 12px rgba(163, 255, 61, 0.28)"
+              boxShadow="0 0 16px rgba(163, 255, 61, 0.32)"
               bg="bg.elevated"
               flexShrink={0}
             >
@@ -56,8 +64,8 @@ export function Footer() {
               <img
                 src={BRAND.mark128}
                 alt=""
-                width={32}
-                height={32}
+                width={40}
+                height={40}
                 style={{ width: "100%", height: "100%", objectFit: "cover" }}
               />
             </Box>
@@ -65,23 +73,29 @@ export function Footer() {
               <Text
                 fontFamily="heading"
                 fontWeight="extrabold"
-                fontSize="sm"
+                fontSize={{ base: "md", sm: "lg" }}
                 letterSpacing="0.06em"
+                className="gh-text-brand"
               >
                 GAMERHOLIC
               </Text>
-              <Text fontSize="2xs" color="fg.subtle">
+              <Text fontSize="sm" color="fg.muted" fontWeight="medium">
                 I Win For A Living
               </Text>
             </Box>
           </HStack>
-          <Text fontSize="xs" color="fg.subtle" maxW="20rem" lineHeight="1.5">
+          <Text
+            fontSize={{ base: "sm", md: "md" }}
+            color="fg.muted"
+            maxW="24rem"
+            lineHeight="1.55"
+          >
             Skill games · heads-up · arcade · on Internet Computer.
           </Text>
         </Flex>
 
-        {/* Nav grid — mobile first 2-col */}
-        <SimpleGrid columns={{ base: 2, sm: 4 }} gap="phi3" mb="phi4">
+        {/* Nav grid */}
+        <SimpleGrid columns={{ base: 2, sm: 4, md: 6 }} gap="phi3" mb="phi5">
           {nav.map((item) => (
             <Link
               key={item.id}
@@ -90,7 +104,7 @@ export function Footer() {
             >
               <Text
                 fontFamily="heading"
-                fontSize="xs"
+                fontSize="sm"
                 fontWeight="bold"
                 letterSpacing="0.04em"
                 color="fg.muted"
@@ -100,10 +114,22 @@ export function Footer() {
               </Text>
             </Link>
           ))}
+          <Link href="/community" style={{ textDecoration: "none", color: "inherit" }}>
+            <Text
+              fontFamily="heading"
+              fontSize="sm"
+              fontWeight="bold"
+              letterSpacing="0.04em"
+              color="fg.muted"
+              _hover={{ color: "brand.fg" }}
+            >
+              Community
+            </Text>
+          </Link>
           <Link href="/wallet" style={{ textDecoration: "none", color: "inherit" }}>
             <Text
               fontFamily="heading"
-              fontSize="xs"
+              fontSize="sm"
               fontWeight="bold"
               letterSpacing="0.04em"
               color="fg.muted"
@@ -115,7 +141,7 @@ export function Footer() {
           <Link href="/profile" style={{ textDecoration: "none", color: "inherit" }}>
             <Text
               fontFamily="heading"
-              fontSize="xs"
+              fontSize="sm"
               fontWeight="bold"
               letterSpacing="0.04em"
               color="fg.muted"
@@ -130,7 +156,7 @@ export function Footer() {
           >
             <Text
               fontFamily="heading"
-              fontSize="xs"
+              fontSize="sm"
               fontWeight="bold"
               letterSpacing="0.04em"
               color="fg.muted"
@@ -143,26 +169,99 @@ export function Footer() {
 
         <VStack
           align={{ base: "flex-start", sm: "center" }}
-          gap="2"
+          gap="phi3"
           borderTopWidth="1px"
           borderColor="border.default"
-          pt="phi3"
+          pt="phi4"
+          w="100%"
         >
-          <Text fontSize="2xs" color="fg.subtle">
+          <Flex
+            direction={{ base: "column", sm: "row" }}
+            align={{ base: "flex-start", sm: "center" }}
+            gap={{ base: "3", sm: "4" }}
+            w="100%"
+            maxW="40rem"
+            mx={{ base: 0, sm: "auto" }}
+          >
+            <Box
+              as="span"
+              display="inline-flex"
+              alignItems="center"
+              justifyContent="center"
+              px="4"
+              py="2"
+              minW="4rem"
+              borderRadius="lg"
+              borderWidth="2px"
+              borderColor="prize.solid"
+              bg="prize.muted"
+              color="prize.fg"
+              fontFamily="heading"
+              fontSize="xl"
+              fontWeight="extrabold"
+              letterSpacing="0.06em"
+              lineHeight="1"
+              flexShrink={0}
+              title="Adults only — 18 years of age or older"
+            >
+              18+
+            </Box>
+            <Text
+              fontSize={{ base: "md", md: "lg" }}
+              color="fg.default"
+              fontWeight="medium"
+              lineHeight="1.5"
+            >
+              For users{" "}
+              <Text as="span" fontWeight="extrabold" color="prize.fg">
+                18 years of age and older
+              </Text>
+              . Where skilled gaming is legal.
+            </Text>
+          </Flex>
+
+          <Text fontSize="sm" color="fg.subtle" fontWeight="medium">
             © {year} Gamerholic
           </Text>
-          <HStack gap="3" fontSize="2xs" color="fg.subtle" flexWrap="wrap">
-            <Text as="span">Privacy</Text>
-            <Text as="span" opacity={0.4}>
+
+          <HStack
+            gap={{ base: "4", sm: "6" }}
+            flexWrap="wrap"
+            justify={{ base: "flex-start", sm: "center" }}
+          >
+            <Text
+              as="span"
+              fontFamily="heading"
+              fontSize={{ base: "md", sm: "lg" }}
+              fontWeight="extrabold"
+              letterSpacing="0.04em"
+              color="fg.muted"
+              cursor="default"
+              _hover={{ color: "brand.fg" }}
+            >
+              Privacy
+            </Text>
+            <Text
+              as="span"
+              fontSize="md"
+              color="fg.subtle"
+              opacity={0.5}
+              aria-hidden
+            >
               ·
             </Text>
-            <Text as="span">User agreement</Text>
-            <Text as="span" opacity={0.4}>
-              ·
+            <Text
+              as="span"
+              fontFamily="heading"
+              fontSize={{ base: "md", sm: "lg" }}
+              fontWeight="extrabold"
+              letterSpacing="0.04em"
+              color="fg.muted"
+              cursor="default"
+              _hover={{ color: "brand.fg" }}
+            >
+              User agreement
             </Text>
-            <Link href="/ui-kit" style={{ color: "inherit" }}>
-              UI kit
-            </Link>
           </HStack>
         </VStack>
       </Box>

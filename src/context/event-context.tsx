@@ -43,14 +43,18 @@ export function GhEventProvider({ children }: { children: ReactNode }) {
     return bus.on(() => setRecent(bus.recent(40)));
   }, [bus]);
 
+  // Keep emit/on identity stable so Realtime subscriptions don't re-bind
+  // every time `recent` updates (that caused reload storms).
+  const emit = useMemo(() => bus.emit.bind(bus), [bus]);
+  const on = useMemo(() => bus.on.bind(bus), [bus]);
   const value = useMemo(
     () => ({
       bus,
       recent,
-      emit: bus.emit.bind(bus),
-      on: bus.on.bind(bus),
+      emit,
+      on,
     }),
-    [bus, recent],
+    [bus, recent, emit, on],
   );
 
   return (

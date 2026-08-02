@@ -10,7 +10,7 @@
  * No seed/mock cabinets — empty until users submit via Add Game.
  */
 
-import { ART } from "@/lib/art";
+import { resolveArcadeCoverUrl } from "./cover";
 import { buildPhaserHostDocument } from "./engine";
 import {
   clampPayoutTopN,
@@ -121,7 +121,8 @@ function normalizeGame(g: Partial<ArcadeGame> & { id: string }): ArcadeGame {
     title: g.title || "Untitled",
     description: g.description || "",
     rules: g.rules || "",
-    imageUrl: g.imageUrl || ART.arcade,
+    // Always keep creator-selected cover (preset path or uploaded data/https URL)
+    imageUrl: resolveArcadeCoverUrl(g.imageUrl),
     css: g.css || "",
     gameCode: g.gameCode || "",
     engine: g.engine || "phaser3",
@@ -276,7 +277,8 @@ function creditPendingEarnings(opts: {
 
 /**
  * Claim pending winnings for this game → user play subaccount.
- * Escrow releases the claim amount. Platform cut stays in escrow until platform claim.
+ * ICP path: native claimArcadeWinningsNativeICP (arcade escrow → play sub) when canister configured.
+ * GAMER / offline: local escrow mirror.
  */
 export function claimGameEarnings(
   gameId: string,
@@ -331,7 +333,7 @@ export function claimGameEarnings(
       kind: "claim_to_subaccount",
       token: "ICP",
       amount: icp,
-      note: "Claimed to play subaccount",
+      note: "Claimed to play subaccount (local mirror; chain via claimArcadeWinningsOnChain)",
     });
   }
   if (gamer > 0) {
@@ -355,6 +357,35 @@ export function claimGameEarnings(
   };
 }
 
+/**
+ * Async ICP claim: native canister transfer arcade escrow → caller play subaccount.
+ * Call from UI with identity after claimGameEarnings for local books, or alone for chain.
+ */
+export async function claimGameEarningsIcpOnChain(
+  gameId: string,
+  amountIcp: number,
+  identity: import("@dfinity/agent").Identity | null | undefined,
+): Promise<{ ok: boolean; amountIcp: number; error?: string }> {
+  if (!(amountIcp > 0)) return { ok: true, amountIcp: 0 };
+  try {
+    const { claimArcadeWinningsOnChain } = await import(
+      "@/lib/ic/settlement-service"
+    );
+    const r = await claimArcadeWinningsOnChain(gameId, amountIcp, identity);
+    return {
+      ok: r.ok,
+      amountIcp: r.amountIcp,
+      error: r.ok ? undefined : r.err,
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      amountIcp: 0,
+      error: e instanceof Error ? e.message : String(e),
+    };
+  }
+}
+
 function listCachedGames(): ArcadeGame[] {
   return gamesCache.map(normalizeGame).filter((g) => g.published !== false);
 }
@@ -374,7 +405,9 @@ function rowToGame(row: Record<string, unknown>): ArcadeGame {
     title: String(row.title || ""),
     description: String(row.description || ""),
     rules: String(row.rules || ""),
-    imageUrl: String(row.image_url || row.imageUrl || ART.arcade),
+    imageUrl: resolveArcadeCoverUrl(
+      String(row.image_url || row.imageUrl || ""),
+    ),
     css: String(row.css || ""),
     gameCode: String(row.game_code || row.gameCode || ""),
     engine: "phaser3",
@@ -555,7 +588,7 @@ function buildArcadeGame(input: SaveArcadeGameInput): ArcadeGame {
     title: input.title,
     description: input.description,
     rules: input.rules,
-    imageUrl: input.imageUrl,
+    imageUrl: resolveArcadeCoverUrl(input.imageUrl),
     css: input.css,
     gameCode: input.gameCode,
     engine: "phaser3",
@@ -901,6 +934,138 @@ export async function listScoresAsync(
     console.warn("[arcade] listScoresAsync", e);
   }
   return listScores(gameId, limit);
+}
+
+export type PlayerArcadeBoardGame = {
+  gameId: string;
+  title: string;
+  imageUrl: string;
+  bestScore: number;
+  /** Rank on that game's paid board (1-based), if known */
+  rank?: number;
+};
+
+/**
+ * Arcade cabinets where this player appears on the paid leaderboard.
+ * Used on dashboard under Online list.
+ */
+export async function listPlayerArcadeLeaderboardGames(opts: {
+  principal?: string;
+  username?: string;
+  limit?: number;
+}): Promise<PlayerArcadeBoardGame[]> {
+  const principal = (opts.principal || "").trim();
+  const username = (opts.username || "").trim();
+  if (!principal && !username) return [];
+  const limit = Math.max(1, Math.min(opts.limit ?? 12, 24));
+
+  type ScoreHit = { gameId: string; score: number };
+  const hits: ScoreHit[] = [];
+
+  if (isSupabaseConfigured()) {
+    try {
+      const sb = getSupabase()!;
+      // Prefer principal; also match username for older rows
+      let q = sb
+        .from("gh_arcade_scores")
+        .select("game_id,score,principal,username")
+        .eq("paid", true)
+        .order("score", { ascending: false })
+        .limit(200);
+      if (principal) {
+        q = q.eq("principal", principal);
+      } else {
+        q = q.eq("username", username);
+      }
+      const { data, error } = await q;
+      if (!error && data?.length) {
+        for (const row of data as Record<string, unknown>[]) {
+          hits.push({
+            gameId: String(row.game_id || ""),
+            score: Number(row.score || 0),
+          });
+        }
+      } else {
+        // Sessions fallback
+        let sq = sb
+          .from("gh_arcade_sessions")
+          .select("game_id,final_score,player_principal,username,paid,status")
+          .eq("paid", true)
+          .not("final_score", "is", null)
+          .limit(200);
+        if (principal) sq = sq.eq("player_principal", principal);
+        else sq = sq.eq("username", username);
+        const { data: sessions } = await sq;
+        for (const s of (sessions || []) as Record<string, unknown>[]) {
+          hits.push({
+            gameId: String(s.game_id || ""),
+            score: Number(s.final_score || 0),
+          });
+        }
+      }
+    } catch (e) {
+      console.warn("[arcade] listPlayerArcadeLeaderboardGames", e);
+    }
+  }
+
+  // Local cache fallback
+  if (!hits.length) {
+    const all = readJson<LeaderboardEntry[]>(SCORES_KEY, []);
+    for (const s of all) {
+      if (!s.paid) continue;
+      const matchP = principal && s.principal === principal;
+      const matchU =
+        username && s.username.toLowerCase() === username.toLowerCase();
+      if (matchP || matchU) {
+        hits.push({ gameId: s.gameId, score: s.score });
+      }
+    }
+  }
+
+  // Best score per game
+  const best = new Map<string, number>();
+  for (const h of hits) {
+    if (!h.gameId) continue;
+    const prev = best.get(h.gameId) ?? 0;
+    if (h.score > prev) best.set(h.gameId, h.score);
+  }
+  if (!best.size) return [];
+
+  // Titles / covers
+  const ids = [...best.keys()].slice(0, limit);
+  const games = await listArcadeGamesAsync();
+  const byId = new Map(games.map((g) => [g.id, g]));
+
+  const out: PlayerArcadeBoardGame[] = [];
+  for (const gameId of ids) {
+    const g = byId.get(gameId) || getArcadeGame(gameId);
+    out.push({
+      gameId,
+      title: g?.title || gameId,
+      imageUrl: g?.imageUrl || "/art/arcade-cabinet.jpg",
+      bestScore: best.get(gameId) || 0,
+    });
+  }
+
+  // Optional ranks (best-effort, parallel limited)
+  await Promise.all(
+    out.slice(0, 8).map(async (row) => {
+      try {
+        const board = await listScoresAsync(row.gameId, 100);
+        const idx = board.findIndex(
+          (s) =>
+            (principal && s.principal === principal) ||
+            (username &&
+              s.username.toLowerCase() === username.toLowerCase()),
+        );
+        if (idx >= 0) row.rank = idx + 1;
+      } catch {
+        /* ignore */
+      }
+    }),
+  );
+
+  return out.sort((a, b) => b.bestScore - a.bestScore);
 }
 
 async function persistScoreToSupabase(row: LeaderboardEntry, sessionId?: string) {

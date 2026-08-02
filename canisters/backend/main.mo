@@ -1779,365 +1779,458 @@ persistent actor Gamerholic {
   };
 
   // ============================================================================
-  // NATIVE ICP PRIZE PAYOUT FUNCTIONS WITH SPLIT TRANSFERS
+  // NATIVE ICP PRIZE PAYOUTS
+  // All user payouts (winner / host / moderator) land on the Gamerholic canister
+  // play subaccount for that principal (subaccountForPrincipal).
+  // Platform → external platformFeePrincipal. Community vault → treasury subaccount.
+  // Ledger: icpLedgerPrincipal (mainnet ryjl3-tyaaa-aaaaa-aaaba-cai).
   // ============================================================================
 
-  // Distribute challenge prizes with fee splits (90% winner, 7% platform, 3% treasury)
-  public shared({ caller }) func distributeChallengePrizeNativeICP(challengeId : ChallengeId, winnerPrincipal : Principal) : async { ok : Bool; err : Text; amount : Nat } {
-    // Only admin or the canister itself can distribute prizes
+  transient var nativePayoutDone = HashMap.HashMap<Text, Bool>(256, Text.equal, Text.hash);
+
+  /// Transfer ICP from an escrow subaccount into a user's play subaccount.
+  private func payUserPlaySub(
+    fromSub : Blob,
+    toPrincipal : Principal,
+    amount : Nat,
+    memo : Text,
+  ) : async Bool {
+    if (amount == 0) { return true };
+    let ledger = icrc1LedgerActor();
+    let fee : Nat = 10_000;
+    if (amount <= fee) { return false };
+    let toSub = subaccountForPrincipal(toPrincipal);
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?fromSub;
+      to = { owner = Principal.fromActor(Gamerholic); subaccount = ?toSub };
+      amount = amount - fee;
+      fee = ?fee;
+      memo = ?Text.encodeUtf8(memo);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) { true };
+      case (#Err(_)) { false };
+    }
+  };
+
+  private func payPlatform(fromSub : Blob, amount : Nat, memo : Text) : async Bool {
+    if (amount == 0) { return true };
+    let ledger = icrc1LedgerActor();
+    let fee : Nat = 10_000;
+    if (amount <= fee) { return false };
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?fromSub;
+      to = { owner = platformFeePrincipal; subaccount = null };
+      amount = amount - fee;
+      fee = ?fee;
+      memo = ?Text.encodeUtf8(memo);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) { true };
+      case (#Err(_)) { false };
+    }
+  };
+
+  private func payCommunityVault(fromSub : Blob, amount : Nat, memo : Text) : async Bool {
+    if (amount == 0) { return true };
+    let ledger = icrc1LedgerActor();
+    let fee : Nat = 10_000;
+    if (amount <= fee) { return false };
+    let treasurySub = subaccountForTreasury();
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?fromSub;
+      to = { owner = Principal.fromActor(Gamerholic); subaccount = ?treasurySub };
+      amount = amount - fee;
+      fee = ?fee;
+      memo = ?Text.encodeUtf8(memo);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) { true };
+      case (#Err(_)) { false };
+    }
+  };
+
+  /**
+   * Policy split (bps of pot, sum ≤ 10000):
+   * - host present: 500 (5%)
+   * - moderator present: 200 (2%)
+   * - platform: 400 (4%)
+   * - community vault: 100 (1%)
+   * - winner: remainder (~90% full, more if no host/mod)
+   */
+  private func splitBps(hasHost : Bool, hasMod : Bool) : {
+    winner : Nat; host : Nat; mod : Nat; platform : Nat; vault : Nat
+  } {
+    let hostB = if (hasHost) { 500 } else { 0 };
+    let modB = if (hasMod) { 200 } else { 0 };
+    let platformB : Nat = 400;
+    let vaultB : Nat = 100;
+    let taken = hostB + modB + platformB + vaultB;
+    {
+      winner = 10000 - taken;
+      host = hostB;
+      mod = modB;
+      platform = platformB;
+      vault = vaultB;
+    }
+  };
+
+  type NativePayoutAmounts = {
+    winner : Nat;
+    host : Nat;
+    mod : Nat;
+    platform : Nat;
+    vault : Nat;
+  };
+
+  private func emptyAmounts() : NativePayoutAmounts {
+    { winner = 0; host = 0; mod = 0; platform = 0; vault = 0 }
+  };
+
+  /// Core pot distribution from an escrow subaccount.
+  private func distributeEscrowNative(
+    fromSub : Blob,
+    potId : Text,
+    balance : Nat,
+    winnerPrincipal : Principal,
+    hostPrincipal : ?Principal,
+    modPrincipal : ?Principal,
+  ) : async { ok : Bool; err : Text; amounts : NativePayoutAmounts } {
+    let fee : Nat = 10_000;
+    let minFees = fee * 5;
+    if (balance <= minFees) {
+      return { ok = false; err = "Insufficient prize pool balance"; amounts = emptyAmounts() };
+    };
+
+    let hasHost = switch (hostPrincipal) { case (?_) true; case null false };
+    let hasMod = switch (modPrincipal) { case (?_) true; case null false };
+    let bps = splitBps(hasHost, hasMod);
+
+    let winnerAmt = (balance * bps.winner) / 10000;
+    let hostAmt = (balance * bps.host) / 10000;
+    let modAmt = (balance * bps.mod) / 10000;
+    let platformAmt = (balance * bps.platform) / 10000;
+    let vaultAmt = (balance * bps.vault) / 10000;
+
+    var amounts = emptyAmounts();
+    var okCount : Nat = 0;
+
+    if (await payUserPlaySub(fromSub, winnerPrincipal, winnerAmt, "Prize winner: " # potId)) {
+      amounts := { amounts with winner = if (winnerAmt > fee) { winnerAmt - fee } else { 0 } };
+      okCount += 1;
+    };
+
+    switch (hostPrincipal) {
+      case (?hp) {
+        if (hostAmt > 0 and (await payUserPlaySub(fromSub, hp, hostAmt, "Host fee: " # potId))) {
+          amounts := { amounts with host = if (hostAmt > fee) { hostAmt - fee } else { 0 } };
+          okCount += 1;
+        };
+      };
+      case null {};
+    };
+
+    switch (modPrincipal) {
+      case (?mp) {
+        if (modAmt > 0 and (await payUserPlaySub(fromSub, mp, modAmt, "Moderator fee: " # potId))) {
+          amounts := { amounts with mod = if (modAmt > fee) { modAmt - fee } else { 0 } };
+          okCount += 1;
+        };
+      };
+      case null {};
+    };
+
+    if (await payPlatform(fromSub, platformAmt, "Platform fee: " # potId)) {
+      amounts := { amounts with platform = if (platformAmt > fee) { platformAmt - fee } else { 0 } };
+      okCount += 1;
+    };
+
+    if (await payCommunityVault(fromSub, vaultAmt, "Community vault: " # potId)) {
+      amounts := { amounts with vault = if (vaultAmt > fee) { vaultAmt - fee } else { 0 } };
+      okCount += 1;
+    };
+
+    if (okCount > 0) {
+      { ok = true; err = ""; amounts = amounts }
+    } else {
+      { ok = false; err = "All transfers failed"; amounts = amounts }
+    }
+  };
+
+  // Heads-up challenge: winner + optional moderator; platform + vault. No room/tournament host.
+  public shared({ caller }) func distributeChallengePrizeNativeICP(
+    challengeId : ChallengeId,
+    winnerPrincipal : Principal,
+    moderatorPrincipal : ?Principal,
+  ) : async { ok : Bool; err : Text; amount : Nat; amounts : NativePayoutAmounts } {
     switch (admins.get(Principal.toText(caller))) {
       case (?true) {};
       case _ {
-        if (caller != Principal.fromActor(Gamerholic)) {
-          return { ok = false; err = "Unauthorized"; amount = 0 };
+        // Winner, moderator, or any authenticated user may trigger once score is final
+        if (caller != winnerPrincipal) {
+          switch (moderatorPrincipal) {
+            case (?mp) {
+              if (caller != mp) {
+                // still allow if challenge is claimable (status 4)
+                switch (challenges.get(challengeId)) {
+                  case (?c) {
+                    if (c.status != 4 and c.status != 5) {
+                      return { ok = false; err = "Unauthorized"; amount = 0; amounts = emptyAmounts() };
+                    };
+                  };
+                  case null {
+                    return { ok = false; err = "Challenge not found"; amount = 0; amounts = emptyAmounts() };
+                  };
+                };
+              };
+            };
+            case null {
+              switch (challenges.get(challengeId)) {
+                case (?c) {
+                  if (c.status != 4 and c.status != 5) {
+                    return { ok = false; err = "Unauthorized"; amount = 0; amounts = emptyAmounts() };
+                  };
+                };
+                case null {
+                  return { ok = false; err = "Challenge not found"; amount = 0; amounts = emptyAmounts() };
+                };
+              };
+            };
+          };
         };
       };
     };
 
+    let key = "chal:" # challengeId;
+    switch (nativePayoutDone.get(key)) {
+      case (?true) {
+        return { ok = false; err = "Already paid out"; amount = 0; amounts = emptyAmounts() };
+      };
+      case _ {};
+    };
+
     let ledger = icrc1LedgerActor();
     let challengeSub = subaccountForChallenge(challengeId);
-    let fee : Nat = 10_000;
-
-    // Get challenge subaccount balance (includes entry fees + any additional contributions)
     let balance = await ledger.icrc1_balance_of({
       owner = Principal.fromActor(Gamerholic);
       subaccount = ?challengeSub;
     });
 
-    if (balance <= fee * 3) {
-      return { ok = false; err = "Insufficient prize pool balance"; amount = 0 };
-    };
-
-    // Calculate fee splits (in basis points)
-    let winnerBps : Nat = 9000; // 90%
-    let platformBps : Nat = 700; // 7%
-    let treasuryBps : Nat = 300; // 3%
-
-    let winnerAmount = (balance * winnerBps) / 10000;
-    let platformAmount = (balance * platformBps) / 10000;
-    let treasuryAmount = (balance * treasuryBps) / 10000;
-
-    var resultAmounts = { winner = 0 : Nat; platform = 0 : Nat; treasury = 0 : Nat };
-    var successCount : Nat = 0;
-
-    // Transfer to winner (90%)
-    if (winnerAmount > fee) {
-      let winnerSub = subaccountForPrincipal(winnerPrincipal);
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?challengeSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?winnerSub };
-        amount = winnerAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Challenge prize: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with winner = winnerAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to platform (7%) - external wallet
-    if (platformAmount > fee) {
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?challengeSub;
-        to = { owner = platformFeePrincipal; subaccount = null };
-        amount = platformAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Challenge platform fee: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with platform = platformAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to treasury (3%) - community vault
-    if (treasuryAmount > fee) {
-      let treasurySub = subaccountForTreasury();
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?challengeSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?treasurySub };
-        amount = treasuryAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Challenge treasury fee: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with treasury = treasuryAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    if (successCount > 0) {
-      return { ok = true; err = ""; amount = resultAmounts.winner };
-    } else {
-      return { ok = false; err = "All transfers failed"; amount = 0 };
-    };
+    let r = await distributeEscrowNative(
+      challengeSub,
+      challengeId,
+      balance,
+      winnerPrincipal,
+      null, // no host on pure 1v1
+      moderatorPrincipal,
+    );
+    if (r.ok) { nativePayoutDone.put(key, true) };
+    { ok = r.ok; err = r.err; amount = r.amounts.winner; amounts = r.amounts }
   };
 
-  // Distribute tournament prizes with fee splits (90% winners, 5% host, 4% platform, 1% treasury)
+  // Tournament: winners + host + optional mod + platform + vault
   public shared({ caller }) func distributeTournamentPrizesNativeICP(
     tournamentId : TournamentId,
-    winners : [(Principal, Nat)], // Array of (winner principal, prize percentage in basis points of the 90% winner pool)
-    hostPrincipal : Principal
-  ) : async { ok : Bool; err : Text; transfers : Nat } {
-    // Only admin can distribute tournament prizes
-    switch (admins.get(Principal.toText(caller))) {
-      case (?true) {};
-      case _ return { ok = false; err = "Unauthorized"; transfers = 0 };
-    };
-
-    let ledger = icrc1LedgerActor();
-    let tournamentSub = subaccountForTournament(tournamentId);
-    let fee : Nat = 10_000;
-
-    // Get tournament subaccount balance
-    let balance = await ledger.icrc1_balance_of({
-      owner = Principal.fromActor(Gamerholic);
-      subaccount = ?tournamentSub;
-    });
-
-    if (balance <= fee * 4) {
-      return { ok = false; err = "Insufficient prize pool balance"; transfers = 0 };
-    };
-
-    // Calculate fee splits (in basis points)
-    let winnersBps : Nat = 9000; // 90% (split among winners)
-    let hostBps : Nat = 500; // 5%
-    let platformBps : Nat = 400; // 4%
-    let treasuryBps : Nat = 100; // 1%
-
-    let winnersPool = (balance * winnersBps) / 10000;
-    let hostAmount = (balance * hostBps) / 10000;
-    let platformAmount = (balance * platformBps) / 10000;
-    let treasuryAmount = (balance * treasuryBps) / 10000;
-
-    var transfersCompleted : Nat = 0;
-
-    // Distribute prizes to each winner based on their percentage of the 90% pool
-    for ((winnerPrincipal, percentageBps) in winners.vals()) {
-      let winnerSub = subaccountForPrincipal(winnerPrincipal);
-      let prizeAmount = (winnersPool * percentageBps) / 10000;
-
-      if (prizeAmount > fee) {
-        let netAmount = prizeAmount - fee;
-        let result = await ledger.icrc1_transfer({
-          from_subaccount = ?tournamentSub;
-          to = { owner = Principal.fromActor(Gamerholic); subaccount = ?winnerSub };
-          amount = netAmount;
-          fee = ?fee;
-          memo = ?Text.encodeUtf8("Tournament prize: " # tournamentId);
-          created_at_time = null;
-        });
-
-        switch (result) {
-          case (#Ok(_)) {
-            transfersCompleted += 1;
-          };
-          case (#Err(_)) {};
-        };
-      };
-    };
-
-    // Transfer to host (5%)
-    if (hostAmount > fee) {
-      let hostSub = subaccountForPrincipal(hostPrincipal);
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?tournamentSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?hostSub };
-        amount = hostAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Tournament host fee: " # tournamentId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          transfersCompleted += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to platform (4%) - external wallet
-    if (platformAmount > fee) {
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?tournamentSub;
-        to = { owner = platformFeePrincipal; subaccount = null };
-        amount = platformAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Tournament platform fee: " # tournamentId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          transfersCompleted += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to treasury (1%) - community vault
-    if (treasuryAmount > fee) {
-      let treasurySub = subaccountForTreasury();
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?tournamentSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?treasurySub };
-        amount = treasuryAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Tournament treasury fee: " # tournamentId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          transfersCompleted += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    return { ok = true; err = ""; transfers = transfersCompleted };
-  };
-
-  // Distribute room challenge prizes with fee splits (90% winner, 5% host, 4% platform, 1% treasury)
-  public shared({ caller }) func distributeRoomChallengePrizeNativeICP(
-    roomId : Text,
-    challengeId : ChallengeId,
-    winnerPrincipal : Principal,
-    hostPrincipal : Principal
-  ) : async { ok : Bool; err : Text; amounts : { winner : Nat; platform : Nat; host : Nat; treasury : Nat } } {
-    // Only admin or room host can distribute room prizes
+    winners : [(Principal, Nat)], // (principal, bps of winner pool)
+    hostPrincipal : Principal,
+    moderatorPrincipal : ?Principal,
+  ) : async { ok : Bool; err : Text; transfers : Nat; amounts : NativePayoutAmounts } {
     switch (admins.get(Principal.toText(caller))) {
       case (?true) {};
       case _ {
         if (caller != hostPrincipal) {
-          return { ok = false; err = "Unauthorized"; amounts = { winner = 0; platform = 0; host = 0; treasury = 0 } };
+          switch (tournaments.get(tournamentId)) {
+            case (?t) {
+              if (t.status != 2 and t.status != 3) {
+                return { ok = false; err = "Unauthorized"; transfers = 0; amounts = emptyAmounts() };
+              };
+            };
+            case null {
+              return { ok = false; err = "Tournament not found"; transfers = 0; amounts = emptyAmounts() };
+            };
+          };
         };
       };
     };
 
+    let key = "tourney:" # tournamentId;
+    switch (nativePayoutDone.get(key)) {
+      case (?true) {
+        return { ok = false; err = "Already paid out"; transfers = 0; amounts = emptyAmounts() };
+      };
+      case _ {};
+    };
+
+    let ledger = icrc1LedgerActor();
+    let tournamentSub = subaccountForTournament(tournamentId);
+    let balance = await ledger.icrc1_balance_of({
+      owner = Principal.fromActor(Gamerholic);
+      subaccount = ?tournamentSub;
+    });
+    let fee : Nat = 10_000;
+    if (balance <= fee * 5) {
+      return { ok = false; err = "Insufficient prize pool balance"; transfers = 0; amounts = emptyAmounts() };
+    };
+
+    let hasMod = switch (moderatorPrincipal) { case (?_) true; case null false };
+    let bps = splitBps(true, hasMod);
+    let winnersPool = (balance * bps.winner) / 10000;
+    let hostAmt = (balance * bps.host) / 10000;
+    let modAmt = (balance * bps.mod) / 10000;
+    let platformAmt = (balance * bps.platform) / 10000;
+    let vaultAmt = (balance * bps.vault) / 10000;
+
+    var amounts = emptyAmounts();
+    var transfers : Nat = 0;
+
+    for ((wp, pctBps) in winners.vals()) {
+      let share = (winnersPool * pctBps) / 10000;
+      if (await payUserPlaySub(tournamentSub, wp, share, "Tournament prize: " # tournamentId)) {
+        amounts := {
+          amounts with
+          winner = amounts.winner + (if (share > fee) { share - fee } else { 0 })
+        };
+        transfers += 1;
+      };
+    };
+
+    if (await payUserPlaySub(tournamentSub, hostPrincipal, hostAmt, "Tournament host: " # tournamentId)) {
+      amounts := { amounts with host = if (hostAmt > fee) { hostAmt - fee } else { 0 } };
+      transfers += 1;
+    };
+
+    switch (moderatorPrincipal) {
+      case (?mp) {
+        if (await payUserPlaySub(tournamentSub, mp, modAmt, "Tournament mod: " # tournamentId)) {
+          amounts := { amounts with mod = if (modAmt > fee) { modAmt - fee } else { 0 } };
+          transfers += 1;
+        };
+      };
+      case null {};
+    };
+
+    if (await payPlatform(tournamentSub, platformAmt, "Tournament platform: " # tournamentId)) {
+      amounts := { amounts with platform = if (platformAmt > fee) { platformAmt - fee } else { 0 } };
+      transfers += 1;
+    };
+    if (await payCommunityVault(tournamentSub, vaultAmt, "Tournament vault: " # tournamentId)) {
+      amounts := { amounts with vault = if (vaultAmt > fee) { vaultAmt - fee } else { 0 } };
+      transfers += 1;
+    };
+
+    if (transfers > 0) { nativePayoutDone.put(key, true) };
+    { ok = transfers > 0; err = if (transfers > 0) { "" } else { "All transfers failed" }; transfers = transfers; amounts = amounts }
+  };
+
+  // Room FFA table: winner + room host + optional mod + platform + vault
+  public shared({ caller }) func distributeRoomChallengePrizeNativeICP(
+    roomId : Text,
+    challengeId : ChallengeId,
+    winnerPrincipal : Principal,
+    hostPrincipal : Principal,
+    moderatorPrincipal : ?Principal,
+  ) : async { ok : Bool; err : Text; amounts : NativePayoutAmounts } {
+    switch (admins.get(Principal.toText(caller))) {
+      case (?true) {};
+      case _ {
+        if (caller != hostPrincipal and caller != winnerPrincipal) {
+          // allow game host (challenge creator) by address match is handled on FE;
+          // on-chain allow when challenge is settled (status 3)
+          switch (roomChallengeInfo.get(challengeId)) {
+            case (?chal) {
+              if (chal.status != 3) {
+                return { ok = false; err = "Unauthorized"; amounts = emptyAmounts() };
+              };
+            };
+            case null {
+              return { ok = false; err = "Room game not found"; amounts = emptyAmounts() };
+            };
+          };
+        };
+      };
+    };
+
+    let key = "room:" # challengeId;
+    switch (nativePayoutDone.get(key)) {
+      case (?true) {
+        return { ok = false; err = "Already paid out"; amounts = emptyAmounts() };
+      };
+      case _ {};
+    };
+
     let ledger = icrc1LedgerActor();
     let roomSub = subaccountForRoom(roomId);
-    let fee : Nat = 10_000;
-
-    // Get room subaccount balance
     let balance = await ledger.icrc1_balance_of({
       owner = Principal.fromActor(Gamerholic);
       subaccount = ?roomSub;
     });
 
-    if (balance <= fee * 4) {
-      return { ok = false; err = "Insufficient prize pool balance"; amounts = { winner = 0; platform = 0; host = 0; treasury = 0 } };
+    let r = await distributeEscrowNative(
+      roomSub,
+      challengeId,
+      balance,
+      winnerPrincipal,
+      ?hostPrincipal,
+      moderatorPrincipal,
+    );
+    if (r.ok) { nativePayoutDone.put(key, true) };
+    r
+  };
+
+  /// Arcade claim: move ICP from arcade game escrow subaccount → user play subaccount.
+  public shared({ caller }) func claimArcadeWinningsNativeICP(
+    gameId : Text,
+    amount : Nat,
+  ) : async { ok : Bool; err : Text; amount : Nat } {
+    if (amount == 0) { return { ok = false; err = "Zero amount"; amount = 0 } };
+    let ledger = icrc1LedgerActor();
+    let fee : Nat = 10_000;
+    let arcadeSub = subaccountForChallenge("arcade:" # gameId); // reuse derivation
+    let balance = await ledger.icrc1_balance_of({
+      owner = Principal.fromActor(Gamerholic);
+      subaccount = ?arcadeSub;
+    });
+    if (balance < amount) {
+      return { ok = false; err = "Insufficient arcade escrow"; amount = 0 };
     };
-
-    // Calculate fee splits (in basis points)
-    let winnerBps : Nat = 9000; // 90%
-    let hostBps : Nat = 500; // 5%
-    let platformBps : Nat = 400; // 4%
-    let treasuryBps : Nat = 100; // 1%
-
-    let winnerAmount = (balance * winnerBps) / 10000;
-    let hostAmount = (balance * hostBps) / 10000;
-    let platformAmount = (balance * platformBps) / 10000;
-    let treasuryAmount = (balance * treasuryBps) / 10000;
-
-    var resultAmounts = { winner = 0 : Nat; platform = 0 : Nat; host = 0 : Nat; treasury = 0 : Nat };
-    var successCount : Nat = 0;
-
-    // Transfer to winner (90%)
-    if (winnerAmount > fee) {
-      let winnerSub = subaccountForPrincipal(winnerPrincipal);
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?roomSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?winnerSub };
-        amount = winnerAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Room prize winner: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with winner = winnerAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to host (5%)
-    if (hostAmount > fee) {
-      let hostSub = subaccountForPrincipal(hostPrincipal);
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?roomSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?hostSub };
-        amount = hostAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Room host fee: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with host = hostAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to platform (4%) - external wallet
-    if (platformAmount > fee) {
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?roomSub;
-        to = { owner = platformFeePrincipal; subaccount = null };
-        amount = platformAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Room platform fee: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with platform = platformAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    // Transfer to treasury (1%) - community vault
-    if (treasuryAmount > fee) {
-      let treasurySub = subaccountForTreasury();
-      let result = await ledger.icrc1_transfer({
-        from_subaccount = ?roomSub;
-        to = { owner = Principal.fromActor(Gamerholic); subaccount = ?treasurySub };
-        amount = treasuryAmount - fee;
-        fee = ?fee;
-        memo = ?Text.encodeUtf8("Room treasury fee: " # challengeId);
-        created_at_time = null;
-      });
-      switch (result) {
-        case (#Ok(_)) {
-          resultAmounts := { resultAmounts with treasury = treasuryAmount - fee };
-          successCount += 1;
-        };
-        case (#Err(_)) {};
-      };
-    };
-
-    if (successCount > 0) {
-      return { ok = true; err = ""; amounts = resultAmounts };
+    let pay = if (amount > balance) { balance } else { amount };
+    let ok = await payUserPlaySub(arcadeSub, caller, pay, "Arcade claim: " # gameId);
+    if (ok) {
+      { ok = true; err = ""; amount = if (pay > fee) { pay - fee } else { 0 } }
     } else {
-      return { ok = false; err = "All transfers failed"; amounts = resultAmounts };
-    };
+      { ok = false; err = "Transfer failed"; amount = 0 }
+    }
+  };
+
+  public shared({ caller }) func debitArcadePlayFeeNativeICP(
+    gameId : Text,
+    amount : Nat,
+  ) : async Bool {
+    if (amount == 0) { return true };
+    let ledger = icrc1LedgerActor();
+    let userSub = subaccountForPrincipal(caller);
+    let arcadeSub = subaccountForChallenge("arcade:" # gameId);
+    let fee : Nat = 10_000;
+    let balance = await ledger.icrc1_balance_of({
+      owner = Principal.fromActor(Gamerholic);
+      subaccount = ?userSub;
+    });
+    if (balance < amount + fee) { return false };
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?userSub;
+      to = { owner = Principal.fromActor(Gamerholic); subaccount = ?arcadeSub };
+      amount = amount;
+      fee = ?fee;
+      memo = ?Text.encodeUtf8("Arcade fee: " # gameId);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) { true };
+      case (#Err(_)) { false };
+    }
   };
 
   // Helper function to convert Nat64 to Nat for text conversion
@@ -3566,6 +3659,8 @@ persistent actor Gamerholic {
         if (now > c.expiresAt) { return false };
         if (c.currentParticipants >= 2) { return false };
         if (player == c.creator) { return false };
+        // If creator named an invitee, only that player may accept
+        if (c.opponent != "" and c.opponent != player) { return false };
         let parts = switch (challengeParticipants.get(id)) { case (?xs) xs; case null [] };
         for (p in parts.vals()) {
           if (p == player) { return false };
@@ -3575,7 +3670,7 @@ persistent actor Gamerholic {
           c with
           opponent = player;
           opponentStream = opponentStream;
-          currentParticipants = c.currentParticipants + 1;
+          currentParticipants = 2;
           status = 2;
           totalPrizePool = c.entryFee * 2;
         });
@@ -3649,15 +3744,21 @@ persistent actor Gamerholic {
       case (?c) {
         if (c.status != 2 and c.status != 3) { return false }; // in progress or resubmit pending
         if (c.cancelRequester != "") { return false }; // pause while cancel pending
+        if (c.currentParticipants < 2) { return false };
         let now = Nat64.fromNat(Int.abs(Time.now()));
+        // Official report (monitor or non-player) settles immediately — no confirm
+        let isPlayerReporter = reporter == c.creator or reporter == c.opponent;
+        let isMonitorReporter = c.monitor != "" and reporter == c.monitor;
+        let autoSettle = isMonitorReporter or (not isPlayerReporter and reporter != "");
         challenges.put(id, {
           c with
           player1score = p1;
           player2score = p2;
           scoreReporter = reporter;
           timeScored = now;
-          scoreIsFinal = isFinal;
-          status = 3;
+          timeScoreConfirmed = if (autoSettle) { now } else { c.timeScoreConfirmed };
+          scoreIsFinal = if (autoSettle) { true } else { isFinal };
+          status = if (autoSettle) { 4 } else { 3 };
         });
         true
       }
@@ -3671,10 +3772,11 @@ persistent actor Gamerholic {
         if (c.status != 3) { return false }; // Not scored
         if (confirmer == c.scoreReporter) { return false }; // Other party confirms
         let now = Nat64.fromNat(Int.abs(Time.now()));
-        let nextStatus = if (c.scoreIsFinal) { 4 } else { 2 }; // settled or back to live
+        // Confirm always settles the match
         challenges.put(id, {
           c with
-          status = nextStatus;
+          status = 4; // settled
+          scoreIsFinal = true;
           timeScoreConfirmed = now;
         });
         true
@@ -5653,6 +5755,7 @@ persistent actor Gamerholic {
         let id : ChallengeId = "rchal-" # Nat.toText(Int.abs(Time.now()));
         let now = Nat64.fromNat(Int.abs(Time.now()));
         
+        // Host creates the table but is not auto-seated — they join like anyone else.
         let chalInfo : RoomChallengeInfo = {
           id = id;
           roomId = roomId;
@@ -5664,8 +5767,8 @@ persistent actor Gamerholic {
           entryFee = entryFee;
           payToken = "WICP";
           rules = rules;
-          participants = [creator];
-          participantCount = 1;
+          participants = [];
+          participantCount = 0;
           status = 1;
           startedAt = 0;
           completedAt = 0;
@@ -5729,10 +5832,13 @@ persistent actor Gamerholic {
     }
   };
 
+  /// Game host starts the FFA once every seat is filled (not auto-join host).
   public func startRoomChallenge(creator : Address, challengeId : ChallengeId) : async Bool {
     switch (roomChallengeInfo.get(challengeId)) {
       case (?chal) {
         if (chal.creator != creator) { return false };
+        // Full table only — free-for-all, not a bracket
+        if (chal.participantCount < chal.maxPlayers) { return false };
         if (chal.participantCount < 2) { return false };
         if (chal.status != 1) { return false };
         
@@ -6294,20 +6400,49 @@ persistent actor Gamerholic {
     }
   };
 
+  /// Creator cancels an open (unaccepted) challenge — refunds escrow if any.
   public func cancelChallenge(id : ChallengeId, _reason : Text) : async Bool {
     switch (challenges.get(id)) {
       case null { false };
-      case (?c) { challenges.put(id, { c with status = 0 }); true }
+      case (?c) {
+        // Only open challenges that have not been accepted (1 seat)
+        if (c.status != 1) { return false };
+        if (c.currentParticipants >= 2) { return false };
+        // Refund any on-canister balance to creator (escrow / entry)
+        if (c.contractBalance > 0) {
+          ignore recordTreasuryTransaction(
+            #Withdrawal,
+            c.payToken,
+            c.contractBalance,
+            ?"treasury",
+            ?c.creator,
+            ?id,
+            null,
+            "Open challenge cancel refund " # id
+          );
+        };
+        challenges.put(id, {
+          c with
+          status = 0;
+          contractBalance = 0;
+          totalPrizePool = 0;
+          cancelRequester = ("" : Address);
+          cancelRequestedAt = (0 : Nat64);
+        });
+        true
+      }
     }
   };
 
   /// Step 1: player requests mutual cancel (standalone only — tournament == "")
+  /// Requires both seats filled (status 2/3) — not open/invite.
   public func requestMutualCancel(id : ChallengeId, who : Address, _serviceFee : Nat) : async Bool {
     switch (challenges.get(id)) {
       case null { false };
       case (?c) {
         if (c.tournament != "") { return false };
-        if (c.status != 1 and c.status != 2 and c.status != 3) { return false };
+        if (c.status != 2 and c.status != 3) { return false };
+        if (c.currentParticipants < 2) { return false };
         if (who != c.creator and who != c.opponent) { return false };
         if (c.cancelRequester != "") { return false };
         let now = Nat64.fromNat(Int.abs(Time.now()));

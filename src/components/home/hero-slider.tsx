@@ -70,9 +70,9 @@ const SLIDES = [
         .
       </>
     ),
-    bodyMobile: "Equip Attribute tokens on Dexsta XFTs — battlers with real stats.",
-    body: "Equip Power, Speed, Attack, Defense and more Attribute tokens onto Dexsta XFTs. Collectibles become Pokémon-style battlers with real on-chain stats — not just JPEGs.",
-    badges: ["Attribute tokens", "Loadouts", "VS duels"],
+    bodyMobile: "XFTs = NFT 2.0 — equip Attribute tokens, battlers with real stats.",
+    body: "XFTs = NFT 2.0. Equip Power, Speed, Attack, Defense and more Attribute tokens onto Dexsta XFTs. Collectibles become Pokémon-style battlers with real on-chain stats — not just JPEGs.",
+    badges: ["XFTs = NFT 2.0", "Attribute tokens", "Loadouts", "VS duels"],
     cta: { label: "Enter battle", href: "/battle", icon: Crosshair },
     secondary: { label: "Attributes", href: "/attributes" },
     image: ART.battle,

@@ -6,10 +6,18 @@ import type { Identity } from "@dfinity/agent";
 import {
   createBackendActor,
   e8sToIcp,
+  icpToE8s,
   isCanisterConfigured,
   unwrapOpt,
 } from "./canisters";
-import type { EsportsRoom, RoomGroupPot, RoomLeaderboardRow, RoomMember } from "@/lib/rooms";
+import {
+  decodeRoomImages,
+  encodeRoomImages,
+  type EsportsRoom,
+  type RoomGroupPot,
+  type RoomLeaderboardRow,
+  type RoomMember,
+} from "@/lib/rooms";
 import { getSupabase } from "@/lib/supabase/client";
 import { GH_TABLES } from "@/lib/supabase/tables";
 
@@ -70,6 +78,8 @@ function potStatus(n: number): RoomGroupPot["status"] {
 }
 
 function mapRoomChallenge(c: RoomChallengeCanister): RoomGroupPot {
+  const participants = (c.participants || []).map(String).filter(Boolean);
+  const winner = String(c.winner || "").trim();
   return {
     id: c.id,
     title: `${c.gameType} table`,
@@ -81,8 +91,11 @@ function mapRoomChallenge(c: RoomChallengeCanister): RoomGroupPot {
     status: potStatus(Number(c.status)),
     players: `${Number(c.participantCount)}/${Number(c.maxPlayers)}`,
     maxPlayers: Number(c.maxPlayers),
+    participants,
+    creator: String(c.creator || "").trim() || undefined,
     startsAt: nsToIso(c.startedAt || c.createdAt),
-    winner: c.winner || undefined,
+    winner: winner || undefined,
+    payoutIcp: e8sToIcp(c.payoutAmount || BigInt(0)),
   };
 }
 
@@ -120,7 +133,8 @@ export function mapRoomInfoToEsports(
     .map(mapRoomChallenge);
 
   const presence = extras?.presence;
-  const online: RoomMember[] = (r.members || []).map((m) => {
+  /** Group members only — presence overlaid when known */
+  const members: RoomMember[] = (r.members || []).map((m) => {
     const p = presence?.get(m);
     const base = mapMember(m, r.creator);
     return {
@@ -129,8 +143,14 @@ export function mapRoomInfoToEsports(
       game: p?.game,
     };
   });
+  // Online-first for roster UX
+  members.sort((a, b) => {
+    const rank = (s: RoomMember["status"]) =>
+      s === "online" ? 0 : s === "away" ? 1 : 2;
+    return rank(a.status) - rank(b.status) || a.username.localeCompare(b.username);
+  });
 
-  const hostMember = online.find((m) => m.role === "host");
+  const hostMember = members.find((m) => m.role === "host");
   const host = extras?.hostStats ?? {
     id: r.creator,
     username: r.creator,
@@ -144,14 +164,24 @@ export function mapRoomInfoToEsports(
     tournamentRecord: "0–0",
   };
 
-  const totalWinnings = pastPots.reduce((s, p) => s + p.potIcp, 0);
+  const totalWinnings = pastPots
+    .filter((p) => p.status === "settled")
+    .reduce((s, p) => s + p.potIcp, 0);
+
+  /** Room-scoped board from settled tables (not global room leaderboard) */
+  const leaderboard =
+    extras?.leaderboard?.length
+      ? extras.leaderboard
+      : leaderboardFromRoomChallenges(challenges);
+
+  const images = decodeRoomImages(r.imageUrl);
 
   return {
     id: r.id,
     name: r.name,
     topic: r.description || r.rules || "",
-    coverUrl: r.imageUrl || "",
-    avatarUrl: r.imageUrl || "",
+    coverUrl: images.coverUrl,
+    avatarUrl: images.avatarUrl,
     game: games[0] || "Esports",
     games,
     console: r.console || undefined,
@@ -164,12 +194,78 @@ export function mapRoomInfoToEsports(
     totalWinningsIcp: totalWinnings,
     totalPotsSettled: pastPots.filter((p) => p.status === "settled").length,
     createdAt: nsToIso(r.createdAt),
-    online: online.length ? online : hostMember ? [hostMember] : [],
+    online: members.length ? members : hostMember ? [hostMember] : [],
     activePots,
     pastPots,
-    leaderboard: extras?.leaderboard ?? [],
+    leaderboard,
     memberMarkets: [],
   };
+}
+
+/** Build per-room wins / earnings from settled group games */
+function leaderboardFromRoomChallenges(
+  challenges: RoomChallengeCanister[],
+): RoomLeaderboardRow[] {
+  type Acc = {
+    wins: number;
+    losses: number;
+    earningsIcp: number;
+    games: number;
+  };
+  const map = new Map<string, Acc>();
+  const bump = (player: string, patch: Partial<Acc>) => {
+    const cur = map.get(player) ?? {
+      wins: 0,
+      losses: 0,
+      earningsIcp: 0,
+      games: 0,
+    };
+    map.set(player, {
+      wins: cur.wins + (patch.wins ?? 0),
+      losses: cur.losses + (patch.losses ?? 0),
+      earningsIcp: cur.earningsIcp + (patch.earningsIcp ?? 0),
+      games: cur.games + (patch.games ?? 0),
+    });
+  };
+  for (const c of challenges) {
+    const s = Number(c.status);
+    // settled / completed
+    if (s !== 3 && s !== 4) continue;
+    const potIcp = e8sToIcp(c.prizePool || c.payoutAmount || BigInt(0));
+    const winner = String(c.winner || "").trim();
+    const parts = c.participants || [];
+    for (const p of parts) {
+      const name = String(p);
+      if (!name) continue;
+      if (winner && name === winner) {
+        bump(name, { wins: 1, games: 1, earningsIcp: potIcp });
+      } else {
+        bump(name, { losses: 1, games: 1 });
+      }
+    }
+    // Winner not in participants list (edge) still counts
+    if (winner && !parts.map(String).includes(winner)) {
+      bump(winner, { wins: 1, games: 1, earningsIcp: potIcp });
+    }
+  }
+  return [...map.entries()]
+    .map(([username, a]) => ({
+      username,
+      userId: username,
+      wins: a.wins,
+      losses: a.losses,
+      earningsIcp: a.earningsIcp,
+      streak: 0,
+      rank: 0,
+    }))
+    .sort(
+      (a, b) =>
+        b.wins - a.wins ||
+        b.earningsIcp - a.earningsIcp ||
+        a.username.localeCompare(b.username),
+    )
+    .map((row, i) => ({ ...row, rank: i + 1 }))
+    .slice(0, 40);
 }
 
 async function requireActor(identity?: Identity | null): Promise<any> {
@@ -203,26 +299,26 @@ export async function loadRoom(
     const info = unwrapOpt(opt);
     if (!info) return null;
 
-    const [challenges, presenceMap, hostStats, leaderboard] = await Promise.all([
+    const [challenges, presenceMap, hostStats] = await Promise.all([
       (actor.getRoomChallenges(id) as Promise<RoomChallengeCanister[]>).catch(
         () => [] as RoomChallengeCanister[],
       ),
       loadPresenceMap(),
       loadHostStats(info.creator, identity),
-      loadRoomLeaderboardRows(identity),
     ]);
 
+    // Leaderboard is derived from this room's challenges (group games only)
     const room = mapRoomInfoToEsports(info, {
       challenges,
       presence: presenceMap,
       hostStats: hostStats ?? undefined,
-      leaderboard,
+      leaderboard: leaderboardFromRoomChallenges(challenges),
     });
 
     // Member markets from linked tourneys/challenges of room members
     room.memberMarkets = await loadMemberMarkets(info.members || []);
 
-    await mirrorRoom(room).catch(() => undefined);
+    // Do not mirror on read — Realtime + detail reload would loop.
     return room;
   } catch {
     return null;
@@ -289,33 +385,6 @@ async function loadHostStats(
     };
   } catch {
     return null;
-  }
-}
-
-async function loadRoomLeaderboardRows(
-  identity?: Identity | null,
-): Promise<RoomLeaderboardRow[]> {
-  try {
-    const actor = await requireActor(identity);
-    const rows = (await actor.getRoomLeaderboard()) as {
-      player: string;
-      totalWins: bigint;
-      totalLosses: bigint;
-      totalEarnings: bigint;
-    }[];
-    return (rows || [])
-      .slice(0, 20)
-      .map((r, i) => ({
-        rank: i + 1,
-        username: r.player,
-        userId: r.player,
-        wins: Number(r.totalWins),
-        losses: Number(r.totalLosses),
-        earningsIcp: e8sToIcp(r.totalEarnings),
-        streak: 0,
-      }));
-  } catch {
-    return [];
   }
 }
 
@@ -414,10 +483,16 @@ export async function createRoomOnChain(
     console: string;
     rules?: string;
     imageUrl?: string;
+    coverUrl?: string;
+    avatarUrl?: string;
   },
   identity?: Identity | null,
 ): Promise<string> {
   const actor = await requireActor(identity);
+  const packed =
+    input.coverUrl != null || input.avatarUrl != null
+      ? encodeRoomImages(input.coverUrl ?? "", input.avatarUrl ?? "")
+      : input.imageUrl ?? "";
   const id = (await actor.createRoom(
     input.creator,
     input.name,
@@ -425,10 +500,44 @@ export async function createRoomOnChain(
     input.gameTypes,
     input.console,
     input.rules ?? "",
-    input.imageUrl ?? "",
+    packed,
   )) as string;
   const room = await loadRoom(id, identity);
   if (room) await mirrorRoom(room);
+  return id;
+}
+
+/**
+ * Create a group game (table / free-for-all) inside an existing room community.
+ * Max seats + entry fee apply here — not on room create.
+ */
+export async function createRoomGameOnChain(
+  input: {
+    creator: string;
+    roomId: string;
+    gameType: string;
+    console: string;
+    maxPlayers: number;
+    entryFeeIcp: number;
+    rules?: string;
+  },
+  identity?: Identity | null,
+): Promise<string> {
+  const actor = await requireActor(identity);
+  const seats = Math.min(8, Math.max(2, Math.floor(input.maxPlayers) || 2));
+  const id = (await actor.createRoomChallenge(
+    input.creator,
+    input.roomId,
+    input.gameType,
+    input.console || "PC",
+    BigInt(seats),
+    icpToE8s(input.entryFeeIcp),
+    input.rules ?? "",
+  )) as string;
+  if (String(id).startsWith("Error:")) {
+    throw new Error(String(id));
+  }
+  await loadRoom(input.roomId, identity);
   return id;
 }
 
@@ -442,10 +551,16 @@ export async function updateRoomOnChain(
     console: string;
     rules?: string;
     imageUrl?: string;
+    coverUrl?: string;
+    avatarUrl?: string;
   },
   identity?: Identity | null,
 ): Promise<boolean> {
   const actor = await requireActor(identity);
+  const packed =
+    patch.coverUrl != null || patch.avatarUrl != null
+      ? encodeRoomImages(patch.coverUrl ?? "", patch.avatarUrl ?? "")
+      : patch.imageUrl ?? "";
   const ok = (await actor.updateRoom(
     roomId,
     who,
@@ -454,7 +569,7 @@ export async function updateRoomOnChain(
     patch.gameTypes,
     patch.console,
     patch.rules ?? "",
-    patch.imageUrl ?? "",
+    packed,
   )) as boolean;
   if (ok) await loadRoom(roomId, identity);
   return ok;
@@ -467,6 +582,112 @@ export async function joinRoomOnChain(
 ): Promise<boolean> {
   const actor = await requireActor(identity);
   return (await actor.joinRoom(roomId, user)) as boolean;
+}
+
+/** Leave a community group (room host / creator cannot leave). */
+export async function leaveRoomOnChain(
+  roomId: string,
+  user: string,
+  identity?: Identity | null,
+): Promise<boolean> {
+  const actor = await requireActor(identity);
+  return (await actor.leaveRoom(roomId, user)) as boolean;
+}
+
+/** Sit at an open group game table inside a room. Debits buy-in to room escrow. */
+export async function joinRoomGameOnChain(
+  user: string,
+  challengeId: string,
+  identity?: Identity | null,
+  opts?: { roomId?: string; entryFeeIcp?: number },
+): Promise<boolean> {
+  const actor = await requireActor(identity);
+  const fee = opts?.entryFeeIcp ?? 0;
+  const roomId = opts?.roomId;
+  if (fee > 0 && roomId) {
+    const { debitRoomGameEntry } = await import("./settlement-service");
+    const funded = await debitRoomGameEntry(
+      roomId,
+      challengeId,
+      fee,
+      identity,
+    );
+    if (!funded) {
+      throw new Error(
+        "ICP debit failed — deposit buy-in to your play subaccount first",
+      );
+    }
+  }
+  return (await actor.joinRoomChallenge(user, challengeId)) as boolean;
+}
+
+/** Game host starts the FFA once every seat is filled. */
+export async function startRoomGameOnChain(
+  gameHost: string,
+  challengeId: string,
+  identity?: Identity | null,
+): Promise<boolean> {
+  const actor = await requireActor(identity);
+  return (await actor.startRoomChallenge(gameHost, challengeId)) as boolean;
+}
+
+/**
+ * Game host reports the single FFA winner (no dispute flow).
+ * Settles the table on-chain (status → settled).
+ * Does not transfer ICP — claimRoomGamePrize does native distribute.
+ */
+export async function reportRoomGameWinnerOnChain(
+  reporter: string,
+  challengeId: string,
+  winner: string,
+  identity?: Identity | null,
+): Promise<boolean> {
+  const actor = await requireActor(identity);
+  return (await actor.recordRoomChallengeWinner(
+    reporter,
+    challengeId,
+    winner,
+  )) as boolean;
+}
+
+/**
+ * After report score: pay winner + room host (+ optional mod) play subaccounts,
+ * platform wallet, community vault from room escrow.
+ */
+export async function claimRoomGamePrize(opts: {
+  roomId: string;
+  challengeId: string;
+  winnerPrincipal: string;
+  /** Room host principal (play sub receives host cut) */
+  hostPrincipal: string;
+  moderatorPrincipal?: string | null;
+  identity?: Identity | null;
+}): Promise<{ ok: boolean; err: string }> {
+  const { distributeRoomGamePrize } = await import("./settlement-service");
+  const r = await distributeRoomGamePrize({
+    roomId: opts.roomId,
+    challengeId: opts.challengeId,
+    winnerPrincipal: opts.winnerPrincipal,
+    hostPrincipal: opts.hostPrincipal,
+    moderatorPrincipal: opts.moderatorPrincipal,
+    identity: opts.identity,
+  });
+  return { ok: r.ok, err: r.err };
+}
+
+/** True if `who` is a room member (username or principal match). */
+export function isRoomMember(room: EsportsRoom, who: string): boolean {
+  if (!who) return false;
+  const q = who.toLowerCase();
+  if (room.creatorId?.toLowerCase() === q) return true;
+  if (room.host?.username?.toLowerCase() === q) return true;
+  if (room.host?.id?.toLowerCase() === q) return true;
+  return room.online.some(
+    (m) =>
+      m.username.toLowerCase() === q ||
+      m.id.toLowerCase() === q ||
+      (m.principal && m.principal.toLowerCase() === q),
+  );
 }
 
 export async function mirrorRoom(room: EsportsRoom): Promise<boolean> {

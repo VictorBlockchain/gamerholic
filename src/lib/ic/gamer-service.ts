@@ -41,21 +41,15 @@ export async function listGamers(
   }
 }
 
-/** Online = presence if Supabase; else gamers with synthetic offline/online. */
+/**
+ * Online discovery list for dashboard.
+ * Only returns live `gh_presence` heartbeats (not offline gamers).
+ * Empty array = nobody online / presence not configured — not a directory dump.
+ */
 export async function listDiscoveryUsers(
-  identity?: Identity | null,
+  _identity?: Identity | null,
 ): Promise<ChatUser[]> {
-  const online = await listOnlineUsers(50);
-  if (online.length > 0) return online;
-
-  const gamers = await listGamers(identity);
-  return gamers.slice(0, 40).map((g) => ({
-    id: g.wallet,
-    username: g.username || g.wallet,
-    avatarUrl: g.avatarUrl || undefined,
-    principal: g.wallet,
-    status: "offline" as const,
-  }));
+  return listOnlineUsers(50);
 }
 
 /**

@@ -208,6 +208,27 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
     lastPromotion: I.Nat64,
   });
 
+  const Vote = I.Record({
+    moderator: Address,
+    winner: Address,
+    weight: I.Nat,
+  });
+
+  const DisputeStatus = I.Variant({
+    Active: I.Null,
+    Resolved: I.Null,
+    Cancelled: I.Null,
+  });
+
+  const Dispute = I.Record({
+    challengeId: ChallengeId,
+    disputedBy: Address,
+    disputedAt: I.Nat64,
+    status: DisputeStatus,
+    votes: I.Vec(Vote),
+    expiresAt: I.Nat64,
+  });
+
   const TeamMemberSplit = I.Record({
     member: Address,
     winSplitBps: I.Nat,
@@ -348,6 +369,92 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
       ["query"],
     ),
     getBackendPrincipal: I.Func([], [I.Text], ["query"]),
+    /** Native ICP: play sub → challenge escrow */
+    debitChallengeEntryFeeNativeICP: I.Func(
+      [ChallengeId, I.Nat],
+      [I.Bool],
+      [],
+    ),
+    /** Native ICP: play sub → tournament escrow */
+    debitTournamentEntryFeeNativeICP: I.Func(
+      [TournamentId, I.Nat],
+      [I.Bool],
+      [],
+    ),
+    /** Native ICP: play sub → room escrow */
+    debitRoomChallengeEntryFeeNativeICP: I.Func(
+      [I.Text, ChallengeId, I.Nat],
+      [I.Bool],
+      [],
+    ),
+    debitArcadePlayFeeNativeICP: I.Func([I.Text, I.Nat], [I.Bool], []),
+    claimArcadeWinningsNativeICP: I.Func(
+      [I.Text, I.Nat],
+      [I.Record({ ok: I.Bool, err: I.Text, amount: I.Nat })],
+      [],
+    ),
+    /**
+     * Payout challenge pot → winner play sub + optional mod play sub +
+     * platform wallet + community vault subaccount.
+     */
+    distributeChallengePrizeNativeICP: I.Func(
+      [ChallengeId, I.Principal, I.Opt(I.Principal)],
+      [
+        I.Record({
+          ok: I.Bool,
+          err: I.Text,
+          amount: I.Nat,
+          amounts: I.Record({
+            winner: I.Nat,
+            host: I.Nat,
+            mod: I.Nat,
+            platform: I.Nat,
+            vault: I.Nat,
+          }),
+        }),
+      ],
+      [],
+    ),
+    distributeTournamentPrizesNativeICP: I.Func(
+      [
+        TournamentId,
+        I.Vec(I.Tuple(I.Principal, I.Nat)),
+        I.Principal,
+        I.Opt(I.Principal),
+      ],
+      [
+        I.Record({
+          ok: I.Bool,
+          err: I.Text,
+          transfers: I.Nat,
+          amounts: I.Record({
+            winner: I.Nat,
+            host: I.Nat,
+            mod: I.Nat,
+            platform: I.Nat,
+            vault: I.Nat,
+          }),
+        }),
+      ],
+      [],
+    ),
+    distributeRoomChallengePrizeNativeICP: I.Func(
+      [I.Text, ChallengeId, I.Principal, I.Principal, I.Opt(I.Principal)],
+      [
+        I.Record({
+          ok: I.Bool,
+          err: I.Text,
+          amounts: I.Record({
+            winner: I.Nat,
+            host: I.Nat,
+            mod: I.Nat,
+            platform: I.Nat,
+            vault: I.Nat,
+          }),
+        }),
+      ],
+      [],
+    ),
     markBetableSettled: I.Func([I.Text, Address, I.Bool], [I.Bool], []),
     isBetableSettled: I.Func([I.Text], [I.Bool], ["query"]),
     upsertGamer: I.Func([Address, I.Text, I.Text], [], []),
@@ -446,6 +553,21 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
     getRoomInfo: I.Func([I.Text], [I.Opt(RoomInfo)], ["query"]),
     listRooms: I.Func([], [I.Vec(RoomInfo)], ["query"]),
     getUserRooms: I.Func([Address], [I.Vec(RoomInfo)], ["query"]),
+    /** Group game inside an existing room community (max seats, buy-in) */
+    createRoomChallenge: I.Func(
+      [Address, I.Text, I.Text, I.Text, I.Nat, I.Nat, I.Text],
+      [I.Text],
+      [],
+    ),
+    joinRoomChallenge: I.Func([Address, ChallengeId], [I.Bool], []),
+    /** Game host starts FFA when table is full (status open → live) */
+    startRoomChallenge: I.Func([Address, ChallengeId], [I.Bool], []),
+    /** Game host reports FFA winner (status live → settled). No dispute. */
+    recordRoomChallengeWinner: I.Func(
+      [Address, ChallengeId, Address],
+      [I.Bool],
+      [],
+    ),
     getRoomChallenges: I.Func([I.Text], [I.Vec(RoomChallengeInfo)], ["query"]),
     getRoomPlayerStats: I.Func(
       [I.Text, Address],
@@ -474,6 +596,28 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
           ),
         ),
       ],
+      ["query"],
+    ),
+    // Moderators / admin console
+    listModerators: I.Func([], [I.Vec(Moderator)], ["query"]),
+    listAllModerators: I.Func([], [I.Vec(Moderator)], ["query"]),
+    getModerator: I.Func([Address], [I.Opt(Moderator)], ["query"]),
+    isAdmin: I.Func([Address], [I.Bool], ["query"]),
+    setAdmin: I.Func([Address, I.Bool], [], []),
+    appointModerator: I.Func([Address, Address, ModeratorRole], [I.Bool], []),
+    applyBaseReferee: I.Func([Address], [I.Bool], []),
+    promoteModerator: I.Func([Address, Address], [I.Bool], []),
+    listActiveDisputes: I.Func([], [I.Vec(Dispute)], ["query"]),
+    getDispute: I.Func([ChallengeId], [I.Opt(Dispute)], ["query"]),
+    voteOnDispute: I.Func(
+      [ChallengeId, Address, Address, I.Nat],
+      [I.Bool],
+      [],
+    ),
+    finalizeDispute: I.Func([ChallengeId, Address], [I.Bool], []),
+    getPenalty: I.Func(
+      [Address],
+      [I.Opt(I.Record({ surchargeUntil: I.Nat64, multiplier: I.Nat }))],
       ["query"],
     ),
   });

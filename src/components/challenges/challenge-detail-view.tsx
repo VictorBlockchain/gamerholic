@@ -52,10 +52,14 @@ import {
 } from "@/components/ui";
 import {
   DEMO_VIEWER,
+  challengeShareUrl,
   basePotIcp,
+  canAcceptChallenge,
   canConfirmReport,
   canCreateBetable,
+  canCreatorCancelOpen,
   canDisputeCancel,
+  canMonitorReport,
   canMutualCancel,
   canReportScore,
   filledLabel,
@@ -65,6 +69,7 @@ import {
   formatWhen,
   getMonitorProfile,
   hasPostedScore,
+  isCreator,
   isMonitor,
   isPlayer,
   isTournamentHost,
@@ -74,6 +79,7 @@ import {
   otherPlayer,
   parentTournament,
   potFrom,
+  isOfficialScoreReporter,
   reportRoleFor,
   secondsUntil,
   statusLabel,
@@ -83,10 +89,12 @@ import {
   type ChallengeSide,
   type ScoreReport,
 } from "@/lib/challenges";
-import type { TournamentDetail } from "@/lib/tournaments";
+import { getProfileCompleteness } from "@/lib/profile";
+import { fetchAvatarMapByUsernames } from "@/lib/supabase/profile";
 import { useChallengeRealtime } from "@/hooks/use-gh-event-stream";
 import {
   acceptMutualCancel,
+  cancelOpenChallenge,
   confirmScore as confirmScoreOnChain,
   disputeMutualCancel,
   disputeScore as disputeScoreOnChain,
@@ -98,56 +106,128 @@ import {
   submitScore as submitScoreOnChain,
   withdrawMutualCancel,
 } from "@/lib/ic/challenge-service";
+import { loadTournament } from "@/lib/ic/tournament-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
+import { friendlyIcError } from "@/lib/ic/local-identity";
 import { useGhEvents } from "@/context/event-context";
 import { useSession } from "@/components/providers/session-context";
+import { marketHref, tournamentHref } from "@/lib/deep-links";
+import {
+  tournamentKindLabel,
+  type TournamentDetail,
+} from "@/lib/tournaments";
+import {
+  ChallengeProcessModal,
+  IDLE_PROCESS,
+  processBeat,
+  type ChallengeProcessState,
+  type ChallengeProcessStep,
+} from "@/components/challenges/challenge-process-modal";
 
 /**
  * Heads-up challenge detail — canister SoT + Supabase Realtime.
  */
 export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
   const [c, setC] = useState<ChallengeDetail | null>(null);
+  const [parentTour, setParentTour] = useState<TournamentDetail | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const { emit } = useGhEvents();
-  const { principal, profile, isLoggedIn, loginDemo } = useSession();
+  const { principal, profile, isLoggedIn, loginDemo, identity } = useSession();
   const serviceMode = getChallengeServiceMode();
+  /** Display / canister actor string — username preferred, principal fallback */
   const viewer = profile?.username || principal || DEMO_VIEWER;
+  const mePrincipal = principal || profile?.principal || "";
 
-  const reload = useCallback(async () => {
-    setLoading(true);
-    setLoadError(null);
-    try {
-      if (!isCanisterConfigured()) {
-        setLoadError(
-          "Canister not configured. Deploy gh_backend and set NEXT_PUBLIC_GH_BACKEND_CANISTER_ID.",
-        );
+  const reload = useCallback(
+    async (opts?: { quiet?: boolean }) => {
+      if (!opts?.quiet) setLoading(true);
+      setLoadError(null);
+      try {
+        if (!isCanisterConfigured()) {
+          setLoadError(
+            "Canister not configured. Deploy gh_backend and set NEXT_PUBLIC_GH_BACKEND_CANISTER_ID.",
+          );
+          setC(null);
+          setParentTour(null);
+          return;
+        }
+        const data = await loadChallenge(challengeId, identity);
+        if (!data) {
+          setC(null);
+          setParentTour(null);
+          setLoadError("Challenge not found on canister.");
+          return;
+        }
+        // Enrich with parent tournament (host + betable flags for role controls)
+        let tour: TournamentDetail | null = null;
+        if (data.tournamentId) {
+          tour = await loadTournament(data.tournamentId, identity).catch(
+            () => null,
+          );
+          if (tour) {
+            data.tournamentHostUsername = tour.hostUsername;
+            data.tournamentHasBetable = Boolean(
+              tour.betable && tour.marketId,
+            );
+          }
+        }
+        // Hydrate player avatars from profiles
+        try {
+          const names = [
+            data.creator.username,
+            data.opponent?.username,
+            data.invitedUsername,
+          ].filter(Boolean) as string[];
+          const avatars = await fetchAvatarMapByUsernames(names);
+          const withAvatars: ChallengeDetail = {
+            ...data,
+            creator: {
+              ...data.creator,
+              avatarUrl:
+                data.creator.avatarUrl ||
+                avatars[data.creator.username.toLowerCase()],
+            },
+            opponent: data.opponent
+              ? {
+                  ...data.opponent,
+                  avatarUrl:
+                    data.opponent.avatarUrl ||
+                    avatars[data.opponent.username.toLowerCase()],
+                }
+              : null,
+          };
+          setC(withAvatars);
+        } catch {
+          setC(data);
+        }
+        setParentTour(tour);
+      } catch (e) {
+        setLoadError(e instanceof Error ? e.message : String(e));
         setC(null);
-        return;
+        setParentTour(null);
+      } finally {
+        if (!opts?.quiet) setLoading(false);
       }
-      const data = await loadChallenge(challengeId);
-      setC(data);
-      if (!data) setLoadError("Challenge not found on canister.");
-    } catch (e) {
-      setLoadError(e instanceof Error ? e.message : String(e));
-      setC(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [challengeId]);
+    },
+    [challengeId, identity],
+  );
 
   useEffect(() => {
     void reload();
   }, [reload]);
 
-  // Live row from Supabase when mirror is configured
+  // Live row from Supabase when mirror is configured (quiet — no full-page spinner)
   useChallengeRealtime(challengeId, () => {
-    void reload();
+    void reload({ quiet: true });
   });
   const [acceptOpen, setAcceptOpen] = useState(false);
   const [streamUrl, setStreamUrl] = useState("");
   const [notes, setNotes] = useState("");
   const [accepting, setAccepting] = useState(false);
+  const [cancelBusy, setCancelBusy] = useState(false);
+  const [processState, setProcessState] =
+    useState<ChallengeProcessState>(IDLE_PROCESS);
 
   // Score report form
   const [scoreA, setScoreA] = useState("0");
@@ -163,6 +243,52 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
   const [disputeOpen, setDisputeOpen] = useState(false);
   const [disputeVideo, setDisputeVideo] = useState("");
   const [disputeReason, setDisputeReason] = useState("");
+
+  const runProcess = useCallback(
+    async (opts: {
+      title: string;
+      description?: string;
+      contextLine?: string;
+      steps: ChallengeProcessStep[];
+      tone?: ChallengeProcessState["tone"];
+      successTitle: string;
+      successDetail?: string;
+      action: (setStep: (i: number) => void) => Promise<void>;
+    }) => {
+      const setStep = (i: number) =>
+        setProcessState((s) => ({ ...s, stepIndex: i, phase: "running" }));
+      setProcessState({
+        open: true,
+        title: opts.title,
+        description: opts.description,
+        contextLine: opts.contextLine,
+        steps: opts.steps,
+        stepIndex: 0,
+        phase: "running",
+        error: null,
+        tone: opts.tone ?? "brand",
+      });
+      try {
+        await opts.action(setStep);
+        setProcessState((s) => ({
+          ...s,
+          phase: "success",
+          stepIndex: Math.max(0, opts.steps.length - 1),
+          successTitle: opts.successTitle,
+          successDetail: opts.successDetail,
+        }));
+      } catch (e) {
+        const msg = friendlyIcError(e);
+        setProcessState((s) => ({
+          ...s,
+          phase: "error",
+          error: msg,
+        }));
+        ghToast({ title: opts.title + " failed", description: msg, type: "error" });
+      }
+    },
+    [],
+  );
 
   // Tick countdown for pending confirm
   const [nowTick, setNowTick] = useState(0);
@@ -218,19 +344,27 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
   const isOpen = c.status === "open" && !c.opponent;
   /** Tournament bracket: heads-up wager is 0; pot is tips only */
   const pot = c.tournamentId ? c.potExtraIcp : basePotIcp(c);
-  const role = reportRoleFor(c, viewer);
-  const canReport = canReportScore(c, viewer);
-  const canConfirm = canConfirmReport(c, viewer);
+  const role = reportRoleFor(c, viewer, mePrincipal);
+  const canReport = canReportScore(c, viewer, mePrincipal);
+  const canConfirm = canConfirmReport(c, viewer, mePrincipal);
+  const canAccept = canAcceptChallenge(c, viewer, mePrincipal);
+  const canCancelOpen = canCreatorCancelOpen(c, viewer, mePrincipal);
+  const iAmPlayer = isPlayer(c, viewer, mePrincipal);
+  const iAmMonitor = isMonitor(c, viewer, mePrincipal);
+  const iAmHost = isTournamentHost(c, viewer, mePrincipal);
+  const iAmCreator = isCreator(c, viewer, mePrincipal);
+  const monitorCanClaim = canMonitorReport(c, viewer, mePrincipal);
   const betableGate = canCreateBetable(c, viewer);
-  const cancelAllowed = canMutualCancel(c, viewer);
-  const disputeAllowed = canDisputeCancel(c, viewer);
+  const cancelAllowed = canMutualCancel(c, viewer, mePrincipal);
+  const disputeAllowed = canDisputeCancel(c, viewer, mePrincipal);
   const iRequestedCancel =
     c.cancelRequest?.status === "pending" &&
-    c.cancelRequest.requestedBy === viewer;
+    (c.cancelRequest.requestedBy === viewer ||
+      c.cancelRequest.requestedBy === mePrincipal);
   const theyRequestedCancel =
     c.cancelRequest?.status === "pending" &&
-    c.cancelRequest.requestedBy !== viewer &&
-    isPlayer(c, viewer);
+    !iRequestedCancel &&
+    iAmPlayer;
   const pending = c.pendingReport;
   const confirmSecs =
     pending?.confirmDeadlineAt && pending.status === "pending"
@@ -244,10 +378,69 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
 
   const share = () => {
     const url =
-      typeof window !== "undefined"
+      typeof window !== "undefined" && window.location.pathname.includes("/view")
         ? window.location.href
-        : `/challenges/${c.id}`;
+        : challengeShareUrl(c.id);
     copy(url, "Challenge link copied");
+  };
+
+  const cancelAsCreator = async () => {
+    if (!canCancelOpen) return;
+    if (!isLoggedIn) {
+      loginDemo();
+      ghToast({ title: "Sign in required", type: "error" });
+      return;
+    }
+    setCancelBusy(true);
+    await runProcess({
+      title: "Cancelling challenge",
+      description: "Closing the open seat on-chain. Keep this tab open.",
+      contextLine: c.title,
+      tone: "prize",
+      steps: [
+        {
+          key: "validate",
+          label: "Checking permissions",
+          detail: "Creator · open seat only",
+        },
+        {
+          key: "cancel",
+          label: "Cancel on canister",
+          detail: "cancelChallenge · refund if needed",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Updating My Arena & detail",
+        },
+      ],
+      successTitle: "Challenge cancelled",
+      successDetail: "Open challenge closed before accept",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await cancelOpenChallenge(
+          c.id,
+          "Creator cancelled before accept",
+          identity,
+        );
+        if (!ok) throw new Error("cancelChallenge returned false");
+        emit({
+          type: "challenge.cancelled",
+          origin: "canister",
+          challengeId: c.id,
+        });
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Challenge cancelled",
+          description: "Open challenge closed before accept",
+          type: "success",
+        });
+      },
+    });
+    setCancelBusy(false);
   };
 
   const accept = async () => {
@@ -256,48 +449,74 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
       ghToast({ title: "Sign in required", type: "error" });
       return;
     }
-    if (!streamUrl.trim()) {
+    const complete = getProfileCompleteness(profile);
+    if (!complete.ok) {
       ghToast({
-        title: "Stream URL required",
-        description: "Add your Twitch / YouTube / Kick link.",
+        title: "Complete your profile",
+        description: complete.message,
         type: "error",
       });
       return;
     }
-    const raw = streamUrl.trim();
-    const normalized = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    try {
-      // eslint-disable-next-line no-new
-      new URL(normalized);
-    } catch {
-      ghToast({ title: "Invalid stream URL", type: "error" });
-      return;
+    // Stream is optional — only validate if provided
+    let stream = "";
+    if (streamUrl.trim()) {
+      const raw = streamUrl.trim();
+      stream = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
+      try {
+        // eslint-disable-next-line no-new
+        new URL(stream);
+      } catch {
+        ghToast({ title: "Invalid stream URL", type: "error" });
+        return;
+      }
     }
     setAccepting(true);
-    try {
-      const ok = await joinChallenge(c.id, viewer, normalized);
-      if (!ok) throw new Error("joinChallenge returned false");
-      emit({
-        type: "challenge.joined",
-        origin: "canister",
-        challengeId: c.id,
-      });
-      setAcceptOpen(false);
-      ghToast({
-        title: "Challenge accepted",
-        description: `${formatIcp(c.entryFeeIcp)} → challenge escrow`,
-        type: "success",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Accept failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    } finally {
-      setAccepting(false);
-    }
+    await runProcess({
+      title: "Accepting challenge",
+      description: "Seating you as opponent on Internet Computer.",
+      contextLine: `${c.title} · ${formatIcp(c.entryFeeIcp)}`,
+      steps: [
+        {
+          key: "validate",
+          label: "Checking profile",
+          detail: "Profile complete · stream optional",
+        },
+        {
+          key: "join",
+          label: "Join on-chain",
+          detail: "gh_backend · joinChallenge",
+        },
+        {
+          key: "refresh",
+          label: "Confirming seat",
+          detail: "Reloading match state",
+        },
+      ],
+      successTitle: "Challenge accepted",
+      successDetail: `${formatIcp(c.entryFeeIcp)} · you’re seated as opponent`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await joinChallenge(c.id, viewer, stream, identity);
+        if (!ok) throw new Error("joinChallenge returned false");
+        emit({
+          type: "challenge.joined",
+          origin: "canister",
+          challengeId: c.id,
+        });
+        setStep(2);
+        setAcceptOpen(false);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Challenge accepted",
+          description: `${formatIcp(c.entryFeeIcp)} → challenge escrow`,
+          type: "success",
+        });
+      },
+    });
+    setAccepting(false);
   };
 
   const submitScore = async () => {
@@ -308,47 +527,110 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
       ghToast({ title: "Invalid scores", type: "error" });
       return;
     }
-    try {
-      const ok = await submitScoreOnChain(c.id, a, b, viewer, isFinal);
-      if (!ok) throw new Error("submitScore returned false");
-      emit({
-        type: "challenge.score_submitted",
-        origin: "canister",
-        challengeId: c.id,
-      });
+    const official = isOfficialScoreReporter(c, viewer, mePrincipal);
+    // Final score (or official settle) cannot be a draw — must have a winner
+    if ((isFinal || official) && a === b) {
       ghToast({
-        title: isFinal ? "Final score submitted" : "Score update submitted",
-        description: "Waiting for confirmation on-chain",
-        type: "info",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Score submit failed",
-        description: e instanceof Error ? e.message : String(e),
+        title: "Scores cannot be equal",
+        description:
+          "Final score must have a winner. Change one side so the totals differ.",
         type: "error",
       });
+      return;
     }
+    await runProcess({
+      title: official ? "Settling score" : "Submitting score",
+      description: official
+        ? "Official report settles immediately on-chain."
+        : "Posting score for the other player to confirm.",
+      contextLine: `${c.creator.username} ${a} – ${b} ${c.opponent?.username || "?"}`,
+      tone: official ? "attr" : "brand",
+      steps: [
+        {
+          key: "validate",
+          label: "Validating scores",
+          detail: official ? "Monitor / host report" : "Player report",
+        },
+        {
+          key: "submit",
+          label: official ? "Settle on canister" : "Submit on canister",
+          detail: "submitScoreEx",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: official ? "Match settled" : "Awaiting confirm",
+        },
+      ],
+      successTitle: official ? "Score settled" : "Score submitted",
+      successDetail: official
+        ? "Monitor / host report — no player confirm needed"
+        : "Waiting for the other player to confirm",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await submitScoreOnChain(c.id, a, b, viewer, isFinal);
+        if (!ok) throw new Error("submitScore returned false");
+        emit({
+          type: "challenge.score_submitted",
+          origin: "canister",
+          challengeId: c.id,
+        });
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: official ? "Score settled" : "Score submitted",
+          description: official
+            ? "Settled without player confirm"
+            : "Waiting for the other player to confirm",
+          type: official ? "success" : "info",
+        });
+      },
+    });
   };
 
   const confirmScore = async () => {
-    try {
-      const ok = await confirmScoreOnChain(c.id, viewer);
-      if (!ok) throw new Error("confirmScore returned false");
-      emit({
-        type: "challenge.score_confirmed",
-        origin: "canister",
-        challengeId: c.id,
-      });
-      ghToast({ title: "Score confirmed on-chain", type: "success" });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Confirm failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Confirming score",
+      description: "Locking the reported score and settling the match.",
+      contextLine: c.title,
+      tone: "live",
+      steps: [
+        {
+          key: "check",
+          label: "Checking pending report",
+          detail: "You must not be the reporter",
+        },
+        {
+          key: "confirm",
+          label: "Confirm on canister",
+          detail: "confirmScore · settle",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Winner / pot update",
+        },
+      ],
+      successTitle: "Score confirmed",
+      successDetail: "Match settled on-chain",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await confirmScoreOnChain(c.id, viewer);
+        if (!ok) throw new Error("confirmScore returned false");
+        emit({
+          type: "challenge.score_confirmed",
+          origin: "canister",
+          challengeId: c.id,
+        });
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({ title: "Score confirmed on-chain", type: "success" });
+      },
+    });
   };
 
   const disputeScore = async () => {
@@ -359,83 +641,172 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
           ""
         : "Incorrect score report";
     if (!reason.trim()) return;
-    try {
-      const ok = await disputeScoreOnChain(c.id, reason.trim());
-      if (!ok) throw new Error("disputeChallenge returned false");
-      emit({
-        type: "challenge.disputed",
-        origin: "canister",
-        challengeId: c.id,
-      });
-      ghToast({
-        title: "Score disputed",
-        description: "Challenge moved to disputed status on-chain",
-        type: "warning",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Dispute failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Disputing score",
+      description: "Opening a dispute on the reported score.",
+      contextLine: c.title,
+      tone: "prize",
+      steps: [
+        {
+          key: "prep",
+          label: "Preparing dispute",
+          detail: reason.trim().slice(0, 48),
+        },
+        {
+          key: "chain",
+          label: "Dispute on canister",
+          detail: "disputeChallenge",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Status → disputed",
+        },
+      ],
+      successTitle: "Score disputed",
+      successDetail: "Challenge moved to disputed status",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await disputeScoreOnChain(c.id, reason.trim());
+        if (!ok) throw new Error("disputeChallenge returned false");
+        emit({
+          type: "challenge.disputed",
+          origin: "canister",
+          challengeId: c.id,
+        });
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Score disputed",
+          description: "Challenge moved to disputed status on-chain",
+          type: "warning",
+        });
+      },
+    });
   };
 
   const requestCancel = async () => {
     if (!cancelAllowed) return;
-    try {
-      const ok = await requestMutualCancel(c.id, viewer);
-      if (!ok) throw new Error("requestMutualCancel returned false");
-      setDisputeOpen(false);
-      ghToast({
-        title: "Mutual cancel requested",
-        description: hasPostedScore(c)
-          ? "Other player can accept or dispute with video proof"
-          : "Waiting for the other player to confirm",
-        type: "info",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Cancel request failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Requesting mutual cancel",
+      description: "Other player must confirm (or dispute if scored).",
+      contextLine: c.title,
+      tone: "live",
+      steps: [
+        {
+          key: "check",
+          label: "Checking match state",
+          detail: "Both seated · not open invite",
+        },
+        {
+          key: "request",
+          label: "Request on canister",
+          detail: "requestMutualCancel",
+        },
+        {
+          key: "refresh",
+          label: "Waiting for peer",
+          detail: hasPostedScore(c)
+            ? "They can accept or dispute"
+            : "They must confirm cancel",
+        },
+      ],
+      successTitle: "Cancel requested",
+      successDetail: hasPostedScore(c)
+        ? "Other player can accept or dispute with video proof"
+        : "Waiting for the other player to confirm",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await requestMutualCancel(c.id, viewer);
+        if (!ok) throw new Error("requestMutualCancel returned false");
+        setDisputeOpen(false);
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Mutual cancel requested",
+          description: hasPostedScore(c)
+            ? "Other player can accept or dispute with video proof"
+            : "Waiting for the other player to confirm",
+          type: "info",
+        });
+      },
+    });
   };
 
   const withdrawCancel = async () => {
-    try {
-      await withdrawMutualCancel(c.id, viewer);
-      ghToast({ title: "Cancel request withdrawn", type: "info" });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Withdraw failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Withdrawing cancel",
+      description: "Removing your mutual cancel request.",
+      contextLine: c.title,
+      tone: "live",
+      steps: [
+        {
+          key: "withdraw",
+          label: "Withdraw on canister",
+          detail: "withdrawMutualCancel",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Cancel request cleared",
+        },
+      ],
+      successTitle: "Cancel withdrawn",
+      successDetail: "Match continues",
+      action: async (setStep) => {
+        setStep(0);
+        await withdrawMutualCancel(c.id, viewer);
+        setStep(1);
+        await reload({ quiet: true });
+        ghToast({ title: "Cancel request withdrawn", type: "info" });
+      },
+    });
   };
 
   const acceptCancel = async () => {
-    try {
-      const ok = await acceptMutualCancel(c.id, viewer);
-      if (!ok) throw new Error("acceptMutualCancel returned false");
-      ghToast({
-        title: "Match cancelled",
-        description: "Mutual cancel confirmed on-chain",
-        type: "success",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Accept cancel failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Confirming mutual cancel",
+      description: "Both players agree — match cancels and refunds apply.",
+      contextLine: c.title,
+      tone: "prize",
+      steps: [
+        {
+          key: "check",
+          label: "Checking request",
+          detail: "Peer requested cancel",
+        },
+        {
+          key: "accept",
+          label: "Accept on canister",
+          detail: "acceptMutualCancel · refund",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Status → cancelled",
+        },
+      ],
+      successTitle: "Match cancelled",
+      successDetail: "Mutual cancel confirmed on-chain",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await acceptMutualCancel(c.id, viewer);
+        if (!ok) throw new Error("acceptMutualCancel returned false");
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Match cancelled",
+          description: "Mutual cancel confirmed on-chain",
+          type: "success",
+        });
+      },
+    });
   };
 
   const openDispute = async () => {
@@ -450,30 +821,53 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
     }
     const raw = disputeVideo.trim();
     const videoProofUrl = /^https?:\/\//i.test(raw) ? raw : `https://${raw}`;
-    try {
-      const ok = await disputeMutualCancel(
-        c.id,
-        viewer,
-        videoProofUrl,
-        disputeReason.trim() || "Disputing mutual cancel after scored play",
-      );
-      if (!ok) throw new Error("disputeMutualCancel returned false");
-      setDisputeOpen(false);
-      setDisputeVideo("");
-      setDisputeReason("");
-      ghToast({
-        title: "Dispute opened on-chain",
-        description: "Monitor / support will review the video proof",
-        type: "success",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Dispute failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Opening dispute",
+      description: "Submitting video proof against the cancel request.",
+      contextLine: c.title,
+      tone: "prize",
+      steps: [
+        {
+          key: "proof",
+          label: "Validating proof URL",
+          detail: videoProofUrl.slice(0, 40),
+        },
+        {
+          key: "chain",
+          label: "Dispute on canister",
+          detail: "disputeMutualCancel",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Monitor review queue",
+        },
+      ],
+      successTitle: "Dispute opened",
+      successDetail: "Monitor / support will review the video proof",
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await disputeMutualCancel(
+          c.id,
+          viewer,
+          videoProofUrl,
+          disputeReason.trim() || "Disputing mutual cancel after scored play",
+        );
+        if (!ok) throw new Error("disputeMutualCancel returned false");
+        setDisputeOpen(false);
+        setDisputeVideo("");
+        setDisputeReason("");
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Dispute opened on-chain",
+          description: "Monitor / support will review the video proof",
+          type: "success",
+        });
+      },
+    });
   };
 
   const openBetable = async () => {
@@ -499,28 +893,56 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
     if (betableDate && betableTime) {
       scheduled = new Date(`${betableDate}T${betableTime}:00`);
     }
-    try {
-      const ok = await openChallengeBetable(c.id, viewer, scheduled, mon);
-      if (!ok) throw new Error("openChallengeBetable returned false");
-      ghToast({
-        title: "Betable market opened on-chain",
-        description: `Monitor · ${mon}`,
-        type: "success",
-      });
-      await reload();
-    } catch (e) {
-      ghToast({
-        title: "Open betable failed",
-        description: e instanceof Error ? e.message : String(e),
-        type: "error",
-      });
-    }
+    await runProcess({
+      title: "Opening betable market",
+      description: "Creating spectator market on-chain for this match.",
+      contextLine: `Monitor · ${mon}`,
+      tone: "prize",
+      steps: [
+        {
+          key: "gate",
+          label: "Checking rules",
+          detail: "Schedule · monitor · no score yet",
+        },
+        {
+          key: "open",
+          label: "Open on canister",
+          detail: "openChallengeBetable",
+        },
+        {
+          key: "refresh",
+          label: "Refreshing match",
+          detail: "Market link ready",
+        },
+      ],
+      successTitle: "Betable market opened",
+      successDetail: `Monitor · ${mon}`,
+      action: async (setStep) => {
+        setStep(0);
+        await processBeat();
+        setStep(1);
+        const ok = await openChallengeBetable(c.id, viewer, scheduled, mon);
+        if (!ok) throw new Error("openChallengeBetable returned false");
+        setStep(2);
+        await reload({ quiet: true });
+        ghToast({
+          title: "Betable market opened on-chain",
+          description: `Monitor · ${mon}`,
+          type: "success",
+        });
+      },
+    });
   };
 
   const neededConfirm = pending ? needsConfirmFrom(c, pending) : [];
 
   return (
     <VStack align="stretch" gap={{ base: "phi4", md: "phi5" }} pb="phi4">
+      <ChallengeProcessModal
+        state={processState}
+        onClose={() => setProcessState(IDLE_PROCESS)}
+      />
+
       {/* Hero */}
       <Box
         position="relative"
@@ -570,17 +992,16 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
               >
                 Share
               </GhButton>
-              {c.betable && c.marketId ? (
-                <Link href={`/markets/${c.marketId}`}>
-                  <GhButton
-                    size="sm"
-                    variant="prize"
-                    leftIcon={<ChartCandlestick size={14} />}
-                  >
-                    Betable
-                  </GhButton>
-                </Link>
-              ) : null}
+              <GhButton
+                size="sm"
+                variant="outline"
+                leftIcon={<ChartCandlestick size={14} />}
+                disabled
+                opacity={0.55}
+                title="Betable markets coming soon"
+              >
+                Betable · soon
+              </GhButton>
             </HStack>
           </HStack>
         </Box>
@@ -602,7 +1023,7 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
               {c.status}
             </GhBadge>
             <GhBadge tone="live">{c.console}</GhBadge>
-            {c.betable ? <GhBadge tone="prize">Betable</GhBadge> : null}
+            <GhBadge tone="muted">Betable · soon</GhBadge>
             {c.tournamentId ? (
               <GhBadge tone="prize">
                 <Trophy size={10} /> Bracket match
@@ -613,10 +1034,13 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
                 <Shield size={10} /> Monitor · {c.monitorUsername}
               </GhBadge>
             ) : null}
-            {isPlayer(c) ? <GhBadge tone="brand">You play</GhBadge> : null}
-            {isMonitor(c) ? <GhBadge tone="attr">You monitor</GhBadge> : null}
-            {isTournamentHost(c) ? (
+            {iAmPlayer ? <GhBadge tone="brand">You play</GhBadge> : null}
+            {iAmMonitor ? <GhBadge tone="attr">You monitor</GhBadge> : null}
+            {iAmHost ? (
               <GhBadge tone="prize">You host tournament</GhBadge>
+            ) : null}
+            {iAmCreator && isOpen ? (
+              <GhBadge tone="muted">You created · awaiting accept</GhBadge>
             ) : null}
             {c.cancelRequest?.status === "pending" ? (
               <GhBadge tone="live" pulse>
@@ -738,94 +1162,242 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
             justifyContent="center"
             gap="phi2"
           >
-            <GhAvatar name="open" size="lg" />
+            <InvitedSeatAvatar username={c.invitedUsername} />
             <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
-              Open seat
+              {c.invitedUsername ? `@${c.invitedUsername}` : "Open seat"}
             </Text>
             <Text fontSize="xs" color="fg.muted" textAlign="center">
               {c.invitedUsername
-                ? `Invited · ${c.invitedUsername}`
+                ? "Invited · awaiting accept"
                 : "Anyone can accept"}
             </Text>
           </GhSurface>
         )}
       </SimpleGrid>
 
-      {/* Accept + score report (match actions) */}
-      {isOpen ? (
-        <AcceptPanel
-          c={c}
-          open={acceptOpen}
-          onOpenChange={setAcceptOpen}
-          streamUrl={streamUrl}
-          setStreamUrl={setStreamUrl}
-          notes={notes}
-          setNotes={setNotes}
-          accepting={accepting}
-          onAccept={() => void accept()}
+      {/* Parent tournament — only when this is a bracket challenge */}
+      {c.tournamentId ? (
+        <TournamentContextSection
+          challenge={c}
+          tournament={parentTour}
         />
       ) : null}
 
-      {canReport ? (
-        <ScoreReportPanel
-          c={c}
-          role={role!}
-          scoreA={scoreA}
-          scoreB={scoreB}
-          setScoreA={setScoreA}
-          setScoreB={setScoreB}
-          isFinal={isFinal}
-          setIsFinal={setIsFinal}
-          pending={pending}
-          onSubmit={submitScore}
-        />
-      ) : null}
+      {/* ── Match actions (role-gated controls) ── */}
+      <GhSurface
+        variant="elevated"
+        p={{ base: "phi4", md: "phi5" }}
+        borderColor="border.brand"
+        boxShadow="glow"
+        id="gh-match-actions"
+      >
+        <HStack gap="2" mb="phi3" flexWrap="wrap">
+          <Swords size={18} />
+          <Text
+            fontFamily="heading"
+            fontWeight="extrabold"
+            fontSize="lg"
+            letterSpacing="0.03em"
+          >
+            Match actions
+          </Text>
+          <GhBadge tone="muted">
+            {iAmHost
+              ? "Tournament host"
+              : iAmMonitor
+                ? "Monitor"
+                : iAmPlayer
+                  ? "Player"
+                  : "Spectator"}
+          </GhBadge>
+        </HStack>
+        <Text fontSize="sm" color="fg.muted" mb="phi3" lineHeight="1.5">
+          {iAmCreator && isOpen
+            ? "You created this challenge. Cancel anytime before the opponent accepts."
+            : canAccept
+              ? "You are the opponent — accept to lock in your seat and stake."
+              : iAmPlayer && c.opponent
+                ? "Either player can report the score. The other confirms to settle. Mutual cancel is available after accept only."
+                : iAmMonitor
+                  ? "As assigned monitor you can report scores — settles immediately (no player confirm)."
+                  : iAmHost
+                    ? "As tournament host you can report scores — settles immediately."
+                    : "Sign in as a player, monitor, or tournament host to control this match."}
+        </Text>
 
-      {/* Mutual cancel + dispute (standalone only) */}
-      {!c.tournamentId && isPlayer(c) && c.opponent ? (
-        <MutualCancelPanel
-          c={c}
-          viewer={viewer}
-          cancelAllowed={cancelAllowed}
-          iRequestedCancel={iRequestedCancel}
-          theyRequestedCancel={Boolean(theyRequestedCancel)}
-          disputeAllowed={disputeAllowed}
-          disputeOpen={disputeOpen}
-          setDisputeOpen={setDisputeOpen}
-          disputeVideo={disputeVideo}
-          setDisputeVideo={setDisputeVideo}
-          disputeReason={disputeReason}
-          setDisputeReason={setDisputeReason}
-          onRequestCancel={requestCancel}
-          onWithdrawCancel={withdrawCancel}
-          onAcceptCancel={acceptCancel}
-          onOpenDispute={openDispute}
-        />
-      ) : null}
+        {/* Creator: cancel open seat */}
+        {canCancelOpen ? (
+          <GhAlert tone="warning" title="Awaiting opponent" mb="phi3">
+            No one has accepted yet. You may cancel and free the challenge.
+            <Box mt="phi2">
+              <GhButton
+                size="sm"
+                variant="danger"
+                leftIcon={<XCircle size={14} />}
+                onClick={() => void cancelAsCreator()}
+                disabled={cancelBusy}
+              >
+                {cancelBusy ? "Cancelling…" : "Cancel challenge"}
+              </GhButton>
+            </Box>
+          </GhAlert>
+        ) : null}
+
+        {/* Opponent: accept */}
+        {canAccept ? (
+          <Box mb="phi3">
+            {!getProfileCompleteness(profile).ok ? (
+              <GhAlert tone="warning" title="Profile incomplete" mb="phi2">
+                {getProfileCompleteness(profile).message}{" "}
+                <Link href="/profile" style={{ fontWeight: 700 }}>
+                  Complete profile →
+                </Link>
+              </GhAlert>
+            ) : null}
+            <AcceptPanel
+              c={c}
+              open={acceptOpen}
+              onOpenChange={setAcceptOpen}
+              streamUrl={streamUrl}
+              setStreamUrl={setStreamUrl}
+              notes={notes}
+              setNotes={setNotes}
+              accepting={accepting}
+              onAccept={() => void accept()}
+            />
+          </Box>
+        ) : null}
+
+        {/* Score report — players, monitor (when claimable), tournament host */}
+        {canReport && role ? (
+          <Box mb="phi3">
+            {iAmMonitor && monitorCanClaim ? (
+              <GhAlert tone="attr" title="Monitor control" mb="phi2">
+                You are the assigned monitor. Players are streaming or live —
+                you may report the official score for confirmation.
+              </GhAlert>
+            ) : null}
+            {iAmHost ? (
+              <GhAlert tone="prize" title="Tournament host" mb="phi2">
+                You can report or confirm scores for this bracket match.
+              </GhAlert>
+            ) : null}
+            <ScoreReportPanel
+              c={c}
+              role={role}
+              scoreA={scoreA}
+              scoreB={scoreB}
+              setScoreA={setScoreA}
+              setScoreB={setScoreB}
+              isFinal={isFinal}
+              setIsFinal={setIsFinal}
+              pending={pending}
+              onSubmit={submitScore}
+            />
+          </Box>
+        ) : null}
+
+        {/* Confirm / dispute live on scoreboard above when pending */}
+        {canConfirm ? (
+          <GhAlert tone="success" title="Your confirmation is needed" mb="phi3">
+            A score report is waiting. Use <strong>Confirm score</strong> on the
+            scoreboard above, or dispute if it is wrong.
+          </GhAlert>
+        ) : null}
+
+        {/* Mutual cancel + dispute — only after accept (both seats), not open invite */}
+        {!c.tournamentId &&
+        iAmPlayer &&
+        c.opponent &&
+        c.status !== "open" &&
+        (cancelAllowed ||
+          iRequestedCancel ||
+          theyRequestedCancel ||
+          disputeAllowed) ? (
+          <MutualCancelPanel
+            c={c}
+            viewer={viewer}
+            cancelAllowed={cancelAllowed}
+            iRequestedCancel={iRequestedCancel}
+            theyRequestedCancel={Boolean(theyRequestedCancel)}
+            disputeAllowed={disputeAllowed}
+            disputeOpen={disputeOpen}
+            setDisputeOpen={setDisputeOpen}
+            disputeVideo={disputeVideo}
+            setDisputeVideo={setDisputeVideo}
+            disputeReason={disputeReason}
+            setDisputeReason={setDisputeReason}
+            onRequestCancel={requestCancel}
+            onWithdrawCancel={withdrawCancel}
+            onAcceptCancel={acceptCancel}
+            onOpenDispute={openDispute}
+          />
+        ) : null}
+
+        {!canCancelOpen &&
+        !canAccept &&
+        !canReport &&
+        !canConfirm &&
+        !(
+          iAmPlayer &&
+          c.opponent &&
+          c.status !== "open" &&
+          !c.tournamentId &&
+          (cancelAllowed || iRequestedCancel || theyRequestedCancel)
+        ) ? (
+          <Text fontSize="sm" color="fg.subtle">
+            No actions available for your role in the current match state
+            ({c.status}
+            {!isLoggedIn ? " · sign in to play" : ""}).
+          </Text>
+        ) : null}
+      </GhSurface>
 
       {c.dispute?.status === "open" ? (
         <DisputeStatusCard dispute={c.dispute} />
       ) : null}
 
-      {/* Tournament info + betable (above streams / match info) */}
-      {c.tournamentId ? <TournamentContextSection challenge={c} /> : null}
-
-      {c.betable && c.marketId ? (
-        <BetableOpenPanel marketId={c.marketId} />
-      ) : (
-        <BetableCreatePanel
-          c={c}
-          gate={betableGate}
-          isPlayer={isPlayer(c)}
-          monitorName={monitorName}
-          setMonitorName={setMonitorName}
-          betableDate={betableDate}
-          setBetableDate={setBetableDate}
-          betableTime={betableTime}
-          setBetableTime={setBetableTime}
-          onOpen={openBetable}
-        />
-      )}
+      {/* Betable market — muted until product ships */}
+      <GhSurface
+        variant="muted"
+        p="phi4"
+        opacity={0.72}
+        borderColor="border.default"
+      >
+        <HStack gap="phi3" align="flex-start">
+          <Box
+            w="10"
+            h="10"
+            borderRadius="xl"
+            bg="whiteAlpha.100"
+            color="fg.subtle"
+            display="flex"
+            alignItems="center"
+            justifyContent="center"
+            borderWidth="1px"
+            borderColor="border.default"
+            flexShrink={0}
+          >
+            <ChartCandlestick size={18} />
+          </Box>
+          <Box minW="0">
+            <HStack gap="2" mb="1" flexWrap="wrap">
+              <Text
+                fontFamily="heading"
+                fontWeight="extrabold"
+                fontSize="sm"
+                color="fg.muted"
+              >
+                Betable market
+              </Text>
+              <GhBadge tone="muted">Coming soon</GhBadge>
+            </HStack>
+            <Text fontSize="sm" color="fg.subtle" lineHeight="1.5">
+              Spectator books on heads-up matches will open here. Stay tuned.
+            </Text>
+          </Box>
+        </HStack>
+      </GhSurface>
 
       {/* Live streams + Match info */}
       <SimpleGrid columns={{ base: 1, md: 2 }} gap="phi3" alignItems="stretch">
@@ -890,18 +1462,16 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
             {c.tournamentMatchLabel ? (
               <InfoRow label="Bracket slot" value={c.tournamentMatchLabel} />
             ) : null}
-            {c.betable && c.marketId ? (
-              <Link href={`/markets/${c.marketId}`}>
-                <GhButton
-                  size="sm"
-                  variant="prize"
-                  w="100%"
-                  leftIcon={<ChartCandlestick size={14} />}
-                >
-                  Open betable market
-                </GhButton>
-              </Link>
-            ) : null}
+            <GhButton
+              size="sm"
+              variant="outline"
+              w="100%"
+              leftIcon={<ChartCandlestick size={14} />}
+              disabled
+              opacity={0.55}
+            >
+              Betable market · coming soon
+            </GhButton>
           </VStack>
         </FeaturedMatchPanel>
       </SimpleGrid>
@@ -1172,7 +1742,7 @@ function BetableOpenPanel({ marketId }: { marketId: string }) {
           A market is attached to this challenge. Spectators can trade until the
           match settles.
         </Text>
-        <Link href={`/markets/${marketId}`}>
+        <Link href={marketHref(marketId)}>
           <GhButton
             variant="prize"
             leftIcon={<ChartCandlestick size={16} />}
@@ -1186,45 +1756,71 @@ function BetableOpenPanel({ marketId }: { marketId: string }) {
   );
 }
 
-function TournamentContextSection({ challenge }: { challenge: ChallengeDetail }) {
-  const tournament = parentTournament(challenge);
+function TournamentContextSection({
+  challenge,
+  tournament,
+}: {
+  challenge: ChallengeDetail;
+  tournament: TournamentDetail | null;
+}) {
+  // Fallback to in-memory catalog if async load has not finished yet
+  const t = tournament || parentTournament(challenge) || null;
 
-  if (!tournament) {
+  if (!t) {
     return (
-      <GhSurface variant="muted" p="phi4">
-        <HStack gap="2" mb="2">
-          <Trophy size={16} color="var(--gh-colors-prize-fg)" />
-          <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
+      <GhSurface
+        variant="prize"
+        p={{ base: "phi4", md: "phi5" }}
+        borderColor="prize.solid"
+        id="gh-tournament-details"
+      >
+        <HStack gap="2" mb="phi2" flexWrap="wrap">
+          <Trophy size={18} />
+          <Text fontFamily="heading" fontWeight="extrabold" fontSize="lg">
             Tournament match
           </Text>
+          <GhBadge tone="prize">Bracket</GhBadge>
         </HStack>
-        <Text fontSize="sm" color="fg.muted">
-          Linked to tournament{" "}
-          <Text as="span" fontFamily="mono" color="prize.fg">
-            {challenge.tournamentId}
-          </Text>
-          {challenge.tournamentMatchLabel
-            ? ` · ${challenge.tournamentMatchLabel}`
-            : ""}
-          . Full tournament record not in demo catalog.
+        <Text fontSize="md" color="fg.muted" lineHeight="1.55" mb="phi3">
+          This challenge is linked to a tournament. Full bracket details could
+          not be loaded from the canister yet.
         </Text>
+        <SimpleGrid columns={{ base: 1, sm: 2 }} gap="phi2" mb="phi3">
+          <MiniStat
+            label="Tournament id"
+            value={challenge.tournamentId || "—"}
+          />
+          <MiniStat
+            label="This match"
+            value={challenge.tournamentMatchLabel || "Bracket game"}
+          />
+        </SimpleGrid>
+        {challenge.tournamentId ? (
+          <Link href={tournamentHref(challenge.tournamentId)}>
+            <GhButton
+              variant="prize"
+              leftIcon={<Trophy size={16} />}
+              rightIcon={<ExternalLink size={14} />}
+            >
+              Open tournament page
+            </GhButton>
+          </Link>
+        ) : null}
       </GhSurface>
     );
   }
 
-  const hasBetable = Boolean(
-    challenge.tournamentHasBetable && tournament.betable && tournament.marketId,
-  );
+  const hasBetable = Boolean(t.betable && t.marketId);
   const formatLabel =
-    tournament.format === "single_elim"
+    t.format === "single_elim"
       ? "Single elim"
-      : tournament.format === "double_elim"
+      : t.format === "double_elim"
         ? "Double elim"
         : "Round robin";
+  const kind = tournamentKindLabel(t);
 
   return (
-    <VStack align="stretch" gap="phi3">
-      {/* Tournament details card */}
+    <VStack align="stretch" gap="phi3" id="gh-tournament-details">
       <Box
         position="relative"
         borderRadius="2xl"
@@ -1239,111 +1835,137 @@ function TournamentContextSection({ challenge }: { challenge: ChallengeDetail })
           bg="linear-gradient(125deg, rgba(244,63,168,0.16) 0%, rgba(13,11,26,0.94) 50%, rgba(163,255,61,0.06) 100%)"
         />
         <Box position="relative">
-          <Box position="relative" h={{ base: "5.5rem", md: "7rem" }}>
+          <Box position="relative" h={{ base: "6.5rem", md: "8.5rem" }}>
             {/* eslint-disable-next-line @next/next/no-img-element */}
             <img
-              src={tournament.coverUrl}
+              src={t.coverUrl || "/art/chibi-team-win.jpg"}
               alt=""
               style={{
                 width: "100%",
                 height: "100%",
                 objectFit: "cover",
-                filter: "brightness(0.4) saturate(1.1)",
+                filter: "brightness(0.4) saturate(1.15)",
               }}
             />
             <Box
               position="absolute"
               inset="0"
-              bg="linear-gradient(180deg, transparent 0%, rgba(7,6,18,0.92) 100%)"
+              bg="linear-gradient(180deg, transparent 0%, rgba(7,6,18,0.94) 100%)"
             />
-          </Box>
-          <Box px={{ base: "phi4", md: "phi5" }} pb="phi4" mt="-2rem" position="relative">
-            <HStack gap="2" mb="phi2" flexWrap="wrap">
-              <GhBadge tone="prize">
-                <Trophy size={10} /> Parent tournament
-              </GhBadge>
-              <GhBadge
-                tone={
-                  tournament.status === "live"
-                    ? "live"
-                    : tournament.status === "settled"
-                      ? "success"
-                      : "brand"
-                }
-                pulse={tournament.status === "live"}
-              >
-                {statusLabel(tournament.status)}
-              </GhBadge>
-              <GhBadge tone="muted">{formatLabel}</GhBadge>
-              {hasBetable ? (
-                <GhBadge tone="prize">
-                  <ChartCandlestick size={10} /> Betable
-                </GhBadge>
-              ) : (
-                <GhBadge tone="muted">No tournament market</GhBadge>
-              )}
-            </HStack>
-            <Heading
-              as="h2"
-              fontFamily="heading"
-              fontSize={{ base: "lg", md: "xl" }}
-              fontWeight="extrabold"
-              letterSpacing="0.03em"
+            <Box
+              position="absolute"
+              left={{ base: "phi3", md: "phi5" }}
+              bottom="phi3"
+              right={{ base: "phi3", md: "phi5" }}
             >
-              {tournament.title}
-            </Heading>
+              <HStack gap="2" mb="1" flexWrap="wrap">
+                <GhBadge tone="prize">
+                  <Trophy size={11} /> Parent tournament
+                </GhBadge>
+                <GhBadge
+                  tone={
+                    t.status === "live"
+                      ? "live"
+                      : t.status === "settled"
+                        ? "success"
+                        : "brand"
+                  }
+                  pulse={t.status === "live"}
+                >
+                  {statusLabel(t.status)}
+                </GhBadge>
+                <GhBadge tone="muted">{formatLabel}</GhBadge>
+                <GhBadge tone="attr">{kind}</GhBadge>
+              </HStack>
+              <Heading
+                as="h2"
+                fontFamily="heading"
+                fontSize={{ base: "xl", md: "2xl" }}
+                fontWeight="extrabold"
+                letterSpacing="0.03em"
+                color="white"
+                textShadow="0 2px 12px rgba(0,0,0,0.65)"
+              >
+                {t.title}
+              </Heading>
+            </Box>
+          </Box>
+
+          <Box px={{ base: "phi4", md: "phi5" }} py="phi4">
             {challenge.tournamentMatchLabel ? (
-              <Text fontSize="sm" color="prize.fg" fontWeight="bold" mt="1">
+              <Text
+                fontSize="md"
+                color="prize.fg"
+                fontWeight="extrabold"
+                fontFamily="heading"
+                mb="phi2"
+              >
                 This match · {challenge.tournamentMatchLabel}
               </Text>
-            ) : null}
-            <Text fontSize="sm" color="fg.muted" mt="phi2" lineHeight="1.55" maxW="40rem">
-              {tournament.description}
-            </Text>
+            ) : (
+              <Text fontSize="md" color="prize.fg" fontWeight="bold" mb="phi2">
+                Bracket challenge in this tournament
+              </Text>
+            )}
 
-            <SimpleGrid columns={{ base: 2, sm: 4 }} gap="phi2" mt="phi3">
-              <MiniStat label="Game" value={tournament.game} />
-              <MiniStat label="Console" value={tournament.console} />
-              <MiniStat label="Lobby" value={filledLabel(tournament)} />
+            {t.description ? (
+              <Text
+                fontSize="md"
+                color="fg.default"
+                mb="phi3"
+                lineHeight="1.6"
+                maxW="42rem"
+              >
+                {t.description}
+              </Text>
+            ) : null}
+
+            <SimpleGrid columns={{ base: 2, md: 4 }} gap="phi3" mb="phi3">
+              <MiniStat label="Game" value={t.game || "—"} />
+              <MiniStat label="Console" value={t.console || "—"} />
+              <MiniStat label="Lobby" value={filledLabel(t)} />
               <MiniStat
                 label="Prize pot"
-                value={formatIcp(potFrom(tournament))}
+                value={formatIcp(potFrom(t))}
                 prize
               />
-              <MiniStat label="Entry" value={formatIcp(tournament.entryFeeIcp)} />
-              <MiniStat label="Host fee" value={`${tournament.hostFeePct}%`} />
-              <MiniStat label="Host" value={tournament.hostUsername} />
+              <MiniStat label="Entry" value={formatIcp(t.entryFeeIcp)} />
+              <MiniStat label="Host fee" value={`${t.hostFeePct}%`} />
+              <MiniStat label="Host" value={`@${t.hostUsername}`} />
               <MiniStat
                 label="Start"
-                value={formatTournamentWhen(tournament.scheduledAt)}
+                value={formatTournamentWhen(t.scheduledAt)}
               />
             </SimpleGrid>
 
-            <HStack mt="phi3" gap="2" flexWrap="wrap">
-              <Link href={`/tournaments/${tournament.id}`}>
+            <HStack gap="2" flexWrap="wrap">
+              <Link href={tournamentHref(t.id)}>
                 <GhButton
-                  size="sm"
                   variant="prize"
-                  leftIcon={<Trophy size={14} />}
-                  rightIcon={<ExternalLink size={12} />}
+                  leftIcon={<Trophy size={16} />}
+                  rightIcon={<ExternalLink size={14} />}
                 >
                   Open tournament
                 </GhButton>
               </Link>
-              {hasBetable && tournament.marketId ? (
-                <Link href={`/markets/${tournament.marketId}`}>
+              {hasBetable && t.marketId ? (
+                <Link href={marketHref(t.marketId)}>
                   <GhButton
-                    size="sm"
                     variant="outline"
-                    leftIcon={<ChartCandlestick size={14} />}
+                    leftIcon={<ChartCandlestick size={16} />}
                   >
                     Tournament market
                   </GhButton>
                 </Link>
-              ) : null}
-              {tournament.streamUrl ? (
-                <a href={tournament.streamUrl} target="_blank" rel="noreferrer">
-                  <GhButton size="sm" variant="soft" leftIcon={<Radio size={14} />}>
+              ) : (
+                <GhBadge tone="muted">No tournament betable market</GhBadge>
+              )}
+              {t.streamUrl ? (
+                <a href={t.streamUrl} target="_blank" rel="noreferrer">
+                  <GhButton
+                    variant="soft"
+                    leftIcon={<Radio size={16} />}
+                  >
                     Host stream
                   </GhButton>
                 </a>
@@ -1353,19 +1975,14 @@ function TournamentContextSection({ challenge }: { challenge: ChallengeDetail })
         </Box>
       </Box>
 
-      {/* Betable: overall + players */}
       {hasBetable ? (
-        <TournamentBetableOnChallenge
-          challenge={challenge}
-          tournament={tournament}
-        />
-      ) : challenge.tournamentId ? (
+        <TournamentBetableOnChallenge challenge={challenge} tournament={t} />
+      ) : (
         <GhAlert tone="info" title="No tournament betable market">
-          This bracket’s parent tournament is not betable, so this challenge cannot
-          open its own market either. Spectators follow the match without an
-          attached book.
+          Parent tournament is not betable, so this bracket challenge cannot open
+          its own book. Spectators follow the match without a market.
         </GhAlert>
-      ) : null}
+      )}
     </VStack>
   );
 }
@@ -1461,7 +2078,7 @@ function TournamentBetableOnChallenge({
             </Text>
           </Box>
           {tournament.marketId ? (
-            <Link href={`/markets/${tournament.marketId}`}>
+            <Link href={marketHref(tournament.marketId)}>
               <GhButton
                 size="sm"
                 variant="prize"
@@ -2539,10 +3156,23 @@ function ScoreReportPanel({
               />
             </HStack>
 
+            {isFinal &&
+            Number(scoreA) === Number(scoreB) &&
+            Number.isFinite(Number(scoreA)) ? (
+              <Text fontSize="xs" color="danger.solid" fontWeight="bold">
+                Final scores cannot be equal — one side must win.
+              </Text>
+            ) : null}
+
             <GhButton
               variant={isFinal ? "prize" : "primary"}
               leftIcon={<ClipboardCheck size={16} />}
               onClick={onSubmit}
+              disabled={
+                isFinal &&
+                Number(scoreA) === Number(scoreB) &&
+                Number.isFinite(Number(scoreA))
+              }
             >
               {isFinal ? "Submit final score" : "Submit score update"}
             </GhButton>
@@ -2820,7 +3450,7 @@ function AcceptPanel({
               {open ? "Accepting challenge" : "Accept challenge"}
             </Text>
             <Text fontSize="xs" color="fg.muted">
-              Deposit {formatIcp(c.entryFeeIcp)} to escrow · stream URL required
+              Deposit {formatIcp(c.entryFeeIcp)} to escrow · stream optional
             </Text>
           </Box>
         </HStack>
@@ -2838,10 +3468,10 @@ function AcceptPanel({
           bg="bg.elevated"
         >
           <VStack align="stretch" gap="phi3" pt="phi3">
-            <GhAlert tone="brand" title="Stream required to accept">
-              Spectators and the monitor need a public stream link.
-            </GhAlert>
-            <GhField label="Your stream URL" required>
+            <GhField
+              label="Stream URL"
+              helperText="Optional — add later for spectators / monitor"
+            >
               <GhInput
                 value={streamUrl}
                 onChange={(e) => setStreamUrl(e.target.value)}
@@ -2881,6 +3511,24 @@ function AcceptPanel({
       ) : null}
     </GhSurface>
   );
+}
+
+function InvitedSeatAvatar({ username }: { username?: string }) {
+  const [src, setSrc] = useState<string | undefined>();
+  useEffect(() => {
+    if (!username) {
+      setSrc(undefined);
+      return;
+    }
+    let cancelled = false;
+    void fetchAvatarMapByUsernames([username]).then((m) => {
+      if (!cancelled) setSrc(m[username.toLowerCase()]);
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [username]);
+  return <GhAvatar name={username || "open"} size="lg" src={src} />;
 }
 
 function SideCard({
@@ -2933,7 +3581,12 @@ function SideCard({
         ) : null}
       </HStack>
       <HStack gap="phi3" mb="phi3">
-        <GhAvatar name={side.username} size="lg" tone={tone} />
+        <GhAvatar
+          name={side.username}
+          size="lg"
+          tone={tone}
+          src={side.avatarUrl}
+        />
         <Box minW="0">
           <Text fontFamily="heading" fontWeight="extrabold" fontSize="md" lineClamp={1}>
             {side.username}

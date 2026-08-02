@@ -5,7 +5,6 @@ import Link from "next/link";
 import { Box, Grid, HStack, Text, VStack } from "@chakra-ui/react";
 import { Layers, Plus, Swords, Trophy } from "lucide-react";
 import { ModeHeader } from "@/components/spectacle/mode-header";
-import { LiveTicker } from "@/components/spectacle/live-ticker";
 import { MatchCard } from "@/components/cards/match-card";
 import {
   GhBadge,
@@ -27,6 +26,7 @@ import {
 } from "@/lib/tournaments";
 import { listTournaments } from "@/lib/ic/tournament-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
+import { tournamentHref } from "@/lib/deep-links";
 
 export default function TournamentsPage() {
   const [items, setItems] = useState<TournamentDetail[]>([]);
@@ -90,10 +90,6 @@ export default function TournamentsPage() {
           </Link>
         }
       />
-      <Box mb="phi4">
-        <LiveTicker label="Tournaments" />
-      </Box>
-
       {loading ? (
         <VStack py="phi6" gap="phi3">
           <GhSpinner />
@@ -180,7 +176,7 @@ export default function TournamentsPage() {
                 return (
                   <Box key={t.id}>
                     <MatchCard
-                      kind={group ? "room" : "tournament"}
+                      kind={group ? "group_game" : "tournament"}
                       title={t.title}
                       game={t.game}
                       console={t.console}
@@ -200,9 +196,19 @@ export default function TournamentsPage() {
                               : "open"
                       }
                       players={filledLabel(t)}
-                      meta={`${tournamentKindLabel(t)} · ${t.format} · ${formatWhen(t.scheduledAt)}`}
-                      hostEarn={`${t.hostFeePct}% host · ${t.hostUsername}`}
+                      meta={
+                        group
+                          ? `Free-for-all · not a bracket · ${formatWhen(t.scheduledAt)}`
+                          : `${tournamentKindLabel(t)} · ${t.format} · ${formatWhen(t.scheduledAt)}`
+                      }
+                      hostEarn={
+                        group
+                          ? `${t.hostFeePct}% host · one winner`
+                          : `${t.hostFeePct}% host · ${t.hostUsername}`
+                      }
                       username={t.hostUsername}
+                      href={tournamentHref(t.id)}
+                      ctaLabel={group ? "Open table" : "Open bracket"}
                       betable={t.betable}
                       market={
                         t.betable && t.marketId
@@ -214,17 +220,6 @@ export default function TournamentsPage() {
                           : undefined
                       }
                     />
-                    <Box mt="2">
-                      <Link href={`/tournaments/${encodeURIComponent(t.id)}`}>
-                        <GhButton
-                          size="sm"
-                          variant={group ? "live" : "prize"}
-                          w="100%"
-                        >
-                          {group ? "Open group pot" : "Open bracket"}
-                        </GhButton>
-                      </Link>
-                    </Box>
                   </Box>
                 );
               })
@@ -249,7 +244,7 @@ export default function TournamentsPage() {
             {filtered.map((t) => {
               const group = isGroupPotTournament(t);
               return (
-              <Link key={`row-${t.id}`} href={`/tournaments/${encodeURIComponent(t.id)}`}>
+              <Link key={`row-${t.id}`} href={tournamentHref(t.id)}>
                 <GhSurface
                   variant="glass"
                   p="phi3"

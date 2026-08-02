@@ -22,11 +22,16 @@ import {
   saveProfileToSupabase,
 } from "@/lib/supabase/profile";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
+import {
+  getOrCreateLocalIdentity,
+  isLocalIcNetwork,
+} from "@/lib/ic/local-identity";
 
 export type { ChatUser };
 
 const ANON = "2vxsx-fae";
 const II_MAX_TTL_NS = BigInt(7 * 24 * 60 * 60 * 1_000_000_000); // 7 days
+const LOCAL_SESSION_FLAG = "gh_local_session_v1";
 
 type SessionContextValue = {
   isLoggedIn: boolean;
@@ -78,13 +83,11 @@ function iiDerivationOrigin(): string | undefined {
 }
 
 /**
- * Internet Identity provider URL (same pattern as yoinx_new).
+ * Internet Identity provider URL (mainnet / production only).
  *
- * Default: **production II** `https://identity.ic0.app` — works for local FE
- * testing without deploying II on the replica.
- *
- * Do **not** use mainnet canister id `rdmx6-…` on `127.0.0.1:4943` — that
- * canister is not on your local replica → "canister not found".
+ * Local dfx: we do **not** use mainnet II for canister updates — the local
+ * replica cannot verify mainnet II canister signatures ("Invalid delegation").
+ * See `getOrCreateLocalIdentity()` for local Connect.
  *
  * Optional local II: deploy internet_identity via dfx, then set
  * `NEXT_PUBLIC_II_URL=http://<local-ii-id>.localhost:4943` (or ?canisterId=…).
@@ -95,6 +98,23 @@ function iiProviderUrl(): string {
     process.env.NEXT_PUBLIC_II_LOCAL_URL ||
     "https://identity.ic0.app"
   );
+}
+
+function hasLocalSessionFlag(): boolean {
+  try {
+    return window.localStorage.getItem(LOCAL_SESSION_FLAG) === "1";
+  } catch {
+    return false;
+  }
+}
+
+function setLocalSessionFlag(on: boolean) {
+  try {
+    if (on) window.localStorage.setItem(LOCAL_SESSION_FLAG, "1");
+    else window.localStorage.removeItem(LOCAL_SESSION_FLAG);
+  } catch {
+    /* ignore */
+  }
 }
 
 function isProductionRuntime(): boolean {
@@ -182,6 +202,38 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           }
         }
 
+        // Local replica: restore browser Ed25519 session (not mainnet II)
+        if (isLocalIcNetwork() && hasLocalSessionFlag()) {
+          if (!cancelled) {
+            await applyPrincipal(getOrCreateLocalIdentity());
+            setAuthReady(true);
+          }
+          return;
+        }
+
+        // Mainnet / remote: Internet Identity
+        if (isLocalIcNetwork()) {
+          // Do not rehydrate mainnet II into a local agent — signatures fail.
+          // Clear any stale II so the user re-connects with a local key.
+          try {
+            const { AuthClient } = await import("@dfinity/auth-client");
+            const client = await AuthClient.create({
+              idleOptions: {
+                disableIdle: true,
+                disableDefaultIdleCallback: true,
+              },
+            });
+            if (await client.isAuthenticated()) {
+              await client.logout();
+            }
+            clientRef.current = client;
+          } catch {
+            /* ignore */
+          }
+          if (!cancelled) setAuthReady(true);
+          return;
+        }
+
         const { AuthClient } = await import("@dfinity/auth-client");
         const client = await AuthClient.create({
           idleOptions: {
@@ -214,6 +266,19 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [applyPrincipal]);
 
   const login = useCallback(async () => {
+    // Local dfx: mainnet II delegations cannot be verified by the local root key
+    if (isLocalIcNetwork()) {
+      try {
+        await clientRef.current?.logout?.();
+      } catch {
+        /* ignore */
+      }
+      const id = getOrCreateLocalIdentity();
+      setLocalSessionFlag(true);
+      await applyPrincipal(id);
+      return;
+    }
+
     const { AuthClient } = await import("@dfinity/auth-client");
     let client = clientRef.current;
     if (!client) {
@@ -247,6 +312,7 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!p || p === ANON) {
       throw new Error("Anonymous principal not allowed");
     }
+    setLocalSessionFlag(false);
     await applyPrincipal(id);
   }, [applyPrincipal]);
 
@@ -260,6 +326,9 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
+    setLocalSessionFlag(false);
+    // Keep the Ed25519 key so Connect on local returns the same principal
+    // (clear site data / clearLocalIdentity() for a fresh key).
     setIdentity(null);
     setLoggedIn(false);
     setProfile(null);

@@ -33,6 +33,7 @@ import {
   ghToast,
 } from "@/components/ui";
 import { useSession } from "@/components/providers/session-context";
+import { resolveArcadeCoverUrl } from "@/lib/arcade/cover";
 import {
   ARCADE_LIVE_UPVOTE_THRESHOLD,
   formatPlayFee,
@@ -478,8 +479,8 @@ function ArcadeGameCard({ game }: { game: ArcadeGame }) {
         <Box position="relative" aspectRatio="16/11" bg="blackAlpha.600">
           {/* eslint-disable-next-line @next/next/no-img-element */}
           <img
-            src={game.imageUrl || "/art/arcade-cabinet.jpg"}
-            alt=""
+            src={resolveArcadeCoverUrl(game.imageUrl)}
+            alt={game.title}
             style={{
               width: "100%",
               height: "100%",

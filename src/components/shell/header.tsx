@@ -23,6 +23,7 @@ import { GhButton, GhAvatar } from "@/components/ui";
 import { useSession } from "@/components/providers/session-context";
 import { BRAND } from "@/lib/art";
 import { loadArenaStats } from "@/lib/ic/gamer-service";
+import { USERNAME_MAX_LENGTH } from "@/lib/profile";
 
 /**
  * App header — brand · primary nav · Connect / account menu.
@@ -237,13 +238,16 @@ export function Header() {
                     tone="brand"
                   />
                   <Text
-                    fontSize="sm"
+                    fontSize="2xs"
                     fontWeight="bold"
+                    fontFamily="heading"
+                    letterSpacing="0.02em"
                     display={{ base: "none", sm: "block" }}
-                    maxW="7rem"
+                    maxW="6.5rem"
                     lineClamp={1}
+                    color="fg.muted"
                   >
-                    {user?.username || "You"}
+                    {(user?.username || "You").slice(0, USERNAME_MAX_LENGTH)}
                   </Text>
                   <ChevronDown
                     size={14}

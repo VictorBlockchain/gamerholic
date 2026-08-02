@@ -78,8 +78,10 @@ import {
   setTournamentBetable,
 } from "@/lib/ic/tournament-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
+import { challengeHref } from "@/lib/challenges";
 import { useSession } from "@/components/providers/session-context";
 import { ClaimPayoutPanel } from "@/components/tournaments/claim-payout-panel";
+import { marketHref, tournamentShareUrl } from "@/lib/deep-links";
 
 /**
  * Tournament detail — overview, entrants, bracket, host controls (incl. open betable).
@@ -227,7 +229,7 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
     const url =
       typeof window !== "undefined"
         ? window.location.href
-        : `/tournaments/${t.id}`;
+        : tournamentShareUrl(t.id);
     void navigator.clipboard?.writeText(url);
     ghToast({ title: "Link copied", description: url, type: "success" });
   };
@@ -284,7 +286,7 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
                 Share
               </GhButton>
               {t.betable && t.marketId ? (
-                <Link href={`/markets/${t.marketId}`}>
+                <Link href={marketHref(t.marketId)}>
                   <GhButton
                     size="sm"
                     variant="prize"
@@ -914,7 +916,7 @@ function TournamentBetableSection({ t }: { t: TournamentDetail }) {
           >
             {mStatus}
           </GhBadge>
-          <Link href={`/markets/${t.marketId}`}>
+          <Link href={marketHref(t.marketId)}>
             <GhButton
               size="sm"
               variant="prize"
@@ -1470,7 +1472,7 @@ function MatchSlot({
         <HStack gap="1">
           {match.challengeId ? (
             <Link
-              href={`/challenges/${match.challengeId}`}
+              href={challengeHref(match.challengeId)}
               title="Open challenge"
               onClick={(e) => e.stopPropagation()}
             >
@@ -1540,7 +1542,7 @@ function MatchSlot({
               : "—"}
         </Text>
         {match.challengeId ? (
-          <Link href={`/challenges/${match.challengeId}`}>
+          <Link href={challengeHref(match.challengeId)}>
             <Text
               fontSize="2xs"
               color="brand.fg"
@@ -2034,7 +2036,7 @@ function HostControlsPanel({
                 </Text>
                 <HStack gap="2" flexWrap="wrap">
                   {t.marketId ? (
-                    <Link href={`/markets/${t.marketId}`}>
+                    <Link href={marketHref(t.marketId)}>
                       <GhButton
                         variant="prize"
                         leftIcon={<ChartCandlestick size={16} />}
