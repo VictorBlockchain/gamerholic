@@ -1,6 +1,9 @@
 /**
  * Gamerholic ICP canister IDs + actor factory.
  * Canisters = source of truth; Supabase = Realtime mirror.
+ *
+ * Production browser hosts (gamerholic.fun / *.icp0.io) ALWAYS use mainnet,
+ * even if a bad static build baked NEXT_PUBLIC_IC_HOST=localhost.
  */
 
 import {
@@ -23,33 +26,99 @@ function pub(v: string | undefined, fallback = ""): string {
   return s.length > 0 ? s : fallback;
 }
 
-const GH_BACKEND_ID = pub(
+/** Known mainnet IDs — used when env is missing or local ids leaked into a build. */
+export const MAINNET_GH_BACKEND = "u2in7-tiaaa-aaaab-qc2jq-cai";
+export const MAINNET_GH_MEDIA = "ubnr2-jqaaa-aaaab-qc2la-cai";
+export const MAINNET_IC_HOST = "https://icp0.io";
+
+const ENV_BACKEND = pub(
   process.env.NEXT_PUBLIC_GH_BACKEND_CANISTER_ID,
   pub(process.env.NEXT_PUBLIC_GAMERHOLIC_CANISTER_ID),
 );
-const GH_MEDIA_ID = pub(process.env.NEXT_PUBLIC_GH_MEDIA_CANISTER_ID);
-const IC_HOST = pub(process.env.NEXT_PUBLIC_IC_HOST);
-const IC_NETWORK = pub(process.env.NEXT_PUBLIC_IC_NETWORK);
+const ENV_MEDIA = pub(process.env.NEXT_PUBLIC_GH_MEDIA_CANISTER_ID);
+const ENV_HOST = pub(process.env.NEXT_PUBLIC_IC_HOST);
+const ENV_NETWORK = pub(process.env.NEXT_PUBLIC_IC_NETWORK).toLowerCase();
+const ENV_DFX = pub(process.env.NEXT_PUBLIC_DFX_NETWORK).toLowerCase();
 
-const useMainnet =
-  IC_NETWORK === "ic" ||
-  IC_HOST.includes("icp0.io") ||
-  IC_HOST.includes("ic0.app");
+/** True on production / IC hostnames (runtime — not bake-time). */
+export function isProductionBrowserHost(): boolean {
+  if (typeof window === "undefined") return false;
+  const h = window.location.hostname.toLowerCase();
+  if (h === "localhost" || h === "127.0.0.1") return false;
+  return (
+    h === "gamerholic.fun" ||
+    h.endsWith(".gamerholic.fun") ||
+    h.endsWith(".icp0.io") ||
+    h.endsWith(".ic0.app") ||
+    h.endsWith(".raw.icp0.io")
+  );
+}
 
-const LOCAL_IDS = {
-  gh_backend: GH_BACKEND_ID,
-  gh_media: GH_MEDIA_ID,
+function looksLikeLocalCanisterId(id: string): boolean {
+  return !id || /7777/.test(id) || id.length < 10;
+}
+
+/** Runtime: production host or explicit mainnet env → mainnet. */
+export function useMainnetIc(): boolean {
+  if (isProductionBrowserHost()) return true;
+  if (ENV_NETWORK === "ic") return true;
+  if (ENV_HOST.includes("icp0.io") || ENV_HOST.includes("ic0.app")) return true;
+  if (ENV_NETWORK === "local" || ENV_DFX === "local") return false;
+  if (ENV_HOST.includes("127.0.0.1") || ENV_HOST.includes("localhost")) {
+    // Only treat as local when actually on localhost in the browser
+    if (typeof window !== "undefined") {
+      const h = window.location.hostname;
+      return !(h === "localhost" || h === "127.0.0.1");
+    }
+    return false;
+  }
+  // Ambiguous bake → mainnet (assets deploys must not call local dfx)
+  if (typeof window !== "undefined") {
+    const h = window.location.hostname;
+    if (h === "localhost" || h === "127.0.0.1") return false;
+  }
+  return true;
+}
+
+export function getBackendCanisterId(): string {
+  if (useMainnetIc()) {
+    if (ENV_BACKEND && !looksLikeLocalCanisterId(ENV_BACKEND)) return ENV_BACKEND;
+    return MAINNET_GH_BACKEND;
+  }
+  return ENV_BACKEND || "";
+}
+
+export function getMediaCanisterId(): string {
+  if (useMainnetIc()) {
+    if (ENV_MEDIA && !looksLikeLocalCanisterId(ENV_MEDIA)) return ENV_MEDIA;
+    return MAINNET_GH_MEDIA;
+  }
+  return ENV_MEDIA || "";
+}
+
+/**
+ * Prefer getters so production host can override a bad localhost bake.
+ * @deprecated Prefer getBackendCanisterId / getMediaCanisterId.
+ */
+export const CANISTER_IDS = {
+  get gh_backend() {
+    return getBackendCanisterId();
+  },
+  get gh_media() {
+    return getMediaCanisterId();
+  },
 };
-
-const MAINNET_IDS = {
-  gh_backend: GH_BACKEND_ID,
-  gh_media: GH_MEDIA_ID,
-};
-
-export const CANISTER_IDS = useMainnet ? MAINNET_IDS : LOCAL_IDS;
 
 export function getIcHost(): string {
-  return IC_HOST || (useMainnet ? "https://icp0.io" : "http://127.0.0.1:4943");
+  if (useMainnetIc()) return MAINNET_IC_HOST;
+  if (
+    ENV_HOST &&
+    !ENV_HOST.includes("icp0.io") &&
+    !ENV_HOST.includes("ic0.app")
+  ) {
+    return ENV_HOST;
+  }
+  return "http://127.0.0.1:4943";
 }
 
 export function isLocalHost(host = getIcHost()): boolean {
@@ -57,7 +126,8 @@ export function isLocalHost(host = getIcHost()): boolean {
 }
 
 export function isCanisterConfigured(): boolean {
-  return Boolean(CANISTER_IDS.gh_backend && CANISTER_IDS.gh_backend.length > 5);
+  const id = getBackendCanisterId();
+  return Boolean(id && id.length > 5);
 }
 
 export async function createAgent(
@@ -313,16 +383,17 @@ export async function createBackendActor(
   const agent = await createAgent(identity);
   return Actor.createActor(backendIdlFactory as never, {
     agent,
-    canisterId: CANISTER_IDS.gh_backend,
+    canisterId: getBackendCanisterId(),
   }) as unknown as GamerholicBackend;
 }
 
 export async function createMediaActor(identity?: Identity | null) {
-  if (!CANISTER_IDS.gh_media) return null;
+  const mediaId = getMediaCanisterId();
+  if (!mediaId) return null;
   const agent = await createAgent(identity);
   return Actor.createActor(mediaIdlFactory as never, {
     agent,
-    canisterId: CANISTER_IDS.gh_media,
+    canisterId: mediaId,
   });
 }
 

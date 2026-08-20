@@ -155,8 +155,13 @@ create table if not exists public.gh_profiles (
   console text,
   games text[] default '{}',
   metadata jsonb not null default '{}'::jsonb,
+  -- Platform role (user | moderator | admin). Not writable via upsert_gh_profile.
+  role text not null default 'user'
+    check (role in ('user', 'moderator', 'admin')),
   updated_at timestamptz not null default now()
 );
+
+create index if not exists gh_profiles_role_idx on public.gh_profiles (role);
 
 create table if not exists public.gh_attribute_balances (
   principal text not null,
@@ -526,6 +531,7 @@ end;
 $$;
 
 -- ── Upsert gamer profile by II principal (browser → security definer) ──
+-- Never accepts client-supplied role (preserve / default user).
 create or replace function public.upsert_gh_profile(p jsonb)
 returns jsonb
 language plpgsql
@@ -540,7 +546,7 @@ begin
   end if;
 
   insert into public.gh_profiles as g (
-    principal, username, avatar_url, bio, console, games, metadata, updated_at
+    principal, username, avatar_url, bio, console, games, metadata, role, updated_at
   ) values (
     v_principal,
     nullif(p->>'username', ''),
@@ -552,6 +558,7 @@ begin
       '{}'::text[]
     ),
     coalesce(p->'metadata', '{}'::jsonb),
+    'user',
     now()
   )
   on conflict (principal) do update set
@@ -561,6 +568,7 @@ begin
     console = coalesce(excluded.console, g.console),
     games = excluded.games,
     metadata = g.metadata || excluded.metadata,
+    -- role intentionally NOT updated from client payload
     updated_at = now();
 
   return jsonb_build_object('ok', true, 'principal', v_principal);
@@ -568,6 +576,107 @@ end;
 $$;
 
 grant execute on function public.upsert_gh_profile(jsonb) to anon, authenticated;
+
+-- ── Platform role assignment (admin / bootstrap) ────────────
+-- See migrations/20260802_gh_profile_roles.sql for full comments.
+create or replace function public.admin_set_gh_profile_role(
+  p_caller text,
+  p_target text,
+  p_role text
+)
+returns jsonb
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  v_caller text := nullif(trim(coalesce(p_caller, '')), '');
+  v_target text := nullif(trim(coalesce(p_target, '')), '');
+  v_role text := lower(nullif(trim(coalesce(p_role, '')), ''));
+  v_caller_role text;
+  v_admin_count int;
+  v_username text;
+begin
+  if v_caller is null or v_caller = '2vxsx-fae' then
+    return jsonb_build_object('ok', false, 'error', 'caller_required');
+  end if;
+  if v_target is null or v_target = '2vxsx-fae' then
+    return jsonb_build_object('ok', false, 'error', 'target_required');
+  end if;
+  if v_role is null or v_role not in ('user', 'moderator', 'admin') then
+    return jsonb_build_object('ok', false, 'error', 'invalid_role');
+  end if;
+
+  select role into v_caller_role
+  from public.gh_profiles
+  where principal = v_caller;
+
+  select count(*)::int into v_admin_count
+  from public.gh_profiles
+  where role = 'admin';
+
+  if coalesce(v_caller_role, 'user') = 'admin' then
+    null;
+  elsif v_admin_count = 0 and v_caller = v_target and v_role = 'admin' then
+    null;
+  else
+    return jsonb_build_object(
+      'ok', false,
+      'error', 'forbidden',
+      'hint', 'Only platform admins can assign roles.'
+    );
+  end if;
+
+  insert into public.gh_profiles (principal, role, updated_at)
+  values (v_target, v_role, now())
+  on conflict (principal) do update set
+    role = excluded.role,
+    updated_at = now();
+
+  select username into v_username
+  from public.gh_profiles
+  where principal = v_target;
+
+  return jsonb_build_object(
+    'ok', true,
+    'principal', v_target,
+    'username', v_username,
+    'role', v_role
+  );
+end;
+$$;
+
+grant execute on function public.admin_set_gh_profile_role(text, text, text)
+  to anon, authenticated;
+
+create or replace function public.list_gh_profiles_for_roles(p_limit int default 100)
+returns table (
+  principal text,
+  username text,
+  role text,
+  avatar_url text,
+  updated_at timestamptz
+)
+language sql
+security definer
+set search_path = public
+stable
+as $$
+  select
+    g.principal,
+    g.username,
+    g.role,
+    g.avatar_url,
+    g.updated_at
+  from public.gh_profiles g
+  order by
+    case g.role when 'admin' then 0 when 'moderator' then 1 else 2 end,
+    g.updated_at desc nulls last
+  limit greatest(1, least(coalesce(p_limit, 100), 500));
+$$;
+
+grant execute on function public.list_gh_profiles_for_roles(int)
+  to anon, authenticated;
 
 -- ══════════════════════════════════════════════════════════════════
 -- High Score Arcade (hybrid: Supabase clock/scores + ICP settlement)
@@ -1123,6 +1232,8 @@ grant execute on function public.gh_arcade_requeue_chain_job(text) to anon, auth
 -- Lifecycle: published catalog rows start as status='testing' (community playtests
 -- with real insert coins + leaderboard). 10 unique upvotes → status='live'.
 -- Tester scores are NOT wiped on go-live (same game_id board).
+-- Comments / ratings / approved_at: also apply
+--   migrations/arcade_comments_ratings.sql
 create table if not exists public.gh_arcade_games (
   id text primary key,
   title text not null,

@@ -177,6 +177,78 @@ export async function checkIsAdmin(
   }
 }
 
+/** On-chain admin flag holders (`listAdmins`). Public query — identity optional. */
+export async function listChainAdmins(
+  identity?: Identity | null,
+): Promise<string[]> {
+  // Prefer authenticated actor, fall back to anonymous if that fails
+  const tryList = async (id?: Identity | null) => {
+    const a = await actor(id);
+    if (!a || typeof a.listAdmins !== "function") {
+      throw new Error("listAdmins not on actor — redeploy FE / gh_backend");
+    }
+    const rows = await a.listAdmins();
+    if (!rows) return [];
+    if (Array.isArray(rows)) {
+      return rows.map((x: unknown) => String(x ?? "").trim()).filter(Boolean);
+    }
+    // Unexpected candid shape
+    console.warn("[mods] listAdmins unexpected shape", rows);
+    return [];
+  };
+  try {
+    return await tryList(identity);
+  } catch (e1) {
+    console.warn("[mods] listAdmins (with identity)", e1);
+    if (identity) {
+      try {
+        return await tryList(null);
+      } catch (e2) {
+        console.warn("[mods] listAdmins (anonymous)", e2);
+      }
+    }
+    return [];
+  }
+}
+
+/**
+ * Grant or revoke on-chain admin flag.
+ * Caller identity must already be admin (enforced on canister).
+ */
+export async function setChainAdmin(
+  target: string,
+  flag: boolean,
+  identity?: Identity | null,
+): Promise<{ ok: boolean; err?: string }> {
+  const t = (target || "").trim();
+  if (!t) return { ok: false, err: "Missing principal" };
+  const a = await actor(identity);
+  if (!a?.setAdmin) {
+    return { ok: false, err: "setAdmin not available — redeploy gh_backend" };
+  }
+  try {
+    const ok = Boolean(
+      await (
+        a as { setAdmin: (addr: string, f: boolean) => Promise<boolean> }
+      ).setAdmin(t, flag),
+    );
+    if (!ok) {
+      return {
+        ok: false,
+        err: flag
+          ? "Grant failed — you must be an on-chain admin"
+          : "Revoke failed — cannot remove the last admin, or you are not admin",
+      };
+    }
+    return { ok: true };
+  } catch (e) {
+    return {
+      ok: false,
+      err: e instanceof Error ? e.message : "setAdmin failed",
+    };
+  }
+}
+
 export async function applyAsBaseReferee(
   address: string,
   identity?: Identity | null,

@@ -424,6 +424,9 @@ export type EsportsOutcomePayload = {
   source_id: string;
   source_kind?: "team" | "player";
   active?: boolean;
+  /** Gamerholic primary principal — Betable deep-link back to GH profile */
+  gamerholic_principal?: string;
+  gamerholic_profile_url?: string;
 };
 
 /**
@@ -443,11 +446,14 @@ export async function linkEsportsOutcomes(params: {
       entity_id: params.entityId,
       entity_kind: params.entityKind,
       outcomes: params.outcomes.map((o) => ({
+        name: o.label,
         label: o.label,
         avatar_url: o.avatar_url || "",
         source_id: o.source_id,
         source_kind: o.source_kind || "team",
         active: o.active !== false,
+        gamerholic_principal: o.gamerholic_principal || "",
+        gamerholic_profile_url: o.gamerholic_profile_url || "",
       })),
     },
   });
@@ -466,6 +472,9 @@ export async function addEsportsOutcome(params: {
   avatarUrl?: string;
   sourceId: string;
   sourceKind?: "team" | "player";
+  /** GH primary principal for Betable → Gamerholic profile link */
+  gamerholicPrincipal?: string;
+  gamerholicProfileUrl?: string;
 }): Promise<{ ok: boolean; error?: string }> {
   const r = await betableEsportsFetch("/api/esports/outcomes", {
     json: {
@@ -479,7 +488,9 @@ export async function addEsportsOutcome(params: {
       label: params.label,
       avatar_url: params.avatarUrl || "",
       source_id: params.sourceId,
-      source_kind: params.sourceKind || "team",
+      source_kind: params.sourceKind || "player",
+      gamerholic_principal: params.gamerholicPrincipal || "",
+      gamerholic_profile_url: params.gamerholicProfileUrl || "",
     },
   });
   return { ok: r.ok, error: r.data?.error };

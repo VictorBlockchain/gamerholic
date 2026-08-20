@@ -3,16 +3,19 @@
 import Link from "next/link";
 import { Box, Flex, Text, VStack, HStack, SimpleGrid } from "@chakra-ui/react";
 import { BRAND } from "@/lib/art";
-import { primaryNavForSession } from "@/lib/nav";
+import { homeHref, primaryNavForSession } from "@/lib/nav";
 import { useSession } from "@/components/providers/session-context";
+import { isPlatformAdmin } from "@/lib/profile";
 
 /**
  * Site footer — full-bleed bar (edge-to-edge like the header),
  * inner content aligned to the same max width / padding.
  */
 export function Footer() {
-  const { isLoggedIn } = useSession();
-  const nav = primaryNavForSession(isLoggedIn);
+  const { isLoggedIn, profile } = useSession();
+  const nav = primaryNavForSession(isLoggedIn, {
+    isAdmin: isPlatformAdmin(profile?.role),
+  });
   const year = new Date().getFullYear();
 
   return (
@@ -48,42 +51,44 @@ export function Footer() {
           gap="phi4"
           mb="phi5"
         >
-          <HStack gap="phi3">
-            <Box
-              w="10"
-              h="10"
-              borderRadius="xl"
-              overflow="hidden"
-              borderWidth="1px"
-              borderColor="border.brand"
-              boxShadow="0 0 16px rgba(163, 255, 61, 0.32)"
-              bg="bg.elevated"
-              flexShrink={0}
-            >
-              {/* eslint-disable-next-line @next/next/no-img-element */}
-              <img
-                src={BRAND.mark128}
-                alt=""
-                width={40}
-                height={40}
-                style={{ width: "100%", height: "100%", objectFit: "cover" }}
-              />
-            </Box>
-            <Box>
-              <Text
-                fontFamily="heading"
-                fontWeight="extrabold"
-                fontSize={{ base: "md", sm: "lg" }}
-                letterSpacing="0.06em"
-                className="gh-text-brand"
+          <Link href={homeHref(isLoggedIn)} style={{ textDecoration: "none" }}>
+            <HStack gap="phi3">
+              <Box
+                w="10"
+                h="10"
+                borderRadius="xl"
+                overflow="hidden"
+                borderWidth="1px"
+                borderColor="border.brand"
+                boxShadow="0 0 16px rgba(163, 255, 61, 0.32)"
+                bg="bg.elevated"
+                flexShrink={0}
               >
-                GAMERHOLIC
-              </Text>
-              <Text fontSize="sm" color="fg.muted" fontWeight="medium">
-                I Win For A Living
-              </Text>
-            </Box>
-          </HStack>
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={BRAND.mark128}
+                  alt=""
+                  width={40}
+                  height={40}
+                  style={{ width: "100%", height: "100%", objectFit: "cover" }}
+                />
+              </Box>
+              <Box>
+                <Text
+                  fontFamily="heading"
+                  fontWeight="extrabold"
+                  fontSize={{ base: "md", sm: "lg" }}
+                  letterSpacing="0.06em"
+                  className="gh-text-brand"
+                >
+                  GAMERHOLIC
+                </Text>
+                <Text fontSize="sm" color="fg.muted" fontWeight="medium">
+                  I Win For A Living
+                </Text>
+              </Box>
+            </HStack>
+          </Link>
           <Text
             fontSize={{ base: "sm", md: "md" }}
             color="fg.muted"
@@ -148,6 +153,21 @@ export function Footer() {
               _hover={{ color: "brand.fg" }}
             >
               Profile
+            </Text>
+          </Link>
+          <Link
+            href="/security"
+            style={{ textDecoration: "none", color: "inherit" }}
+          >
+            <Text
+              fontFamily="heading"
+              fontSize="sm"
+              fontWeight="bold"
+              letterSpacing="0.04em"
+              color="fg.muted"
+              _hover={{ color: "brand.fg" }}
+            >
+              Security tips
             </Text>
           </Link>
           <Link

@@ -292,6 +292,50 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
       [I.Bool],
       [],
     ),
+    setBetableMarketFactory: I.Func([I.Text], [I.Bool], []),
+    getBetableMarketFactory: I.Func([], [I.Text], ["query"]),
+    createTournamentBetableMarket: I.Func(
+      [
+        TournamentId,
+        Address,
+        I.Text, // betableHostPrincipal
+        I.Text, // title
+        I.Text, // description
+        I.Int, // closeDateNs
+        I.Text, // resolution
+        I.Vec(I.Text), // outcomes
+        I.Bool, // splitWithWinner
+        I.Nat, // splitPercentage
+        I.Text, // liveStream
+        I.Float64, // creatorFee
+        I.Text, // game
+        I.Text, // console
+      ],
+      [I.Text], // marketId
+      [],
+    ),
+    createChallengeBetableMarket: I.Func(
+      [
+        ChallengeId,
+        Address,
+        I.Text,
+        I.Text,
+        I.Text,
+        I.Int,
+        I.Text,
+        I.Vec(I.Text),
+        I.Bool,
+        I.Nat,
+        I.Text,
+        I.Float64,
+        I.Text,
+        I.Text,
+        I.Nat64, // scheduledAt
+        Address, // monitor
+      ],
+      [I.Text],
+      [],
+    ),
     setTournamentSchedule: I.Func(
       [TournamentId, Address, I.Nat64],
       [I.Bool],
@@ -369,6 +413,76 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
       ["query"],
     ),
     getBackendPrincipal: I.Func([], [I.Text], ["query"]),
+    // Treasury / fees (admin console)
+    getTreasuryTransactions: I.Func(
+      [
+        I.Opt(I.Nat),
+        I.Opt(I.Nat),
+        I.Opt(I.Text),
+        I.Opt(
+          I.Variant({
+            Deposit: I.Null,
+            Withdrawal: I.Null,
+            RakeCollection: I.Null,
+            PrizeDistribution: I.Null,
+            PlatformFee: I.Null,
+            TreasuryAllocation: I.Null,
+          }),
+        ),
+      ],
+      [
+        I.Vec(
+          I.Record({
+            id: I.Text,
+            timestamp: I.Nat64,
+            transactionType: I.Variant({
+              Deposit: I.Null,
+              Withdrawal: I.Null,
+              RakeCollection: I.Null,
+              PrizeDistribution: I.Null,
+              PlatformFee: I.Null,
+              TreasuryAllocation: I.Null,
+            }),
+            tokenType: I.Text,
+            amount: I.Nat,
+            fromAddress: I.Opt(I.Text),
+            toAddress: I.Opt(I.Text),
+            challengeId: I.Opt(I.Text),
+            tournamentId: I.Opt(I.Text),
+            description: I.Text,
+          }),
+        ),
+      ],
+      ["query"],
+    ),
+    getTreasuryBalance: I.Func([I.Text], [I.Nat], ["query"]),
+    getTreasurySummary: I.Func([], [I.Vec(I.Tuple(I.Text, I.Nat))], ["query"]),
+    platformFeeRate_: I.Func([], [I.Nat], ["query"]),
+    setPlatformFeeRate: I.Func([Address, I.Nat], [I.Bool], []),
+    getHeadsUpPlatformFeeBps: I.Func([], [I.Nat], ["query"]),
+    setHeadsUpPlatformFeeBps: I.Func([Address, I.Nat], [I.Bool], []),
+    getTournamentPlatformFeeBps: I.Func([], [I.Nat], ["query"]),
+    setTournamentPlatformFeeBps: I.Func([Address, I.Nat], [I.Bool], []),
+    getPlatformXftId: I.Func([], [I.Nat], ["query"]),
+    getPlatformBagPrincipal: I.Func([], [I.Text], ["query"]),
+    getPlatformFeePrincipal: I.Func([], [I.Text], ["query"]),
+    setPlatformXftId: I.Func(
+      [Address, I.Nat],
+      [I.Record({ ok: I.Bool, err: I.Text, bag: I.Text })],
+      [],
+    ),
+    setPlatformFeePrincipal: I.Func(
+      [Address, I.Text],
+      [I.Record({ ok: I.Bool, err: I.Text })],
+      [],
+    ),
+    getArcadePlatformFeeBps: I.Func([], [I.Nat], ["query"]),
+    setArcadePlatformFeeBps: I.Func([Address, I.Nat], [I.Bool], []),
+    /** Flat e8s charged when submitting a cabinet for testing (admin-set). */
+    getArcadeSubmitFeeE8s: I.Func([], [I.Nat], ["query"]),
+    setArcadeSubmitFeeE8s: I.Func([Address, I.Nat], [I.Bool], []),
+    feeRecipient_: I.Func([], [Address], ["query"]),
+    setFeeRecipient: I.Func([Address, Address], [I.Bool], []),
     /** Native ICP: play sub → challenge escrow */
     debitChallengeEntryFeeNativeICP: I.Func(
       [ChallengeId, I.Nat],
@@ -387,7 +501,28 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
       [I.Bool],
       [],
     ),
-    debitArcadePlayFeeNativeICP: I.Func([I.Text, I.Nat], [I.Bool], []),
+    /** Arcade insert: play sub → escrow (+ platform cut). Returns { ok, err }. */
+    debitArcadePlayFeeNativeICP: I.Func(
+      [I.Text, I.Nat],
+      [I.Record({ ok: I.Bool, err: I.Text })],
+      [],
+    ),
+    /**
+     * Arcade submit-for-testing: play sub → platform (admin-set flat fee).
+     * Amount from canister policy; gameId for memo + idempotency.
+     */
+    debitArcadeSubmitFeeNativeICP: I.Func(
+      [I.Text],
+      [I.Record({ ok: I.Bool, err: I.Text })],
+      [],
+    ),
+    getIcpLedgerPrincipal: I.Func([], [I.Principal], ["query"]),
+    /** Shop merch: play sub → platform wallet (amount e8s); orderId in memo */
+    debitShopMerchNativeICP: I.Func(
+      [I.Text, I.Nat],
+      [I.Record({ ok: I.Bool, err: I.Text })],
+      [],
+    ),
     claimArcadeWinningsNativeICP: I.Func(
       [I.Text, I.Nat],
       [I.Record({ ok: I.Bool, err: I.Text, amount: I.Nat })],
@@ -603,7 +738,9 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
     listAllModerators: I.Func([], [I.Vec(Moderator)], ["query"]),
     getModerator: I.Func([Address], [I.Opt(Moderator)], ["query"]),
     isAdmin: I.Func([Address], [I.Bool], ["query"]),
-    setAdmin: I.Func([Address, I.Bool], [], []),
+    /** Grant/revoke admin flag — caller must already be admin (or bootstrap if none). */
+    setAdmin: I.Func([Address, I.Bool], [I.Bool], []),
+    listAdmins: I.Func([], [I.Vec(Address)], ["query"]),
     appointModerator: I.Func([Address, Address, ModeratorRole], [I.Bool], []),
     applyBaseReferee: I.Func([Address], [I.Bool], []),
     promoteModerator: I.Func([Address, Address], [I.Bool], []),
@@ -620,5 +757,68 @@ export const idlFactory = ({ IDL: I }: { IDL: typeof IDL }) => {
       [I.Opt(I.Record({ surchargeUntil: I.Nat64, multiplier: I.Nat }))],
       ["query"],
     ),
+    // Device sync (multi-II primary / alias)
+    create_device_sync_code: I.Func(
+      [],
+      [
+        I.Record({
+          success: I.Bool,
+          code: I.Text,
+          expires_at: I.Int,
+          message: I.Text,
+        }),
+      ],
+      [],
+    ),
+    claim_device_sync_code: I.Func(
+      [I.Text],
+      [
+        I.Record({
+          success: I.Bool,
+          primary: I.Text,
+          message: I.Text,
+        }),
+      ],
+      [],
+    ),
+    get_canonical_principal: I.Func(
+      [I.Principal],
+      [I.Principal],
+      ["query"],
+    ),
+    list_linked_devices: I.Func(
+      [],
+      [
+        I.Record({
+          primary: I.Text,
+          devices: I.Vec(I.Text),
+          is_primary: I.Bool,
+        }),
+      ],
+      ["query"],
+    ),
+    unlink_device: I.Func(
+      [I.Principal],
+      [I.Record({ success: I.Bool, message: I.Text })],
+      [],
+    ),
+    set_linked_betable_principal: I.Func(
+      [I.Text],
+      [I.Record({ success: I.Bool, message: I.Text })],
+      [],
+    ),
+    get_linked_betable_principal: I.Func([], [I.Opt(I.Text)], ["query"]),
+    clear_linked_betable_principal: I.Func(
+      [],
+      [I.Record({ success: I.Bool, message: I.Text })],
+      [],
+    ),
+    set_linked_afta_principal: I.Func(
+      [I.Text],
+      [I.Record({ success: I.Bool, message: I.Text })],
+      [],
+    ),
+    get_linked_afta_principal: I.Func([], [I.Opt(I.Text)], ["query"]),
+    get_ownership_principals: I.Func([], [I.Vec(I.Text)], ["query"]),
   });
 };

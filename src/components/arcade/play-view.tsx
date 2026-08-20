@@ -19,6 +19,7 @@ import {
 import {
   ArrowLeft,
   BookOpen,
+  Calendar,
   Coins,
   Crown,
   FlaskConical,
@@ -30,9 +31,11 @@ import {
   Pencil,
   Shield,
   Sparkles,
+  Star,
   ThumbsUp,
   Timer,
   Trophy,
+  Users,
   Wallet,
 } from "lucide-react";
 import {
@@ -43,7 +46,9 @@ import {
   GhTextarea,
   SectionDivider,
   ghToast,
+  toastLowBalance,
 } from "@/components/ui";
+import { ArcadeCommentsSection } from "@/components/arcade/arcade-comments-section";
 import { ModeHeader } from "@/components/spectacle/mode-header";
 import { useSession } from "@/components/providers/session-context";
 import {
@@ -81,9 +86,16 @@ import {
 import { isSupabaseConfigured } from "@/lib/supabase/client";
 import { resolveArcadeCoverUrl } from "@/lib/arcade/cover";
 import { bindArcadeKeyboardCapture } from "@/lib/arcade/keyboard";
+import {
+  formatShortDate,
+  getArcadeRatingSummary,
+  listArcadeTesters,
+} from "@/lib/arcade/feedback";
 import type {
   ArcadeGame,
   ArcadePayoutEvent,
+  ArcadeRatingSummary,
+  ArcadeTester,
   EarningsLedgerEntry,
   EquippedGameAsset,
   GameEscrowAccount,
@@ -151,6 +163,13 @@ export function ArcadePlayView({ gameId }: Props) {
   const [editBusy, setEditBusy] = useState(false);
   /** Bump to remount iframe after creator CSS/code edit */
   const [hostKey, setHostKey] = useState(0);
+  const [ratingSummary, setRatingSummary] = useState<ArcadeRatingSummary>({
+    average: 0,
+    count: 0,
+    mine: 0,
+  });
+  const [testers, setTesters] = useState<ArcadeTester[]>([]);
+  const [testerPick, setTesterPick] = useState("");
 
   useEffect(() => {
     equipsRef.current = equips;
@@ -190,6 +209,16 @@ export function ArcadePlayView({ gameId }: Props) {
     };
   }, [game, principal, profile?.principal]);
 
+  const refreshMeta = useCallback(async () => {
+    if (!gameId) return;
+    const [rs, ts] = await Promise.all([
+      getArcadeRatingSummary(gameId, principal || undefined),
+      listArcadeTesters(gameId),
+    ]);
+    setRatingSummary(rs);
+    setTesters(ts);
+  }, [gameId, principal]);
+
   const refreshEconomy = useCallback(async () => {
     const g = (await getArcadeGameAsync(gameId)) || getArcadeGame(gameId);
     setGame(g);
@@ -197,6 +226,7 @@ export function ArcadePlayView({ gameId }: Props) {
       // Leaderboard from Supabase (paid test + live scores)
       setBoard(await listLeaderboardWithEarningsAsync(g.id));
       setPayouts(listPayoutEvents(g.id));
+      void refreshMeta();
       setEscrow(getGameEscrow(g.id));
       const p = principal || profile?.principal || "";
       setMyEarnings(p ? getPlayerEarnings(g.id, p) : null);
@@ -207,7 +237,7 @@ export function ArcadePlayView({ gameId }: Props) {
       }
     }
     setBalances(getPlayBalances());
-  }, [gameId, principal, profile?.principal, editOpen]);
+  }, [gameId, principal, profile?.principal, editOpen, refreshMeta]);
 
   useEffect(() => {
     void refreshEconomy();
@@ -670,32 +700,73 @@ export function ArcadePlayView({ gameId }: Props) {
     const username = profile?.username || "player";
 
     if (paid) {
-      if (game.playFeeToken === "ICP" && identity && game.playFee > 0) {
-        try {
-          const { debitArcadePlayFee } = await import(
-            "@/lib/ic/settlement-service"
-          );
-          const ok = await debitArcadePlayFee(
-            game.id,
-            game.playFee,
-            identity,
-          );
-          if (!ok) {
+      if (game.playFeeToken === "ICP" && game.playFee > 0) {
+        // Pre-check play sub before canister (avoid InsufficientFunds trap wait)
+        if (identity && mePrincipal) {
+          try {
+            const {
+              checkPlayIcpAfford,
+              requiredIcpForArcadeInsert,
+            } = await import("@/lib/ic/gamer-service");
+            const need = requiredIcpForArcadeInsert(game.playFee);
+            const afford = await checkPlayIcpAfford(
+              mePrincipal,
+              need,
+              identity,
+            );
+            if (afford.insufficient && afford.balance != null) {
+              toastLowBalance({
+                action: "insert coins",
+                needIcp: afford.need,
+                balanceIcp: afford.balance,
+              });
+              return;
+            }
+          } catch {
+            /* fall through to canister / local */
+          }
+        }
+        if (identity) {
+          try {
+            const { debitArcadePlayFee, formatCanisterError } = await import(
+              "@/lib/ic/settlement-service"
+            );
+            const debited = await debitArcadePlayFee(
+              game.id,
+              game.playFee,
+              identity,
+            );
+            if (!debited.ok) {
+              const err = debited.err || "Debit from play subaccount failed";
+              if (/insufficient|low balance|need.*ICP/i.test(err)) {
+                toastLowBalance({
+                  action: "insert coins",
+                  needIcp: game.playFee + 0.0002,
+                  balanceIcp: 0,
+                  description: err,
+                });
+              } else {
+                ghToast({
+                  title: "ICP insert failed",
+                  description: formatCanisterError
+                    ? formatCanisterError(err, err)
+                    : err,
+                  type: "error",
+                });
+              }
+              return;
+            }
+          } catch (e) {
+            const { formatCanisterError } = await import(
+              "@/lib/ic/canister-errors"
+            );
             ghToast({
               title: "ICP insert failed",
-              description:
-                "Debit from play subaccount failed — deposit ICP to your Gamerholic play balance first",
+              description: formatCanisterError(e, "Insert failed"),
               type: "error",
             });
             return;
           }
-        } catch (e) {
-          ghToast({
-            title: "ICP insert failed",
-            description: e instanceof Error ? e.message : String(e),
-            type: "error",
-          });
-          return;
         }
       }
       const deb = debitPlayFee(game.playFeeToken, game.playFee);
@@ -705,6 +776,15 @@ export function ArcadePlayView({ gameId }: Props) {
           title: "Insert failed",
           description: deb.error,
           type: "error",
+        });
+        return;
+      }
+      if (!deb.ok && game.playFeeToken === "ICP" && !identity) {
+        toastLowBalance({
+          action: "insert coins",
+          needIcp: game.playFee,
+          balanceIcp: deb.balances.icp,
+          description: deb.error,
         });
         return;
       }
@@ -1158,7 +1238,16 @@ export function ArcadePlayView({ gameId }: Props) {
   );
 
   return (
-    <VStack align="stretch" gap="0" className="gh-stack-phi-lg" pb="phi5">
+    <VStack
+      align="stretch"
+      gap="0"
+      className="gh-stack-phi-lg"
+      pb="phi5"
+      // Skip page pull-to-refresh / swipe-back while a run is active / expanded
+      {...(playing || expanded
+        ? { "data-no-pull-refresh": true, "data-no-swipe-back": true }
+        : {})}
+    >
       <ModeHeader
         mode="arcade"
         icon={Joystick}
@@ -1685,6 +1774,149 @@ export function ArcadePlayView({ gameId }: Props) {
               >
                 {game.description}
               </Text>
+
+              <Grid
+                templateColumns={{ base: "1fr 1fr", md: "repeat(4, 1fr)" }}
+                gap="phi2"
+                mt="phi4"
+              >
+                <Box
+                  p="phi2"
+                  borderRadius="lg"
+                  bg="blackAlpha.300"
+                  borderWidth="1px"
+                  borderColor="border.subtle"
+                >
+                  <HStack gap="1" mb="1" color="prize.fg">
+                    <Star size={12} />
+                    <Text fontSize="2xs" fontWeight="bold" letterSpacing="0.06em">
+                      RATING
+                    </Text>
+                  </HStack>
+                  <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
+                    {ratingSummary.count > 0
+                      ? `${ratingSummary.average.toFixed(1)} ★`
+                      : "—"}
+                  </Text>
+                  <Text fontSize="2xs" color="fg.subtle">
+                    {ratingSummary.count > 0
+                      ? `${ratingSummary.count} rating${ratingSummary.count === 1 ? "" : "s"}`
+                      : "No ratings yet"}
+                  </Text>
+                </Box>
+                <Box
+                  p="phi2"
+                  borderRadius="lg"
+                  bg="blackAlpha.300"
+                  borderWidth="1px"
+                  borderColor="border.subtle"
+                >
+                  <HStack gap="1" mb="1" color="live.fg">
+                    <Joystick size={12} />
+                    <Text fontSize="2xs" fontWeight="bold" letterSpacing="0.06em">
+                      TEST PLAYS
+                    </Text>
+                  </HStack>
+                  <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
+                    {game.plays}
+                  </Text>
+                  <Text fontSize="2xs" color="fg.subtle">
+                    paid inserts on this cabinet
+                  </Text>
+                </Box>
+                <Box
+                  p="phi2"
+                  borderRadius="lg"
+                  bg="blackAlpha.300"
+                  borderWidth="1px"
+                  borderColor="border.subtle"
+                >
+                  <HStack gap="1" mb="1" color="attr.fg">
+                    <Calendar size={12} />
+                    <Text fontSize="2xs" fontWeight="bold" letterSpacing="0.06em">
+                      SUBMITTED
+                    </Text>
+                  </HStack>
+                  <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
+                    {formatShortDate(game.createdAt)}
+                  </Text>
+                  <Text fontSize="2xs" color="fg.subtle">
+                    community testing start
+                  </Text>
+                </Box>
+                <Box
+                  p="phi2"
+                  borderRadius="lg"
+                  bg="blackAlpha.300"
+                  borderWidth="1px"
+                  borderColor="border.subtle"
+                >
+                  <HStack gap="1" mb="1" color="brand.fg">
+                    <Calendar size={12} />
+                    <Text fontSize="2xs" fontWeight="bold" letterSpacing="0.06em">
+                      APPROVED
+                    </Text>
+                  </HStack>
+                  <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm">
+                    {game.status === "live"
+                      ? formatShortDate(game.approvedAt || game.createdAt)
+                      : "Pending"}
+                  </Text>
+                  <Text fontSize="2xs" color="fg.subtle">
+                    {game.status === "live"
+                      ? "went live"
+                      : `${upvoteCount}/${ARCADE_LIVE_UPVOTE_THRESHOLD} upvotes`}
+                  </Text>
+                </Box>
+              </Grid>
+
+              <Box mt="phi3">
+                <HStack gap="2" mb="1">
+                  <Users size={14} color="var(--gh-colors-fg-muted)" />
+                  <Text fontSize="xs" fontWeight="bold" color="fg.muted">
+                    Testers ({testers.length})
+                  </Text>
+                </HStack>
+                {testers.length === 0 ? (
+                  <Text fontSize="xs" color="fg.subtle">
+                    No testers yet — first paid play or rating shows up here.
+                  </Text>
+                ) : (
+                  <select
+                    value={testerPick}
+                    onChange={(e) => setTesterPick(e.target.value)}
+                    style={{
+                      width: "100%",
+                      maxWidth: "24rem",
+                      padding: "0.5rem 0.75rem",
+                      borderRadius: "0.5rem",
+                      border: "1px solid var(--gh-colors-border-subtle, #333)",
+                      background: "var(--gh-colors-bg-panel, #12101c)",
+                      color: "inherit",
+                      fontSize: "0.875rem",
+                    }}
+                  >
+                    <option value="">All testers…</option>
+                    {testers.map((t) => (
+                      <option key={t.principal} value={t.principal}>
+                        {t.username || t.principal.slice(0, 12)} · {t.plays}{" "}
+                        play{t.plays === 1 ? "" : "s"}
+                        {t.lastAt
+                          ? ` · last ${formatShortDate(t.lastAt)}`
+                          : ""}
+                      </option>
+                    ))}
+                  </select>
+                )}
+                {testerPick ? (
+                  <Text fontSize="2xs" color="fg.subtle" mt="1" wordBreak="break-all">
+                    Selected:{" "}
+                    {testers.find((t) => t.principal === testerPick)?.username ||
+                      "—"}{" "}
+                    · {testerPick}
+                  </Text>
+                ) : null}
+              </Box>
             </GhSurface>
 
             <GhSurface variant="elevated" p="phi4">
@@ -1777,6 +2009,15 @@ export function ArcadePlayView({ gameId }: Props) {
               </Box>
             ) : null}
           </GhSurface>
+
+          {/* Comments: Live / Testing tabs (status-first order) */}
+          <ArcadeCommentsSection
+            game={game}
+            principal={mePrincipal}
+            username={profile?.username || "player"}
+            isLoggedIn={isLoggedIn}
+            onLogin={() => loginDemo()}
+          />
         </VStack>
 
         {/* Side: leaderboard + assets */}

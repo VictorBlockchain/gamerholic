@@ -173,6 +173,39 @@ export async function joinTournament(
   // Debit entry fee → tournament escrow before seat
   const existing = await loadTournament(id, identity);
   if (existing && existing.entryFeeIcp > 0) {
+    // Pre-check balance so UI can show low-balance without waiting on ledger Err
+    try {
+      const {
+        checkPlayIcpAfford,
+        requiredIcpForTournamentEntry,
+        lowBalanceMessage,
+      } = await import("./gamer-service");
+      const callerText =
+        typeof identity?.getPrincipal === "function"
+          ? identity.getPrincipal().toText()
+          : "";
+      // Balance is keyed by II principal (not display username)
+      const pText = callerText || (player.includes("-") ? player : "");
+      if (pText) {
+        const need = requiredIcpForTournamentEntry(existing.entryFeeIcp);
+        const afford = await checkPlayIcpAfford(pText, need, identity);
+        if (afford.insufficient && afford.balance != null) {
+          throw new Error(
+            lowBalanceMessage({
+              action: "join this tournament",
+              need: afford.need,
+              balance: afford.balance,
+            }),
+          );
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && /Need .* ICP|Low balance/i.test(e.message)) {
+        throw e;
+      }
+      /* balance unknown — continue to debit */
+    }
+
     const { debitTournamentEntry } = await import("./settlement-service");
     const funded = await debitTournamentEntry(
       id,
@@ -460,7 +493,7 @@ export async function claimTournamentSolo(
 
 /**
  * Open / attach a real betable Esports market for a tournament.
- * Creates market on betable (caller = host must hold Esports access), then stores marketId on tournament.
+ * GH backend (esports operator) creates market; host Betable principal is market.creator.
  */
 export async function openTournamentBetableMarket(
   params: {
@@ -472,58 +505,91 @@ export async function openTournamentBetableMarket(
     game: string;
     /** Required — sent to betable title/description/resolution */
     console: string;
-    /** Team / player outcome labels (non-users OK) */
+    /** Team / player outcome labels */
     outcomes: string[];
     closeDate: Date;
     liveStreamUrl?: string;
     resolutionCriteria?: string;
+    /** Host's Betable primary principal (from Connect Betable) */
+    betableHostPrincipal: string;
+    /** When true, creator fee share goes to escrow on resolve */
+    splitWithWinner?: boolean;
+    /** 1–100 % of creator fee to winner/escrow */
+    splitPercentage?: number;
+    creatorFee?: number;
+    /** Optional rich outcomes for link API (Betable display + GH primary) */
+    esportsOutcomes?: {
+      label: string;
+      avatar_url?: string;
+      source_id: string;
+      source_kind?: "team" | "player";
+      gamerholic_principal?: string;
+    }[];
   },
   identity?: Identity | null,
 ): Promise<{ marketId: string }> {
-  const {
-    createEsportsBetableMarket,
-    isBetableConfigured,
-  } = await import("./betable-service");
-  if (!isBetableConfigured()) {
-    throw new Error(
-      "Betable factory not configured (NEXT_PUBLIC_BETABLE_MARKET_FACTORY_ID)",
-    );
-  }
   if (!params.game?.trim() || !params.console?.trim()) {
     throw new Error("game and console are required for betable market create");
   }
-  const escrow = await getTournamentEscrow(params.tournamentId, identity);
-  const { marketId } = await createEsportsBetableMarket(
-    {
-      title: params.title,
-      description:
-        params.description ??
-        `Gamerholic tournament ${params.tournamentId} outcome market.`,
-      game: params.game,
-      console: params.console,
-      outcomes: params.outcomes,
-      closeDate: params.closeDate,
-      resolutionCriteria:
-        params.resolutionCriteria ??
-        `Winning team/player for ${params.game} (${params.console}) per official gamerholic tournament result and host confirmation.`,
-      escrowOwnerPrincipal: escrow.ownerPrincipal,
-      escrowSubaccount: escrow.subaccount,
-      liveStreamUrl: params.liveStreamUrl,
-      entityId: params.tournamentId,
-      entityKind: "tournament",
-    },
-    identity,
+  if (!params.betableHostPrincipal?.trim()) {
+    throw new Error("Connect Betable first — host Betable principal required");
+  }
+  const outcomes = params.outcomes.map((o) => o.trim()).filter(Boolean);
+  if (outcomes.length < 2) {
+    throw new Error("At least 2 outcomes required");
+  }
+  const actor = await requireActor(identity);
+  if (!actor || typeof (actor as any).createTournamentBetableMarket !== "function") {
+    throw new Error("Backend createTournamentBetableMarket not available — redeploy gh_backend");
+  }
+  const closeNs = BigInt(params.closeDate.getTime()) * BigInt(1_000_000);
+  const splitPct = Math.round(
+    params.splitPercentage ??
+      Number(process.env.NEXT_PUBLIC_BETABLE_ESCROW_SPLIT_PCT || "100"),
   );
+  const splitWithWinner =
+    params.splitWithWinner !== undefined
+      ? params.splitWithWinner
+      : splitPct > 0;
+  const marketId = String(
+    await (actor as any).createTournamentBetableMarket(
+      params.tournamentId,
+      params.hostWho,
+      params.betableHostPrincipal.trim(),
+      params.title,
+      params.description ??
+        `Gamerholic tournament ${params.tournamentId} outcome market.`,
+      closeNs,
+      params.resolutionCriteria ??
+        `Winning team/player for ${params.game} (${params.console}) per official gamerholic tournament result and host confirmation.`,
+      outcomes,
+      splitWithWinner,
+      BigInt(Math.max(0, Math.min(100, splitPct))),
+      params.liveStreamUrl ?? "",
+      params.creatorFee ?? 0.01,
+      params.game,
+      params.console,
+    ),
+  );
+  if (!marketId) {
+    throw new Error(
+      "Betable market create failed — ensure schedule ≥1h, gh_backend is esports operator, and factory is configured",
+    );
+  }
 
-  // Link entity + seed outcomes (name/avatar/source_id) on betable esports API
+  // Seed rich outcomes (Betable name/avatar + GH primary) via partner API
   try {
     const { linkEsportsOutcomes } = await import("./betable-service");
-    const seeded = params.outcomes.map((label, i) => ({
-      label,
-      avatar_url: "",
-      source_id: `seed-${i}-${label.slice(0, 24)}`,
-      source_kind: "team" as const,
-    }));
+    const seeded =
+      params.esportsOutcomes && params.esportsOutcomes.length >= 2
+        ? params.esportsOutcomes
+        : outcomes.map((label, i) => ({
+            label,
+            avatar_url: "",
+            source_id: `seed-${i}-${label.slice(0, 24)}`,
+            source_kind: "team" as const,
+            gamerholic_principal: "",
+          }));
     await linkEsportsOutcomes({
       marketId,
       entityId: params.tournamentId,
@@ -531,20 +597,8 @@ export async function openTournamentBetableMarket(
       outcomes: seeded,
     });
   } catch {
-    /* host II may still need operator registration for on-chain link */
+    /* non-fatal until operator secret + factory esports methods live */
   }
 
-  const ok = await setTournamentBetable(
-    params.tournamentId,
-    params.hostWho,
-    true,
-    marketId,
-    identity,
-  );
-  if (!ok) {
-    throw new Error(
-      `Market ${marketId} created on betable but failed to link on tournament (schedule ≥1h or host mismatch)`,
-    );
-  }
   return { marketId };
 }

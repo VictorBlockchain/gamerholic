@@ -95,6 +95,57 @@ export type ArcadeGame = {
   upvotes: number;
   /** Principals who already upvoted (one vote each). */
   upvotedBy: string[];
+  /**
+   * When the cabinet was promoted to live (null while testing).
+   * Submission date is {@link createdAt}.
+   */
+  approvedAt?: string | null;
+};
+
+/** Comment channel matches cabinet lifecycle tab. */
+export type ArcadeCommentChannel = "testing" | "live";
+
+/** Bug = trackable defect; feedback = general notes. */
+export type ArcadeCommentKind = "bug" | "feedback";
+
+export type ArcadeComment = {
+  id: string;
+  gameId: string;
+  channel: ArcadeCommentChannel;
+  kind: ArcadeCommentKind;
+  body: string;
+  authorPrincipal: string;
+  authorUsername: string;
+  /** Bugs start false; feedback always false / ignored in UI */
+  resolved: boolean;
+  resolvedBy?: string;
+  resolvedAt?: string;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type ArcadeRating = {
+  id: string;
+  gameId: string;
+  principal: string;
+  username: string;
+  stars: number;
+  createdAt: string;
+  updatedAt?: string;
+};
+
+export type ArcadeRatingSummary = {
+  average: number;
+  count: number;
+  /** Current user's stars (0 if none) */
+  mine: number;
+};
+
+export type ArcadeTester = {
+  principal: string;
+  username: string;
+  plays: number;
+  lastAt: string;
 };
 
 /** On-chain-shaped escrow balance for one cabinet */

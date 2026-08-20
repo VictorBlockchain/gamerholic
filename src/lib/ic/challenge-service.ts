@@ -310,11 +310,57 @@ export async function createChallenge(
 
   // Creator funds escrow (play sub → challenge sub) when stake > 0
   if (input.entryFeeIcp > 0) {
+    try {
+      const {
+        checkPlayIcpAfford,
+        requiredIcpForChallengeEntry,
+        lowBalanceMessage,
+      } = await import("./gamer-service");
+      const callerText =
+        typeof identity?.getPrincipal === "function"
+          ? identity.getPrincipal().toText()
+          : "";
+      if (callerText) {
+        const need = requiredIcpForChallengeEntry(input.entryFeeIcp);
+        const afford = await checkPlayIcpAfford(callerText, need, identity);
+        if (afford.insufficient && afford.balance != null) {
+          throw new Error(
+            lowBalanceMessage({
+              action: "fund this challenge",
+              need: afford.need,
+              balance: afford.balance,
+            }),
+          );
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && /Need .* ICP|Low balance/i.test(e.message)) {
+        throw e;
+      }
+    }
+
     const { debitChallengeEntry } = await import("./settlement-service");
-    const funded = await debitChallengeEntry(id, input.entryFeeIcp, identity);
-    if (!funded) {
+    const { formatCanisterError } = await import("./canister-errors");
+    try {
+      const funded = await debitChallengeEntry(
+        id,
+        input.entryFeeIcp,
+        identity,
+      );
+      if (!funded) {
+        throw new Error(
+          "Challenge created but ICP stake debit failed — deposit to play subaccount, then re-fund or cancel",
+        );
+      }
+    } catch (e) {
+      if (e instanceof Error && /Need .* ICP|Low balance/i.test(e.message)) {
+        throw e;
+      }
       throw new Error(
-        "Challenge created but ICP stake debit failed — deposit to play subaccount, then re-fund or cancel",
+        formatCanisterError(
+          e,
+          "Challenge created but ICP stake debit failed — deposit to play subaccount, then re-fund or cancel",
+        ),
       );
     }
   }
@@ -336,15 +382,58 @@ export async function joinChallenge(
   // Debit entry from caller's play subaccount → challenge escrow (native ICP)
   const existing = await loadChallenge(id, identity);
   if (existing && existing.entryFeeIcp > 0) {
+    // Pre-check before ledger call (graceful low-balance)
+    try {
+      const {
+        checkPlayIcpAfford,
+        requiredIcpForChallengeEntry,
+        lowBalanceMessage,
+      } = await import("./gamer-service");
+      const callerText =
+        typeof identity?.getPrincipal === "function"
+          ? identity.getPrincipal().toText()
+          : "";
+      if (callerText) {
+        const need = requiredIcpForChallengeEntry(existing.entryFeeIcp);
+        const afford = await checkPlayIcpAfford(callerText, need, identity);
+        if (afford.insufficient && afford.balance != null) {
+          throw new Error(
+            lowBalanceMessage({
+              action: "join this challenge",
+              need: afford.need,
+              balance: afford.balance,
+            }),
+          );
+        }
+      }
+    } catch (e) {
+      if (e instanceof Error && /Need .* ICP|Low balance/i.test(e.message)) {
+        throw e;
+      }
+    }
+
     const { debitChallengeEntry } = await import("./settlement-service");
-    const funded = await debitChallengeEntry(
-      id,
-      existing.entryFeeIcp,
-      identity,
-    );
-    if (!funded) {
+    try {
+      const funded = await debitChallengeEntry(
+        id,
+        existing.entryFeeIcp,
+        identity,
+      );
+      if (!funded) {
+        throw new Error(
+          "ICP debit failed — deposit stake to your play subaccount (wallet) first",
+        );
+      }
+    } catch (e) {
+      if (e instanceof Error && /Need .* ICP|Low balance/i.test(e.message)) {
+        throw e;
+      }
+      const { formatCanisterError } = await import("./canister-errors");
       throw new Error(
-        "ICP debit failed — deposit stake to your play subaccount (wallet) first",
+        formatCanisterError(
+          e,
+          "ICP debit failed — deposit stake to your play subaccount (wallet) first",
+        ),
       );
     }
   }
@@ -577,6 +666,8 @@ export async function openChallengeBetable(
   opts?: {
     /** Override outcomes; default creator vs opponent labels */
     outcomes?: string[];
+    /** Host Connect Betable principal (required for real factory create) */
+    betableHostPrincipal?: string;
   },
 ): Promise<boolean> {
   const actor = await requireActor(identity);
@@ -586,63 +677,66 @@ export async function openChallengeBetable(
   const existing = await loadChallenge(id, identity);
   if (!existing) return false;
 
-  let marketId = "";
-  const {
-    isBetableConfigured,
-    createEsportsBetableMarket,
-    linkEsportsOutcomes,
-  } = await import("./betable-service");
+  const game = existing.game?.trim();
+  const consoleName = existing.console?.trim();
+  if (!game || !consoleName) {
+    throw new Error(
+      "Challenge game and console are required to create a betable market",
+    );
+  }
 
-  if (isBetableConfigured()) {
-    const game = existing.game?.trim();
-    const consoleName = existing.console?.trim();
-    if (!game || !consoleName) {
+  const creatorLabel = existing.creator.username || "Player 1";
+  const opponentLabel =
+    existing.opponent?.username ||
+    existing.invitedUsername ||
+    "Player 2";
+  const outcomes =
+    opts?.outcomes && opts.outcomes.length >= 2
+      ? opts.outcomes
+      : [creatorLabel, opponentLabel];
+
+  const close =
+    scheduledAt && scheduledAt.getTime() > Date.now() + 3_600_000
+      ? scheduledAt
+      : new Date(Date.now() + 2 * 3_600_000);
+  const closeNs = BigInt(close.getTime()) * BigInt(1_000_000);
+
+  // Prefer GH backend operator path (host Betable principal required)
+  const betableHost = opts?.betableHostPrincipal?.trim() || "";
+  if (
+    betableHost &&
+    typeof (actor as any).createChallengeBetableMarket === "function"
+  ) {
+    const splitPct = Math.round(
+      Number(process.env.NEXT_PUBLIC_BETABLE_ESCROW_SPLIT_PCT || "100"),
+    );
+    const marketId = String(
+      await (actor as any).createChallengeBetableMarket(
+        id,
+        who,
+        betableHost,
+        `${existing.title} — Winner`,
+        existing.description || `Gamerholic heads-up challenge ${id}`,
+        closeNs,
+        `Official gamerholic heads-up result for ${game} (${consoleName}) determines the winner.`,
+        outcomes,
+        splitPct > 0,
+        BigInt(Math.max(0, Math.min(100, splitPct))),
+        "",
+        0.01,
+        game,
+        consoleName,
+        dateToNs(scheduledAt),
+        monitor,
+      ),
+    );
+    if (!marketId) {
       throw new Error(
-        "Challenge game and console are required to create a betable market",
+        "Betable market create failed — Connect Betable, schedule ≥1h, ensure gh_backend is esports operator",
       );
     }
-    const close =
-      scheduledAt && scheduledAt.getTime() > Date.now() + 3_600_000
-        ? scheduledAt
-        : new Date(Date.now() + 2 * 3_600_000);
-
-    const [ownerPrincipal, subRaw] = await Promise.all([
-      actor.getBackendPrincipal(),
-      actor.getChallengeSubaccount(id),
-    ]);
-    const subaccount = Array.from(subRaw as number[] | Uint8Array);
-
-    const creatorLabel = existing.creator.username || "Player 1";
-    const opponentLabel =
-      existing.opponent?.username ||
-      existing.invitedUsername ||
-      "Player 2";
-    const outcomes =
-      opts?.outcomes && opts.outcomes.length >= 2
-        ? opts.outcomes
-        : [creatorLabel, opponentLabel];
-
-    const created = await createEsportsBetableMarket(
-      {
-        title: `${existing.title} — Winner`,
-        description:
-          existing.description ||
-          `Gamerholic heads-up challenge ${id}`,
-        game,
-        console: consoleName,
-        outcomes,
-        closeDate: close,
-        resolutionCriteria: `Official gamerholic heads-up result for ${game} (${consoleName}) determines the winner.`,
-        escrowOwnerPrincipal: ownerPrincipal,
-        escrowSubaccount: subaccount,
-        entityId: id,
-        entityKind: "match",
-      },
-      identity,
-    );
-    marketId = created.marketId;
-
     try {
+      const { linkEsportsOutcomes } = await import("./betable-service");
       await linkEsportsOutcomes({
         marketId,
         entityId: id,
@@ -662,8 +756,13 @@ export async function openChallengeBetable(
     } catch {
       /* non-fatal */
     }
+    const c = await loadChallenge(id, identity);
+    if (c) await mirrorChallenge(c, "market.opened", who);
+    return true;
   }
 
+  // Fallback: synthetic market id only (no real factory create)
+  const marketId = `${id}-market`;
   const ok = await actor.openChallengeBetable(
     id,
     who,

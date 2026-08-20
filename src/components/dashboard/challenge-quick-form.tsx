@@ -19,6 +19,7 @@ import {
   X,
 } from "lucide-react";
 import {
+  EntryFeeNotice,
   GhAlert,
   GhAvatar,
   GhBadge,
@@ -32,6 +33,7 @@ import {
   GhSwitch,
   GhTextarea,
   ghToast,
+  toastLowBalance,
 } from "@/components/ui";
 import type { ChatUser } from "@/lib/chat/types";
 import {
@@ -483,10 +485,11 @@ export function ChallengeQuickForm({
     }
     if (feeNum > 0 && balanceError) {
       setError(balanceError);
-      ghToast({
-        title: "Insufficient balance",
+      toastLowBalance({
+        action: "create this challenge",
+        needIcp: requiredIcpForChallengeEntry(feeNum),
+        balanceIcp: myBalanceIcp ?? 0,
         description: balanceError,
-        type: "error",
       });
       return;
     }
@@ -526,10 +529,11 @@ export function ChallengeQuickForm({
         const msg = `You need ${need.toFixed(4)} ICP (stake ${feeNum} + fee ${ICP_TRANSFER_FEE}) but only have ${creatorBal.toFixed(4)} ICP. Deposit on Wallet first.`;
         setError(msg);
         setBalanceError(msg);
-        ghToast({
-          title: "Insufficient balance",
+        toastLowBalance({
+          action: "create this challenge",
+          needIcp: need,
+          balanceIcp: creatorBal,
           description: msg,
-          type: "error",
         });
         return;
       }
@@ -1495,6 +1499,12 @@ export function ChallengeQuickForm({
                     h="12"
                   />
                 </GhField>
+
+                {feeNum > 0 ? (
+                  <Box mt="phi2">
+                    <EntryFeeNotice amountIcp={feeNum} kind="challenge" />
+                  </Box>
+                ) : null}
 
                 {feeNum > 0 ? (
                   <Box

@@ -3,32 +3,42 @@
 import { useState } from "react";
 import { usePathname, useRouter } from "next/navigation";
 import { Box, Flex, Text } from "@chakra-ui/react";
-import { Plus } from "lucide-react";
-import { primaryNavForSession, tabFromPath, type NavItem } from "@/lib/nav";
+import { Gamepad2, Power } from "lucide-react";
+import {
+  homeHref,
+  mobileNavForSession,
+  tabFromPath,
+  type NavItem,
+} from "@/lib/nav";
 import { useSession } from "@/components/providers/session-context";
 import { CreateSheet } from "@/components/modals/create-sheet";
 
 /**
- * Mobile bottom tabs with center Create FAB (legacy pattern).
- * Logged-in: Dashboard · Challenge · [+] · Arcade · Community
- * Guest: Arcade · [+] · Community
- * Host / room create live in the Create sheet.
+ * Mobile bottom tabs with center FAB (legacy pattern).
+ * Logged-in: Profile · Challenge · [Gamepad] Create · Arcade · Community
+ * Guest: Arcade · [Power] Connect II · Community
+ * Host / room create live in the Create sheet (when connected).
  */
 export function MobileBottomNav() {
   const pathname = usePathname();
   const router = useRouter();
   const active = tabFromPath(pathname);
-  const { isLoggedIn } = useSession();
+  const { isLoggedIn, login } = useSession();
   const [createOpen, setCreateOpen] = useState(false);
 
-  // Exclude Host from bar — center FAB opens Create (tournament / room / etc.)
-  // Honor mobile:false (e.g. Rooms lives in header / create sheet only).
-  const tabs = primaryNavForSession(isLoggedIn).filter(
-    (t) => t.mobile !== false && t.id !== "host",
-  );
+  // Profile tab → always /profile/ (own edit shell). Public cards use profileHref(u).
+  const tabs = mobileNavForSession(isLoggedIn);
   const mid = Math.floor(tabs.length / 2);
   const left = tabs.slice(0, mid);
   const right = tabs.slice(mid);
+
+  const onCenterFab = () => {
+    if (isLoggedIn) {
+      setCreateOpen(true);
+      return;
+    }
+    void login().then(() => router.push(homeHref(true)));
+  };
 
   return (
     <>
@@ -85,7 +95,7 @@ export function MobileBottomNav() {
             />
           ))}
 
-          {/* Center Create FAB — legacy middle action button */}
+          {/* Center FAB — Create when connected; II connect when guest */}
           <Box
             flex="1"
             maxW="5.5rem"
@@ -99,8 +109,8 @@ export function MobileBottomNav() {
           >
             <Box
               as="button"
-              aria-label="Create"
-              onClick={() => setCreateOpen(true)}
+              aria-label={isLoggedIn ? "Create" : "Connect Internet Identity"}
+              onClick={onCenterFab}
               w="3.5rem"
               h="3.5rem"
               mt="-1.75rem"
@@ -119,7 +129,11 @@ export function MobileBottomNav() {
               _hover={{ transform: "scale(1.06)" }}
               _active={{ transform: "scale(0.94)" }}
             >
-              <Plus size={28} strokeWidth={2.5} />
+              {isLoggedIn ? (
+                <Gamepad2 size={26} strokeWidth={2.5} />
+              ) : (
+                <Power size={26} strokeWidth={2.5} />
+              )}
             </Box>
             <Text
               fontSize="2xs"
@@ -129,7 +143,7 @@ export function MobileBottomNav() {
               color="brand.fg"
               mt="0.5"
             >
-              Create
+              {isLoggedIn ? "Create" : "Connect"}
             </Text>
           </Box>
 

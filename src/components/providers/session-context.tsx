@@ -32,6 +32,12 @@ export type { ChatUser };
 const ANON = "2vxsx-fae";
 const II_MAX_TTL_NS = BigInt(7 * 24 * 60 * 60 * 1_000_000_000); // 7 days
 const LOCAL_SESSION_FLAG = "gh_local_session_v1";
+/**
+ * Bump when II derivation / storage rules change so old IndexedDB sessions
+ * (created without derivationOrigin) are wiped once — forces one clean Connect.
+ */
+const AUTH_STORAGE_EPOCH = "gh-ii-v3-gamerholic.fun";
+const AUTH_EPOCH_KEY = "gh_auth_epoch";
 
 type SessionContextValue = {
   isLoggedIn: boolean;
@@ -57,16 +63,16 @@ type SessionContextValue = {
 
 const SessionContext = createContext<SessionContextValue | null>(null);
 
+/** Canonical production origin — II principals derive from this, not the canister URL. */
+const GH_CANONICAL_ORIGIN = "https://gamerholic.fun";
+
 /**
- * II derivation origin — mirrors yoinx_new:
- * - Production host: pass app origin so principal is stable across domains
- * - Localhost / 127.0.0.1: omit derivationOrigin (local test principal)
+ * II derivation origin — always `https://gamerholic.fun` on any non-localhost host.
+ * Never use `window.location.origin` (that minted a new principal per hostname).
+ *
+ * Requires `public/.well-known/ii-alternative-origins` listing canister + www hosts.
  */
 function iiDerivationOrigin(): string | undefined {
-  const configured =
-    process.env.NEXT_PUBLIC_II_DERIVATION_ORIGIN ||
-    process.env.NEXT_PUBLIC_APP_URL ||
-    "";
   try {
     if (typeof window !== "undefined") {
       const host = window.location.hostname;
@@ -74,11 +80,51 @@ function iiDerivationOrigin(): string | undefined {
         return undefined;
       }
     }
-    if (configured) return new URL(configured).origin;
-    if (typeof window !== "undefined") return window.location.origin;
-    return undefined;
+    const configured =
+      process.env.NEXT_PUBLIC_II_DERIVATION_ORIGIN ||
+      process.env.NEXT_PUBLIC_APP_URL ||
+      GH_CANONICAL_ORIGIN;
+    return new URL(configured).origin;
   } catch {
-    return undefined;
+    return GH_CANONICAL_ORIGIN;
+  }
+}
+
+async function wipeAuthClientStorage() {
+  try {
+    const { AuthClient, IdbStorage, KEY_STORAGE_KEY, KEY_STORAGE_DELEGATION } =
+      await import("@dfinity/auth-client");
+    try {
+      const client = await AuthClient.create({
+        idleOptions: { disableIdle: true, disableDefaultIdleCallback: true },
+      });
+      if (await client.isAuthenticated()) {
+        await client.logout();
+      }
+    } catch {
+      /* ignore */
+    }
+    const storage = new IdbStorage();
+    await storage.remove(KEY_STORAGE_KEY);
+    await storage.remove(KEY_STORAGE_DELEGATION);
+  } catch {
+    /* ignore */
+  }
+}
+
+function readAuthEpoch(): string {
+  try {
+    return window.localStorage.getItem(AUTH_EPOCH_KEY) || "";
+  } catch {
+    return "";
+  }
+}
+
+function writeAuthEpoch(v: string) {
+  try {
+    window.localStorage.setItem(AUTH_EPOCH_KEY, v);
+  } catch {
+    /* ignore */
   }
 }
 
@@ -234,6 +280,16 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           return;
         }
 
+        // One-time wipe of pre-derivation sessions so principal stays on gamerholic.fun
+        if (typeof window !== "undefined" && readAuthEpoch() !== AUTH_STORAGE_EPOCH) {
+          await wipeAuthClientStorage();
+          writeAuthEpoch(AUTH_STORAGE_EPOCH);
+          console.info(
+            "[session] cleared pre-derivation II session; Connect again for stable principal under",
+            GH_CANONICAL_ORIGIN,
+          );
+        }
+
         const { AuthClient } = await import("@dfinity/auth-client");
         const client = await AuthClient.create({
           idleOptions: {
@@ -252,6 +308,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
           const id = client.getIdentity();
           const p = id.getPrincipal().toText();
           if (p && p !== ANON && !cancelled) {
+            if (typeof window !== "undefined") {
+              console.info(
+                "[session] restored principal",
+                p,
+                "derivation",
+                iiDerivationOrigin() || "(local)",
+              );
+            }
             void applyPrincipal(id);
           }
         }
@@ -292,6 +356,10 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     }
 
     const derivationOrigin = iiDerivationOrigin();
+    // Always set epoch so restore path does not wipe mid-session
+    if (typeof window !== "undefined") {
+      writeAuthEpoch(AUTH_STORAGE_EPOCH);
+    }
     const loginOpts: Record<string, unknown> = {
       identityProvider: iiProviderUrl(),
       maxTimeToLive: II_MAX_TTL_NS,
@@ -312,6 +380,14 @@ export function SessionProvider({ children }: { children: ReactNode }) {
     if (!p || p === ANON) {
       throw new Error("Anonymous principal not allowed");
     }
+    console.info(
+      "[session] login principal",
+      p,
+      "derivation",
+      derivationOrigin || "(local)",
+      "page",
+      typeof window !== "undefined" ? window.location.origin : "",
+    );
     setLocalSessionFlag(false);
     await applyPrincipal(id);
   }, [applyPrincipal]);
@@ -321,17 +397,49 @@ export function SessionProvider({ children }: { children: ReactNode }) {
   }, [login]);
 
   const logout = useCallback(async () => {
-    try {
-      await clientRef.current?.logout?.();
-    } catch {
-      /* ignore */
-    }
+    // Always clear app session UI first so a failed storage wipe cannot leave
+    // the chrome looking logged-in.
     setLocalSessionFlag(false);
-    // Keep the Ed25519 key so Connect on local returns the same principal
-    // (clear site data / clearLocalIdentity() for a fresh key).
     setIdentity(null);
     setLoggedIn(false);
     setProfile(null);
+
+    // Local replica: keep browser Ed25519 key (stable local principal).
+    // Mainnet: wipe AuthClient IndexedDB delegation so the next page load
+    // does not auto-restore without Connect.
+    if (isLocalIcNetwork()) {
+      return;
+    }
+
+    try {
+      let client = clientRef.current;
+      if (!client) {
+        const { AuthClient } = await import("@dfinity/auth-client");
+        client = await AuthClient.create({
+          idleOptions: {
+            disableIdle: true,
+            disableDefaultIdleCallback: true,
+          },
+        });
+        clientRef.current = client;
+      }
+      await client.logout();
+      // Drop the client so the next login builds a clean AuthClient
+      clientRef.current = null;
+    } catch (e) {
+      console.warn("[session] AuthClient.logout failed", e);
+      // Best-effort: clear AuthClient IndexedDB if logout threw
+      try {
+        const { IdbStorage, KEY_STORAGE_KEY, KEY_STORAGE_DELEGATION } =
+          await import("@dfinity/auth-client");
+        const storage = new IdbStorage();
+        await storage.remove(KEY_STORAGE_KEY);
+        await storage.remove(KEY_STORAGE_DELEGATION);
+      } catch {
+        /* ignore */
+      }
+      clientRef.current = null;
+    }
   }, []);
 
   const refreshProfile = useCallback(async () => {
@@ -354,6 +462,8 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         ...patch,
         principal: currentPrincipal,
       };
+      // Optimistic UI
+      const prev = profile;
       setProfile(next);
 
       // Production: Supabase only — no profile localStorage
@@ -361,21 +471,29 @@ export function SessionProvider({ children }: { children: ReactNode }) {
         const r = await saveProfileToSupabase(next);
         if (!r.ok) {
           console.warn("[session] profile save failed", r.error);
+          // Roll back optimistic update so UI matches server
+          setProfile(prev ?? emptyProfileForPrincipal(currentPrincipal));
+          throw new Error(r.error || "Failed to save profile to Supabase");
         }
         return;
       }
 
+      // Static IC build missing Supabase keys — fail loudly so users don't think it saved
+      if (isProductionRuntime()) {
+        setProfile(prev ?? emptyProfileForPrincipal(currentPrincipal));
+        throw new Error(
+          "Supabase is not configured in this build (NEXT_PUBLIC_SUPABASE_* missing). Profile was not saved.",
+        );
+      }
+
       // Local / no Supabase: allow in-memory only (never write profile to disk in prod)
-      if (!isProductionRuntime()) {
-        // Optional local-only cache for offline UI during local dfx work
-        try {
-          window.sessionStorage.setItem(
-            `gh_profile_session_${currentPrincipal}`,
-            JSON.stringify(next),
-          );
-        } catch {
-          /* ignore */
-        }
+      try {
+        window.sessionStorage.setItem(
+          `gh_profile_session_${currentPrincipal}`,
+          JSON.stringify(next),
+        );
+      } catch {
+        /* ignore */
       }
     },
     [identity, profile],

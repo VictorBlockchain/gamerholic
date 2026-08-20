@@ -5,6 +5,7 @@ import Link from "next/link";
 import { Box, HStack, Text, VStack } from "@chakra-ui/react";
 import { Check, Radio, Swords } from "lucide-react";
 import {
+  EntryFeeNotice,
   GhAlert,
   GhButton,
   GhField,
@@ -12,7 +13,9 @@ import {
   GhModal,
   GhSpinner,
   GhTextarea,
+  LowBalanceAlert,
   ghToast,
+  toastLowBalance,
 } from "@/components/ui";
 import { useSession } from "@/components/providers/session-context";
 import {
@@ -23,6 +26,10 @@ import {
 } from "@/lib/challenges";
 import { getProfileCompleteness } from "@/lib/profile";
 import { joinChallenge } from "@/lib/ic/challenge-service";
+import {
+  checkPlayIcpAfford,
+  requiredIcpForChallengeEntry,
+} from "@/lib/ic/gamer-service";
 import { friendlyIcError } from "@/lib/ic/local-identity";
 import { useGhEvents } from "@/context/event-context";
 
@@ -81,6 +88,10 @@ export function AcceptChallengeModal({
   const [notes, setNotes] = useState("");
   const [phase, setPhase] = useState<Phase>("form");
   const [error, setError] = useState<string | null>(null);
+  const [lowBal, setLowBal] = useState<{
+    need: number;
+    balance: number;
+  } | null>(null);
 
   const viewer =
     profile?.username || user?.username || principal || "";
@@ -90,10 +101,32 @@ export function AcceptChallengeModal({
     if (!open) {
       setPhase("form");
       setError(null);
+      setLowBal(null);
       setStreamUrl("");
       setNotes("");
     }
   }, [open, challenge?.id]);
+
+  // Prefetch balance vs stake when modal opens
+  useEffect(() => {
+    if (!open || !challenge || challenge.entryFeeIcp <= 0 || !mePrincipal) {
+      setLowBal(null);
+      return;
+    }
+    let cancelled = false;
+    const need = requiredIcpForChallengeEntry(challenge.entryFeeIcp);
+    void checkPlayIcpAfford(mePrincipal, need, identity).then((r) => {
+      if (cancelled) return;
+      if (r.insufficient && r.balance != null) {
+        setLowBal({ need: r.need, balance: r.balance });
+      } else {
+        setLowBal(null);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, challenge?.id, challenge?.entryFeeIcp, mePrincipal, identity]);
 
   if (!challenge) return null;
 
@@ -139,6 +172,25 @@ export function AcceptChallengeModal({
       }
     }
 
+    // Hard balance gate before on-chain join
+    if (challenge.entryFeeIcp > 0 && mePrincipal) {
+      const need = requiredIcpForChallengeEntry(challenge.entryFeeIcp);
+      const afford = await checkPlayIcpAfford(mePrincipal, need, identity);
+      if (afford.insufficient && afford.balance != null) {
+        setLowBal({ need: afford.need, balance: afford.balance });
+        setPhase("error");
+        setError(
+          `Low balance — need ${afford.need.toFixed(4)} ICP, have ${afford.balance.toFixed(4)} ICP. Deposit first.`,
+        );
+        toastLowBalance({
+          action: "accept this challenge",
+          needIcp: afford.need,
+          balanceIcp: afford.balance,
+        });
+        return;
+      }
+    }
+
     setPhase("joining");
     try {
       const ok = await joinChallenge(
@@ -166,12 +218,22 @@ export function AcceptChallengeModal({
       window.location.assign(challengeHref(challenge.id));
     } catch (e) {
       setPhase("error");
-      setError(friendlyIcError(e));
-      ghToast({
-        title: "Accept failed",
-        description: friendlyIcError(e),
-        type: "error",
-      });
+      const msg = friendlyIcError(e);
+      setError(msg);
+      if (/insufficient|low balance|deposit/i.test(msg)) {
+        toastLowBalance({
+          action: "accept this challenge",
+          needIcp: requiredIcpForChallengeEntry(challenge.entryFeeIcp),
+          balanceIcp: lowBal?.balance ?? 0,
+          description: msg,
+        });
+      } else {
+        ghToast({
+          title: "Accept failed",
+          description: msg,
+          type: "error",
+        });
+      }
     }
   };
 
@@ -213,8 +275,11 @@ export function AcceptChallengeModal({
               variant="primary"
               leftIcon={<Swords size={16} />}
               onClick={() => void runAccept()}
+              disabled={!!lowBal}
             >
-              Accept · {formatIcp(challenge.entryFeeIcp)}
+              {lowBal
+                ? "Deposit to accept"
+                : `Accept · ${formatIcp(challenge.entryFeeIcp)}`}
             </GhButton>
           </HStack>
         ) : phase === "error" ? (
@@ -305,14 +370,33 @@ export function AcceptChallengeModal({
                 placeholder="Ready now · Discord…"
               />
             </GhField>
-            <HStack gap="2" color="fg.subtle" fontSize="2xs">
-              <Radio size={12} />
-              <Text>
-                Deposit {formatIcp(challenge.entryFeeIcp)} is recorded on accept
-                (escrow rules apply).
-              </Text>
-            </HStack>
+            {challenge.entryFeeIcp > 0 ? (
+              <EntryFeeNotice
+                amountIcp={challenge.entryFeeIcp}
+                kind="challenge"
+              />
+            ) : (
+              <HStack gap="2" color="fg.subtle" fontSize="2xs">
+                <Radio size={12} />
+                <Text>Free challenge — no escrow debit.</Text>
+              </HStack>
+            )}
+            {lowBal ? (
+              <LowBalanceAlert
+                action="accept this challenge"
+                needIcp={lowBal.need}
+                balanceIcp={lowBal.balance}
+              />
+            ) : null}
           </>
+        ) : null}
+
+        {phase === "error" && lowBal ? (
+          <LowBalanceAlert
+            action="accept this challenge"
+            needIcp={lowBal.need}
+            balanceIcp={lowBal.balance}
+          />
         ) : null}
 
         {phase !== "form" && phase !== "error" ? (

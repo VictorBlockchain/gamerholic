@@ -45,6 +45,7 @@ import {
   ListOrdered,
 } from "lucide-react";
 import {
+  EntryFeeNotice,
   GhAlert,
   GhAvatar,
   GhBadge,
@@ -152,6 +153,15 @@ export function GroupHubView({ roomId }: { roomId: string }) {
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  // Mobile pull-to-refresh
+  useEffect(() => {
+    const onPull = () => {
+      void reload();
+    };
+    window.addEventListener("gh:pull-refresh", onPull);
+    return () => window.removeEventListener("gh:pull-refresh", onPull);
   }, [reload]);
 
   useGhEventStream({
@@ -1286,6 +1296,13 @@ function GamesTab({
       });
       return;
     }
+    if (pot.buyInIcp > 0) {
+      ghToast({
+        title: "Fees on join",
+        description: `Buy-in ${pot.buyInIcp} ICP + 0.0001 ledger fee from play sub → room escrow`,
+        type: "info",
+      });
+    }
     setJoiningId(pot.id);
     try {
       const ok = await joinRoomGameOnChain(who, pot.id, identity, {
@@ -1297,7 +1314,10 @@ function GamesTab({
       }
       ghToast({
         title: "Seated",
-        description: `${pot.game} · ${pot.players}`,
+        description:
+          pot.buyInIcp > 0
+            ? `${pot.game} · ${pot.buyInIcp} ICP escrowed · ${pot.players}`
+            : `${pot.game} · free · ${pot.players}`,
         type: "success",
       });
       onReload();
@@ -1565,6 +1585,14 @@ function GamesTab({
               />
             </GhField>
           </SimpleGrid>
+          {(parseFloat(buyIn) || 0) > 0 ? (
+            <Box mb="phi3">
+              <EntryFeeNotice
+                amountIcp={parseFloat(buyIn) || 0}
+                kind="room_game"
+              />
+            </Box>
+          ) : null}
           <GhField label="Rules (optional)" helperText="Format, stream, house rules">
             <GhTextarea
               value={rules}
@@ -2004,9 +2032,11 @@ function PotCard({
   } else if (open) {
     hostEarn = full
       ? "Table full · game host can start"
-      : pot.buyInIcp > 0
-        ? "Seats filling · one winner after start"
-        : "Seats filling · free FFA";
+      : pot.buyInIcp > 0 && !alreadySeated
+        ? `Buy-in ${pot.buyInIcp} ICP + 0.0001 ledger · play sub`
+        : pot.buyInIcp > 0
+          ? "Seats filling · one winner after start"
+          : "Seats filling · free FFA";
     if (full && gameHost) {
       ctaLabel = "Start game";
       ctaDisabled = false;
@@ -2018,7 +2048,11 @@ function PotCard({
       ctaLabel = "Table full";
       ctaDisabled = true;
     } else if (member && onJoin) {
-      ctaLabel = joining ? "Joining…" : "Join table";
+      ctaLabel = joining
+        ? "Joining…"
+        : pot.buyInIcp > 0
+          ? `Join · ${pot.buyInIcp} ICP`
+          : "Join table";
       ctaDisabled = Boolean(joining);
       onCta = joining ? undefined : onJoin;
     } else {

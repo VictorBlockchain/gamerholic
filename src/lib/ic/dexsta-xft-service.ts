@@ -61,6 +61,21 @@ export type DexstaOwnedXft = {
   uri: string | null;
 };
 
+/** Afta Lead Label id for Gamerholic profile-avatar XFTs (`settings.linkedTo`). */
+export const GAMERHOLIC_AVATAR_LABEL_ID = 5;
+
+/** XFTs eligible as GH profile avatars — must be linked to label #5. */
+export function filterGamerholicAvatarXfts(
+  xfts: DexstaOwnedXft[],
+): DexstaOwnedXft[] {
+  return xfts.filter(
+    (x) =>
+      x.linkedLabelId === GAMERHOLIC_AVATAR_LABEL_ID &&
+      Boolean(x.imageUrl) &&
+      x.tokenId > 0,
+  );
+}
+
 function principalText(p: unknown): string | null {
   if (!p) return null;
   if (typeof (p as { toText?: () => string }).toText === "function") {

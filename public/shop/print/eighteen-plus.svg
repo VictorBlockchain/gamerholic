@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 500" width="1000" height="500">
+  <title>18+ Arena — print pack</title>
+  <rect width="1000" height="500" fill="none"/>
+  <rect x="320" y="80" width="360" height="160" rx="24" fill="none" stroke="#f43fa8" stroke-width="10"/>
+  <text x="500" y="195" text-anchor="middle" font-family="Orbitron, Rajdhani, sans-serif" font-size="96" font-weight="900" letter-spacing="0.06em" fill="#f43fa8">18+</text>
+  <text x="500" y="340" text-anchor="middle" font-family="Rajdhani, sans-serif" font-size="28" font-weight="700" letter-spacing="0.18em" fill="#f4f2ff">SKILLED GAMING WHERE LEGAL</text>
+</svg>

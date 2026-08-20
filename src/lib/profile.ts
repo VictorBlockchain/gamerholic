@@ -88,16 +88,75 @@ export type ConsoleId =
   | "Switch"
   | "Multi";
 
+/**
+ * Platform role on Supabase `gh_profiles.role` (not on-chain).
+ * - user — default
+ * - moderator — console access (disputes UI, etc.)
+ * - admin — shop, fees, role assignment + all moderator powers
+ */
+export type PlatformRole = "user" | "moderator" | "admin";
+
+export const PLATFORM_ROLES: readonly PlatformRole[] = [
+  "user",
+  "moderator",
+  "admin",
+] as const;
+
+export function parsePlatformRole(raw: unknown): PlatformRole {
+  const s = String(raw || "")
+    .trim()
+    .toLowerCase();
+  if (s === "admin" || s === "moderator" || s === "user") return s;
+  return "user";
+}
+
+export function isPlatformAdmin(role?: PlatformRole | string | null): boolean {
+  return parsePlatformRole(role) === "admin";
+}
+
+/** Admin or moderator (not plain user). */
+export function isPlatformModerator(
+  role?: PlatformRole | string | null,
+): boolean {
+  const r = parsePlatformRole(role);
+  return r === "admin" || r === "moderator";
+}
+
+export function platformRoleLabel(role?: PlatformRole | string | null): string {
+  switch (parsePlatformRole(role)) {
+    case "admin":
+      return "Admin";
+    case "moderator":
+      return "Moderator";
+    default:
+      return "User";
+  }
+}
+
 export type GamerProfile = {
   username: string;
   gamertag: string;
   console: ConsoleId;
   games: string[];
   bio: string;
-  /** Dexsta XFT token id used as avatar when set */
+  /** Dexsta / Afta XFT token id used as avatar when set */
   dexstaXftId: string;
   /** Dexsta XFT contract principal for the avatar token */
   dexstaXftContract: string;
+  /**
+   * Linked Afta Cash II principal (from Connect Afta — not GH login principal).
+   * Used to load owned XFTs for avatar picker.
+   */
+  aftaPrincipal: string;
+  /**
+   * Linked Betable II principal (from Connect Betable — may differ from GH).
+   * Required to host/join betable tournaments & challenges.
+   */
+  betablePrincipal: string;
+  /** Betable display name (may differ from GH username) — Esports outcome label */
+  betableUsername: string;
+  /** Betable avatar URL — Esports outcome image */
+  betableAvatarUrl: string;
   /** Resolved avatar image URL (media cover or HTTPS) */
   avatarUrl: string;
   /** True when avatar XFT is a game asset (type-8 inventory; qty 1+) */
@@ -107,6 +166,18 @@ export type GamerProfile = {
   principal: string;
   level: number;
   xpProgress: number; // 0–100
+  /**
+   * User confirmed they are 18+ and accept platform terms.
+   * Required once on profile create/edit; then treated as done.
+   */
+  acceptedOver18AndTerms?: boolean;
+  /** ISO timestamp when terms / age were accepted */
+  termsAcceptedAt?: string;
+  /**
+   * Supabase platform role (`gh_profiles.role`).
+   * Independent of on-chain AdminMod / setAdmin; console ORs both.
+   */
+  role?: PlatformRole;
 };
 
 /** Profile banner presets — octopus mascot · 1600×600 */
@@ -273,12 +344,19 @@ export const DEFAULT_PROFILE: GamerProfile = {
   bio: "",
   dexstaXftId: "",
   dexstaXftContract: "",
+  aftaPrincipal: "",
+  betablePrincipal: "",
+  betableUsername: "",
+  betableAvatarUrl: "",
   avatarUrl: "",
   avatarIsGameAsset: false,
   coverUrl: COVER_OPTIONS[0].url,
   principal: "",
   level: 1,
   xpProgress: 0,
+  acceptedOver18AndTerms: false,
+  termsAcceptedAt: undefined,
+  role: "user",
 };
 
 /** Shorten II principal for UI (cover, chips) — full value stays in data. */

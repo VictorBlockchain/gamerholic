@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import Link from "next/link";
 import {
   Box,
@@ -20,6 +20,7 @@ import {
   Flame,
   Gamepad2,
   ImageIcon,
+  KeyRound,
   Loader2,
   Monitor,
   Music,
@@ -29,6 +30,7 @@ import {
   Snowflake,
   Swords,
   Trophy,
+  Unlink,
   Upload,
   User,
   Wallet,
@@ -43,6 +45,7 @@ import {
   GhInput,
   GameChipPicker,
   GhSurface,
+  GhSwitch,
   GhTabs,
   GhTextarea,
   ghToast,
@@ -56,12 +59,30 @@ import {
   type ArenaStats,
 } from "@/lib/ic/gamer-service";
 import {
+  filterGamerholicAvatarXfts,
+  GAMERHOLIC_AVATAR_LABEL_ID,
   isDexstaXftConfigured,
   loadProfileMediaPortfolio,
   type DexstaOwnedXft,
   type ProfileMediaPortfolio,
 } from "@/lib/ic/dexsta-xft-service";
+import {
+  AFTA_APP_URL,
+  clearStoredAftaPrincipal,
+  connectAftaPrincipal,
+  loadStoredAftaPrincipal,
+  persistAftaPrincipal,
+  portfolioOwnerPrincipal,
+} from "@/lib/connect-afta";
+import { ConnectBetableButton } from "@/components/betable/connect-betable-button";
+import {
+  clearStoredBetableLink,
+  loadStoredBetableLink,
+  type BetableLink,
+} from "@/lib/connect-betable";
+import { getCanonicalGhPrincipal } from "@/lib/device-sync";
 import { isSupabaseConfigured } from "@/lib/supabase/client";
+import { fetchProfileByUsername } from "@/lib/supabase/profile";
 import {
   AVATAR_OPTIONS,
   CONSOLES,
@@ -71,6 +92,7 @@ import {
   PROFILE_AVATAR_SIZE,
   PROFILE_COVER_SIZE,
   USERNAME_MAX_LENGTH,
+  emptyProfileForPrincipal,
   formatWhen,
   getProfileCompleteness,
   normalizeUsername,
@@ -93,13 +115,48 @@ const PROFILE_FIELD_ERRORS: Record<ProfileMissingField, string> = {
   avatar: "Upload or choose an avatar",
 };
 
+export type ProfileViewProps = {
+  /**
+   * Public profile username (or principal). Omit for own profile (`/profile`).
+   * Other users can be viewed while logged out.
+   */
+  viewUsername?: string;
+};
+
 /**
  * Full esports profile — cover, identity, stats, live history, XFTs.
+ * Own card: edit when session matches. Public: read-only for any viewer.
  */
-export function ProfileView() {
+export function ProfileView({ viewUsername }: ProfileViewProps = {}) {
   const { isLoggedIn, login, profile, updateProfile, principal, identity } =
     useSession();
-  const p = profile ?? DEFAULT_PROFILE;
+
+  // Public slug: username (short) or full principal — never truncate principals
+  const rawView = String(viewUsername || "").trim();
+  const isPrincipalKey =
+    rawView.includes("-") && rawView.length > 20;
+  const viewKey = isPrincipalKey
+    ? rawView
+    : normalizeUsername(rawView);
+
+  const ownUsername = normalizeUsername(profile?.username || "");
+  // Own card: no slug, or slug matches our username/principal
+  const isOwn =
+    !viewKey ||
+    (isLoggedIn &&
+      ((ownUsername &&
+        ownUsername.toLowerCase() === viewKey.toLowerCase()) ||
+        (principal &&
+          (principal === viewKey || principal === rawView))));
+
+  const [remote, setRemote] = useState<GamerProfile | null>(null);
+  const [remoteLoading, setRemoteLoading] = useState(false);
+  const [remoteError, setRemoteError] = useState<string | null>(null);
+
+  const p =
+    isOwn
+      ? profile ?? DEFAULT_PROFILE
+      : remote ?? emptyProfileForPrincipal("");
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState<GamerProfile>(p);
   const [fieldErrors, setFieldErrors] = useState<
@@ -121,18 +178,84 @@ export function ProfileView() {
   });
   const [assetsBusy, setAssetsBusy] = useState(false);
   const [settingAvatarId, setSettingAvatarId] = useState<string | null>(null);
+  const [aftaBusy, setAftaBusy] = useState(false);
 
-  // Sync draft when profile loads / changes while not editing
-  useEffect(() => {
-    if (!editing && profile) setDraft(profile);
-  }, [profile, editing]);
+  /** Avatar picker: only XFTs linked to Afta Lead label #5. */
+  const avatarEligible = useMemo(
+    () => filterGamerholicAvatarXfts(portfolio.all),
+    [portfolio.all],
+  );
+  const avatarEligibleGame = useMemo(
+    () => avatarEligible.filter((x) => x.gameAsset),
+    [avatarEligible],
+  );
+  const avatarEligibleMedia = useMemo(
+    () => avatarEligible.filter((x) => !x.gameAsset),
+    [avatarEligible],
+  );
 
-  // Stats: use principal (canister Address), non-blocking
+  // Load public profile by username (only when viewing someone else)
   useEffect(() => {
-    const addr = (principal || p.principal || "").trim();
-    if (!addr || !isLoggedIn) return;
+    if (isOwn || !viewKey) {
+      setRemote(null);
+      setRemoteLoading(false);
+      setRemoteError(null);
+      return;
+    }
     let cancelled = false;
-    void loadArenaStats(addr, identity)
+    setRemoteLoading(true);
+    setRemoteError(null);
+    void fetchProfileByUsername(viewKey)
+      .then((loaded) => {
+        if (cancelled) return;
+        // Accept profile if principal is set (username may still be empty shell)
+        if (!loaded?.principal) {
+          setRemote(null);
+          setRemoteError("Player not found");
+        } else {
+          setRemote(loaded);
+        }
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setRemote(null);
+          setRemoteError(
+            e instanceof Error ? e.message : "Failed to load profile",
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setRemoteLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [viewKey, isOwn]);
+
+  // Sync draft when own profile loads / changes while not editing
+  useEffect(() => {
+    if (!isOwn) return;
+    if (!editing && profile) {
+      // Merge localStorage afta link if profile metadata empty
+      const linked =
+        profile.aftaPrincipal?.trim() ||
+        loadStoredAftaPrincipal(principal) ||
+        "";
+      setDraft({
+        ...profile,
+        aftaPrincipal: linked || profile.aftaPrincipal || "",
+      });
+    }
+  }, [profile, editing, isOwn, principal]);
+
+  // Stats: principal (own session or public card)
+  useEffect(() => {
+    const addr = (
+      isOwn ? principal || p.principal : p.principal || ""
+    ).trim();
+    if (!addr) return;
+    let cancelled = false;
+    void loadArenaStats(addr, isOwn ? identity : null)
       .then((s) => {
         if (!cancelled) setStats(s);
       })
@@ -142,10 +265,22 @@ export function ProfileView() {
     return () => {
       cancelled = true;
     };
-  }, [principal, p.principal, isLoggedIn, identity]);
+  }, [principal, p.principal, isOwn, identity]);
 
   const loadAssets = useCallback(async () => {
-    const owner = (principal || p.principal || "").trim();
+    // Prefer linked Afta principal for portfolio (XFT ownership lives there)
+    const afta = (
+      isOwn
+        ? draft.aftaPrincipal ||
+          profile?.aftaPrincipal ||
+          loadStoredAftaPrincipal(principal) ||
+          ""
+        : p.aftaPrincipal || ""
+    ).trim();
+    const appOwner = (
+      isOwn ? principal || p.principal : p.principal
+    ).trim();
+    const owner = portfolioOwnerPrincipal(appOwner, afta);
     if (!owner || owner.includes("demo")) {
       setPortfolio({
         gameAssets: [],
@@ -167,8 +302,9 @@ export function ProfileView() {
     }
     setAssetsBusy(true);
     try {
+      // Query portfolio by Afta owner principal (anonymous query — no GH identity)
       const pack = await Promise.race([
-        loadProfileMediaPortfolio(owner, identity),
+        loadProfileMediaPortfolio(owner, null),
         new Promise<null>((resolve) => {
           window.setTimeout(() => resolve(null), 6000);
         }),
@@ -191,20 +327,105 @@ export function ProfileView() {
     } finally {
       setAssetsBusy(false);
     }
-  }, [principal, p.principal, identity]);
+  }, [
+    principal,
+    p.principal,
+    p.aftaPrincipal,
+    draft.aftaPrincipal,
+    profile?.aftaPrincipal,
+    isOwn,
+  ]);
+
+  const onConnectAfta = async () => {
+    if (!isOwn || !principal) {
+      ghToast({
+        title: "Sign in first",
+        description: "Connect Gamerholic Internet Identity, then link Afta.",
+        type: "error",
+      });
+      return;
+    }
+    setAftaBusy(true);
+    try {
+      const r = await connectAftaPrincipal();
+      if (!r.ok) {
+        if (!r.cancelled) {
+          ghToast({
+            title: "Afta connect failed",
+            description: r.error,
+            type: "error",
+          });
+        }
+        return;
+      }
+      persistAftaPrincipal(principal, r.principal);
+      const patch: Partial<GamerProfile> = { aftaPrincipal: r.principal };
+      if (editing) {
+        setDraft((d) => ({ ...d, ...patch }));
+      } else {
+        try {
+          await updateProfile(patch);
+        } catch (e) {
+          // Still keep local link even if save fails
+          setDraft((d) => ({ ...d, aftaPrincipal: r.principal }));
+          ghToast({
+            title: "Linked locally",
+            description:
+              e instanceof Error
+                ? `${e.message} — Afta principal kept in this browser`
+                : "Afta principal saved in this browser",
+            type: "info",
+          });
+          void loadAssets();
+          return;
+        }
+      }
+      ghToast({
+        title: "Afta Cash linked",
+        description: `Principal ${shortPrincipal(r.principal)} — loading XFTs`,
+        type: "success",
+      });
+      void loadAssets();
+    } finally {
+      setAftaBusy(false);
+    }
+  };
+
+  const onDisconnectAfta = async () => {
+    if (!principal) return;
+    clearStoredAftaPrincipal(principal);
+    const patch: Partial<GamerProfile> = { aftaPrincipal: "" };
+    if (editing) setDraft((d) => ({ ...d, ...patch }));
+    else {
+      try {
+        await updateProfile(patch);
+      } catch {
+        setDraft((d) => ({ ...d, aftaPrincipal: "" }));
+      }
+    }
+    setPortfolio({
+      gameAssets: [],
+      mediaXfts: [],
+      all: [],
+      source: "empty",
+    });
+    ghToast({ title: "Afta unlinked", type: "info" });
+  };
 
   // Defer XFT portfolio until user opens History → XFTs (don't block first paint)
   const [xftsTabTouched, setXftsTabTouched] = useState(false);
   useEffect(() => {
-    if (!isLoggedIn || !xftsTabTouched) return;
+    if (!xftsTabTouched) return;
+    if (isOwn && !isLoggedIn) return;
     void loadAssets();
-  }, [isLoggedIn, xftsTabTouched, loadAssets]);
+  }, [isLoggedIn, isOwn, xftsTabTouched, loadAssets]);
 
   const overall = overallRecord(stats);
-  const display = editing ? draft : p;
+  const display = isOwn && editing ? draft : p;
   const avatarSrc = resolveProfileAvatarUrl(display);
 
   const startEdit = () => {
+    if (!isOwn) return;
     setDraft(p);
     setFieldErrors({});
     setEditing(true);
@@ -225,8 +446,13 @@ export function ProfileView() {
     });
   };
 
+  const needsAgeTerms =
+    !p.acceptedOver18AndTerms && !draft.acceptedOver18AndTerms;
+
   const save = async () => {
     const username = normalizeUsername(draft.username);
+    const justAccepted =
+      Boolean(draft.acceptedOver18AndTerms) && !p.acceptedOver18AndTerms;
     const next: GamerProfile = {
       ...draft,
       username,
@@ -234,8 +460,30 @@ export function ProfileView() {
       bio: draft.bio.trim(),
       dexstaXftId: draft.dexstaXftId.trim(),
       dexstaXftContract: draft.dexstaXftContract.trim(),
+      aftaPrincipal: draft.aftaPrincipal.trim(),
       avatarUrl: draft.avatarUrl.trim(),
+      acceptedOver18AndTerms:
+        Boolean(draft.acceptedOver18AndTerms) || Boolean(p.acceptedOver18AndTerms),
+      termsAcceptedAt:
+        justAccepted
+          ? new Date().toISOString()
+          : p.termsAcceptedAt || draft.termsAcceptedAt,
     };
+    if (!next.acceptedOver18AndTerms) {
+      ghToast({
+        title: "Confirm age & terms",
+        description:
+          "Toggle that you are 18+ and accept the platform terms to save.",
+        type: "error",
+      });
+      setEditing(true);
+      requestAnimationFrame(() => {
+        document
+          .getElementById("profile-field-terms")
+          ?.scrollIntoView({ behavior: "smooth", block: "center" });
+      });
+      return;
+    }
     if (draft.username.trim().length > USERNAME_MAX_LENGTH) {
       setFieldErrors((prev) => ({
         ...prev,
@@ -277,18 +525,32 @@ export function ProfileView() {
       return;
     }
     setFieldErrors({});
-    await updateProfile(next);
+    try {
+      await updateProfile(next);
+    } catch (e) {
+      ghToast({
+        title: "Profile not saved",
+        description:
+          e instanceof Error
+            ? e.message
+            : "Supabase write failed — check connection and try again.",
+        type: "error",
+      });
+      setEditing(true);
+      return;
+    }
     setEditing(false);
     const addr = next.principal || principal;
     void upsertGamerProfile(
       addr,
       next.username,
       resolveProfileAvatarUrl(next) || "",
+      identity,
     );
     ghToast({
       title: "Profile saved",
       description: isSupabaseConfigured()
-        ? "Gamer card ready · you can send & accept challenges."
+        ? "Saved to Supabase · gamer card ready."
         : "Saved in session · configure Supabase for shared profiles.",
       type: "success",
     });
@@ -332,6 +594,22 @@ export function ProfileView() {
   };
 
   const setAvatarFromXft = async (x: DexstaOwnedXft) => {
+    if (x.linkedLabelId !== GAMERHOLIC_AVATAR_LABEL_ID) {
+      ghToast({
+        title: "Avatar not allowed",
+        description: `Only Afta XFTs linked to label #${GAMERHOLIC_AVATAR_LABEL_ID} can be your profile picture (linkedTo=${x.linkedLabelId || 0}).`,
+        type: "error",
+      });
+      return;
+    }
+    if (!x.imageUrl) {
+      ghToast({
+        title: "No image",
+        description: "This XFT has no displayable cover art.",
+        type: "error",
+      });
+      return;
+    }
     const key = `${x.contract}:${x.tokenId}`;
     setSettingAvatarId(key);
     try {
@@ -351,13 +629,19 @@ export function ProfileView() {
         setDraft((d) => ({ ...d, ...patch }));
         clearFieldError("avatar");
       } else {
-        await updateProfile(patch);
+        try {
+          await updateProfile(patch);
+        } catch (e) {
+          ghToast({
+            title: "Avatar not saved",
+            description:
+              e instanceof Error ? e.message : "Supabase write failed",
+            type: "error",
+          });
+          return;
+        }
         const addr = p.principal || principal;
-        void upsertGamerProfile(
-          addr,
-          p.username,
-          image,
-        );
+        void upsertGamerProfile(addr, p.username, image, identity);
       }
       ghToast({
         title: "Profile picture updated",
@@ -380,8 +664,25 @@ export function ProfileView() {
     };
     if (editing) setDraft((d) => ({ ...d, ...patch }));
     else {
-      void updateProfile(patch);
-      void upsertGamerProfile(p.principal || principal, p.username, "");
+      void updateProfile(patch)
+        .then(() => {
+          void upsertGamerProfile(
+            p.principal || principal,
+            p.username,
+            "",
+            identity,
+          );
+          ghToast({ title: "Avatar cleared", type: "info" });
+        })
+        .catch((e) => {
+          ghToast({
+            title: "Clear failed",
+            description:
+              e instanceof Error ? e.message : "Supabase write failed",
+            type: "error",
+          });
+        });
+      return;
     }
     ghToast({ title: "Avatar cleared", type: "info" });
   };
@@ -402,7 +703,8 @@ export function ProfileView() {
         ? `:${display.dexstaXftId}`
         : "";
 
-  if (!isLoggedIn) {
+  // Own profile requires II; public profiles are viewable by anyone
+  if (isOwn && !isLoggedIn) {
     return (
       <VStack align="stretch" gap="phi4" pb="phi4">
         <GhSurface variant="glass" p="phi5">
@@ -420,6 +722,37 @@ export function ProfileView() {
             </GhButton>
           </VStack>
         </GhSurface>
+      </VStack>
+    );
+  }
+
+  if (!isOwn && remoteLoading) {
+    return (
+      <VStack py="phi6" gap="phi3" align="center">
+        <Loader2 className="gh-spin" size={28} />
+        <Text color="fg.muted" fontSize="sm">
+          Loading @{viewKey}…
+        </Text>
+      </VStack>
+    );
+  }
+
+  if (!isOwn && (remoteError || !remote?.principal)) {
+    return (
+      <VStack align="stretch" gap="phi4" pb="phi4">
+        <GhEmptyState
+          icon={User}
+          title="Player not found"
+          description={
+            remoteError ||
+            `No profile for “${viewKey}”. Usernames are set on each gamer’s profile.`
+          }
+          action={
+            <Link href="/">
+              <GhButton variant="outline">Back home</GhButton>
+            </Link>
+          }
+        />
       </VStack>
     );
   }
@@ -453,33 +786,39 @@ export function ProfileView() {
             inset="0"
             bg="linear-gradient(180deg, transparent 20%, rgba(7,6,18,0.92) 100%)"
           />
-          <HStack
-            position="absolute"
-            top="phi3"
-            right="phi3"
-            gap="2"
-            flexWrap="wrap"
-          >
-            {editing ? (
-              <>
-                <GhButton size="sm" variant="outline" onClick={cancelEdit} leftIcon={<X size={14} />}>
-                  Cancel
+          {isOwn ? (
+            <HStack
+              position="absolute"
+              top="phi3"
+              right="phi3"
+              gap="2"
+              flexWrap="wrap"
+            >
+              {editing ? (
+                <>
+                  <GhButton size="sm" variant="outline" onClick={cancelEdit} leftIcon={<X size={14} />}>
+                    Cancel
+                  </GhButton>
+                  <GhButton size="sm" variant="primary" onClick={save} leftIcon={<Check size={14} />}>
+                    Save profile
+                  </GhButton>
+                </>
+              ) : (
+                <GhButton
+                  size="sm"
+                  variant="soft"
+                  leftIcon={<Pencil size={14} />}
+                  onClick={startEdit}
+                >
+                  Edit profile
                 </GhButton>
-                <GhButton size="sm" variant="primary" onClick={save} leftIcon={<Check size={14} />}>
-                  Save profile
-                </GhButton>
-              </>
-            ) : (
-              <GhButton
-                size="sm"
-                variant="soft"
-                leftIcon={<Pencil size={14} />}
-                onClick={startEdit}
-              >
-                Edit profile
-              </GhButton>
-            )}
-          </HStack>
+              )}
+            </HStack>
+          ) : (
+            <Box position="absolute" top="phi3" right="phi3">
+              <GhBadge tone="live">Public profile</GhBadge>
+            </Box>
+          )}
         </Box>
 
         {/* Avatar + name strip */}
@@ -606,7 +945,7 @@ export function ProfileView() {
       </Box>
 
       {/* Incomplete profile banner */}
-      {!editing && isLoggedIn && !getProfileCompleteness(p).ok ? (
+      {isOwn && !editing && isLoggedIn && !getProfileCompleteness(p).ok ? (
         <GhSurface variant="prize" p="phi4" borderColor="prize.solid">
           <HStack gap="phi3" align="flex-start" flexWrap="wrap">
             <Box flex="1" minW="12rem">
@@ -1034,8 +1373,78 @@ export function ProfileView() {
               />
             </Box>
 
+            {/* Age 18+ & platform terms — required once */}
+            <Box
+              id="profile-field-terms"
+              p="phi3"
+              borderRadius="xl"
+              borderWidth="1px"
+              borderColor={
+                needsAgeTerms && !draft.acceptedOver18AndTerms
+                  ? "danger.solid"
+                  : draft.acceptedOver18AndTerms || p.acceptedOver18AndTerms
+                    ? "border.brand"
+                    : "border.default"
+              }
+              bg={
+                draft.acceptedOver18AndTerms || p.acceptedOver18AndTerms
+                  ? "brand.muted"
+                  : "blackAlpha.400"
+              }
+            >
+              {p.acceptedOver18AndTerms ? (
+                <HStack gap="2" flexWrap="wrap">
+                  <GhBadge tone="success">Confirmed</GhBadge>
+                  <Text fontSize="sm" color="fg.muted" lineHeight="1.45">
+                    18+ and platform terms accepted
+                    {p.termsAcceptedAt
+                      ? ` · ${new Date(p.termsAcceptedAt).toLocaleDateString()}`
+                      : ""}
+                  </Text>
+                </HStack>
+              ) : (
+                <>
+                  <HStack justify="space-between" gap="phi2" flexWrap="wrap" mb="1">
+                    <Box minW="0" flex="1">
+                      <Text
+                        fontFamily="heading"
+                        fontSize="sm"
+                        fontWeight="bold"
+                        mb="0.5"
+                      >
+                        Age &amp; terms
+                      </Text>
+                      <Text fontSize="xs" color="fg.muted" lineHeight="1.45">
+                        I confirm I am at least 18 years old and accept the
+                        Gamerholic platform terms of use.
+                      </Text>
+                    </Box>
+                    <GhSwitch
+                      checked={Boolean(draft.acceptedOver18AndTerms)}
+                      onCheckedChange={(on) =>
+                        patch("acceptedOver18AndTerms", on)
+                      }
+                      tone="brand"
+                    />
+                  </HStack>
+                  {!draft.acceptedOver18AndTerms ? (
+                    <Text fontSize="2xs" color="danger.solid" fontWeight="bold" mt="2">
+                      Required to create or save your profile
+                    </Text>
+                  ) : null}
+                </>
+              )}
+            </Box>
+
             <HStack gap="phi2">
-              <GhButton variant="primary" onClick={save} leftIcon={<Check size={16} />}>
+              <GhButton
+                variant="primary"
+                onClick={() => void save()}
+                leftIcon={<Check size={16} />}
+                disabled={
+                  !p.acceptedOver18AndTerms && !draft.acceptedOver18AndTerms
+                }
+              >
                 Save profile
               </GhButton>
               <GhButton variant="ghost" onClick={cancelEdit}>
@@ -1294,39 +1703,152 @@ export function ProfileView() {
                   >
                     <Box>
                       <Text fontFamily="heading" fontWeight="extrabold" fontSize="sm" mb="1">
-                        Dexsta media & game assets
+                        Afta Cash XFTs
                       </Text>
                       <Text fontSize="xs" color="fg.muted" maxW="36rem">
-                        XFTs you own on Dexsta (type-8). Tap Set as profile pic to use cover art
-                        as your avatar. Full Dexsta portfolio load is production-wired when
-                        canisters are configured.
+                        Connect Afta Cash to load XFTs from your afta.cash wallet
+                        (does not replace Gamerholic login). Profile avatars must
+                        be linked to Afta Lead label #
+                        {GAMERHOLIC_AVATAR_LABEL_ID} (
+                        <Text as="span" fontFamily="mono">
+                          linkedTo={GAMERHOLIC_AVATAR_LABEL_ID}
+                        </Text>
+                        ). For Esports markets, also Connect Betable below.
                       </Text>
+                      {display.aftaPrincipal ? (
+                        <Text
+                          mt="1.5"
+                          fontSize="2xs"
+                          fontFamily="mono"
+                          color="fg.subtle"
+                          title={display.aftaPrincipal}
+                        >
+                          Linked · {shortPrincipal(display.aftaPrincipal)}
+                        </Text>
+                      ) : null}
                     </Box>
-                    <GhButton
-                      size="sm"
-                      variant="soft"
-                      leftIcon={
-                        assetsBusy ? (
-                          <Loader2 size={14} className="gh-spin" />
-                        ) : (
-                          <RefreshCw size={14} />
-                        )
-                      }
-                      onClick={() => void loadAssets()}
-                      disabled={assetsBusy}
-                    >
-                      Refresh
-                    </GhButton>
+                    <HStack gap="2" flexWrap="wrap">
+                      {isOwn && display.aftaPrincipal ? (
+                        <GhButton
+                          size="sm"
+                          variant="ghost"
+                          leftIcon={<Unlink size={14} />}
+                          onClick={() => void onDisconnectAfta()}
+                          disabled={aftaBusy}
+                        >
+                          Unlink
+                        </GhButton>
+                      ) : null}
+                      {isOwn ? (
+                        <GhButton
+                          size="sm"
+                          variant="primary"
+                          leftIcon={
+                            aftaBusy ? (
+                              <Loader2 size={14} className="gh-spin" />
+                            ) : (
+                              <KeyRound size={14} />
+                            )
+                          }
+                          onClick={() => void onConnectAfta()}
+                          disabled={aftaBusy || !principal}
+                        >
+                          {aftaBusy
+                            ? "Connecting…"
+                            : display.aftaPrincipal
+                              ? "Reconnect Afta"
+                              : "Connect Afta Cash"}
+                        </GhButton>
+                      ) : null}
+                      <GhButton
+                        size="sm"
+                        variant="soft"
+                        leftIcon={
+                          assetsBusy ? (
+                            <Loader2 size={14} className="gh-spin" />
+                          ) : (
+                            <RefreshCw size={14} />
+                          )
+                        }
+                        onClick={() => void loadAssets()}
+                        disabled={assetsBusy}
+                      >
+                        Refresh
+                      </GhButton>
+                    </HStack>
                   </Flex>
+                  <Text fontSize="2xs" color="fg.subtle">
+                    Mint on{" "}
+                    <Box
+                      as="a"
+                      // @ts-expect-error anchor props
+                      href={AFTA_APP_URL}
+                      target="_blank"
+                      rel="noreferrer"
+                      color="brand.fg"
+                      textDecoration="underline"
+                    >
+                      afta.cash
+                    </Box>
+                  </Text>
+                  {isOwn ? (
+                    <Box
+                      mt="phi3"
+                      pt="phi3"
+                      borderTopWidth="1px"
+                      borderColor="border.default"
+                    >
+                      <Text
+                        fontFamily="heading"
+                        fontWeight="extrabold"
+                        fontSize="sm"
+                        mb="1"
+                      >
+                        Betable (Esports markets)
+                      </Text>
+                      <Text fontSize="xs" color="fg.muted" mb="phi2" maxW="36rem">
+                        Link your betable.fun identity to host or join tournaments
+                        with markets. Esports shows your Betable name & avatar;
+                        Gamerholic profile is linked back on Betable.
+                      </Text>
+                      <ConnectBetableButton
+                        sessionPrincipal={principal}
+                        identity={identity}
+                        onLinked={async (link) => {
+                          const patch: Partial<GamerProfile> = {
+                            betablePrincipal: link.principal,
+                            betableUsername: link.username,
+                            betableAvatarUrl: link.avatarUrl,
+                          };
+                          setDraft((d) => ({ ...d, ...patch }));
+                          try {
+                            await updateProfile(patch);
+                          } catch {
+                            /* localStorage still has link */
+                          }
+                          ghToast({
+                            title: "Betable linked",
+                            description: `@${link.username || link.principal.slice(0, 8)}`,
+                            type: "success",
+                          });
+                        }}
+                      />
+                    </Box>
+                  ) : null}
                   {!isDexstaXftConfigured() && portfolio.all.length === 0 ? (
                     <GhEmptyState
-                      title="Dexsta XFT not configured"
+                      title="Afta XFT not configured"
                       description="Set NEXT_PUBLIC_DEXSTA_XFT_CANISTER_ID (and optional MEDIA) or NEXT_PUBLIC_DEXSTA_API_URL, then refresh."
                     />
                   ) : !principal ? (
                     <GhEmptyState
                       title="Sign in required"
-                      description="Internet Identity principal is required to load on-chain XFTs."
+                      description="Gamerholic Internet Identity is required before you can link Afta."
+                    />
+                  ) : isOwn && !display.aftaPrincipal ? (
+                    <GhEmptyState
+                      title="Connect Afta Cash"
+                      description="Your GH login principal is not the same as afta.cash. Connect Afta to load XFTs for avatars."
                     />
                   ) : assetsBusy && portfolio.all.length === 0 ? (
                     <HStack gap="2" py="phi4" justify="center" color="fg.muted">
@@ -1336,11 +1858,24 @@ export function ProfileView() {
                   ) : portfolio.all.length === 0 ? (
                     <GhEmptyState
                       title="No XFTs yet"
-                      description="Mint type-8 media or game assets under a Lead on Dexsta — they appear here once owned by your principal. (Coming soon: richer Dexsta portfolio sync.)"
+                      description="Mint type-8 media or game assets under a Lead on afta.cash — they appear here for the linked Afta principal."
+                    />
+                  ) : avatarEligible.length === 0 ? (
+                    <GhEmptyState
+                      title={`No label #${GAMERHOLIC_AVATAR_LABEL_ID} XFTs`}
+                      description={`You have ${portfolio.all.length} owned XFT(s), but none with linkedTo=${GAMERHOLIC_AVATAR_LABEL_ID}. Mint or buy a media/game asset linked to that Lead on afta.cash, then refresh.`}
                     />
                   ) : (
                     <VStack align="stretch" gap="phi4">
-                      {portfolio.gameAssets.length > 0 ? (
+                      <Text fontSize="2xs" color="fg.subtle">
+                        Showing {avatarEligible.length} avatar-eligible XFT
+                        {avatarEligible.length === 1 ? "" : "s"} (label #
+                        {GAMERHOLIC_AVATAR_LABEL_ID})
+                        {portfolio.all.length > avatarEligible.length
+                          ? ` · ${portfolio.all.length - avatarEligible.length} other owned XFT(s) hidden`
+                          : ""}
+                      </Text>
+                      {avatarEligibleGame.length > 0 ? (
                         <Box>
                           <HStack gap="2" mb="phi2">
                             <Gamepad2 size={14} color="var(--gh-colors-brand-fg)" />
@@ -1352,14 +1887,14 @@ export function ProfileView() {
                               textTransform="uppercase"
                               color="fg.subtle"
                             >
-                              Game assets
+                              Game assets · label #{GAMERHOLIC_AVATAR_LABEL_ID}
                             </Text>
                           </HStack>
                           <Grid
                             templateColumns="repeat(auto-fill, minmax(9.5rem, 1fr))"
                             gap="3"
                           >
-                            {portfolio.gameAssets.map((x) => (
+                            {avatarEligibleGame.map((x) => (
                               <XftAssetCard
                                 key={`g-${x.contract}-${x.tokenId}`}
                                 x={x}
@@ -1374,7 +1909,7 @@ export function ProfileView() {
                           </Grid>
                         </Box>
                       ) : null}
-                      {portfolio.mediaXfts.length > 0 ? (
+                      {avatarEligibleMedia.length > 0 ? (
                         <Box>
                           <HStack gap="2" mb="phi2">
                             <Music size={14} color="var(--gh-colors-prize-fg)" />
@@ -1386,14 +1921,14 @@ export function ProfileView() {
                               textTransform="uppercase"
                               color="fg.subtle"
                             >
-                              Media XFTs
+                              Media XFTs · label #{GAMERHOLIC_AVATAR_LABEL_ID}
                             </Text>
                           </HStack>
                           <Grid
                             templateColumns="repeat(auto-fill, minmax(9.5rem, 1fr))"
                             gap="3"
                           >
-                            {portfolio.mediaXfts.map((x) => (
+                            {avatarEligibleMedia.map((x) => (
                               <XftAssetCard
                                 key={`m-${x.contract}-${x.tokenId}`}
                                 x={x}

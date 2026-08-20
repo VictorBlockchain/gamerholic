@@ -1,7 +1,8 @@
 # Canister review — improvements & team payouts
 
-**Updated:** 2026-07-30  
-**Scope:** `canisters/backend/main.mo`, `canisters/media/media.mo`
+**Updated:** 2026-08-04  
+**Scope:** `canisters/backend/main.mo`, `canisters/media/media.mo`  
+**Money / ledger candid:** [icrc1-transfers-and-errors.md](./icrc1-transfers-and-errors.md)
 
 ---
 
@@ -63,7 +64,8 @@ FE: `ClaimPayoutPanel` on tournament detail (host) explains the flow.
    After claim / score / cancel, optional outcall to `upsert_gh_*` so FE Realtime doesn’t depend solely on the browser mirror path (matches dexsta bag webhook pattern).
 
 10. **Error returns**  
-    Prefer `{ #ok; #err : Text }` over bare `Bool` so the UI can surface “splits not 100%” vs “not host” without guessing.
+    Prefer `{ #ok; #err : Text }` over bare `Bool` so the UI can surface “splits not 100%” vs “not host” without guessing.  
+    **Shipped (2026-08):** arcade debit, shop merch, withdraw, and distribute payouts return structured `{ ok, err }`. Challenge/tournament entry debits still `Bool` — FE pre-checks balance via `checkPlayIcpAfford` and maps traps with `formatCanisterError`.
 
 ### Lower / hygiene
 
@@ -82,4 +84,5 @@ FE: `ClaimPayoutPanel` on tournament detail (host) explains the flow.
 - [ ] Team splits validated = 10000 at claim  
 - [ ] Betable schedule ≥ 1h enforced (already on open betable)  
 - [ ] Rate-limit create/join against spam  
-- [ ] Ledger fee & balance checks before every transfer  
+- [x] Ledger fee & balance checks before every transfer (Motoko + FE pre-check)  
+- [x] ICRC-1 TransferError candid matches mainnet ledger (no `#Err: Text` / empty `#TooOld`) 

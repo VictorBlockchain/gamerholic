@@ -1227,14 +1227,35 @@ persistent actor Gamerholic {
   };
 
   // Policy
-  transient var platformFeeRate : Nat = 4;
+  /// Legacy tournament platform rake % (0–100). Kept in sync with tournamentPlatformFeeBps / 100.
+  transient var platformFeeRate : Nat = 5;
+  /// Heads-up (1v1 challenge) platform fee in bps of pot. Admin-set. Default 1000 = 10%.
+  transient var headsUpPlatformFeeBps : Nat = 1000;
+  /// Tournament / room host-path platform fee in bps of pot. Admin-set. Default 500 = 5%.
+  transient var tournamentPlatformFeeBps : Nat = 500;
+  /// Arcade platform fee in basis points of each paid play fee (admin-set). Default 150 = 1.5%.
+  /// Bps (not whole %) so fractional cuts like 1.5% are expressible on small play fees.
+  transient var arcadePlatformFeeBps : Nat = 150;
+  /// Flat ICP fee (e8s) to submit a cabinet for community testing. Admin-set. Default 0.01 ICP.
+  transient var arcadeSubmitFeeE8s : Nat = 1_000_000;
+  /// Dexsta XFT id whose bag receives 50% of platform fees when > 0. Admin-only. 0 = all to platform wallet.
+  var platformXftId : Nat = 0;
+  /// Cached bag principal for platformXftId (resolved via Dexsta bag_factory). null when xft id is 0 or unresolved.
+  var platformBagPrincipal : ?Principal = null;
+  /// gameId → submitter principal (idempotent debit if save retries after success)
+  transient var arcadeSubmitPaid = HashMap.HashMap<Text, Principal>(64, Text.equal, Text.hash);
   transient var minimumEntryFee : Nat = 0;
   transient var feeRecipient : Address = "";
 
   transient var settlementIdCounter : Nat = 0;
 
-  // Admin
-  transient var admins = HashMap.HashMap<Address, Bool>(16, Text.equal, Text.hash);
+  // Admin flags as stable array (survives upgrades). HashMap is non-stable.
+  var adminPrincipals : [Address] = [];
+  /// Deploy / recovery controller may grant/revoke admins when locked out.
+  /// Matches dfx identity used for mainnet deploys (gh_backend controller).
+  private let adminRecoveryPrincipal : Principal = Principal.fromText(
+    "2lfkw-3ji4l-77nxm-xmgh2-eugyo-q7r5w-vk7hq-5pmwc-yho5r-rcldv-cae"
+  );
 
   // Games & Rules
   transient var games = HashMap.HashMap<Text, Bool>(256, Text.equal, Text.hash);
@@ -1444,7 +1465,46 @@ persistent actor Gamerholic {
     }
   };
   
+  /// Official ICRC-1 transfer error (matches mainnet ICP ledger ryjl3-…).
+  /// Must NOT be typed as `#Err: Text` — that candid-mismatches the ledger and traps.
+  type Icrc1TransferError = {
+    #BadFee : { expected_fee : Nat };
+    #BadBurn : { min_burn_amount : Nat };
+    #InsufficientFunds : { balance : Nat };
+    #TooOld;
+    #CreatedInFuture : { ledger_time : Nat64 };
+    #Duplicate : { duplicate_of : Nat };
+    #TemporarilyUnavailable;
+    #GenericError : { error_code : Nat; message : Text };
+  };
+
+  type Icrc1TransferResult = { #Ok : Nat; #Err : Icrc1TransferError };
+
+  func icrc1TransferErrorText(e : Icrc1TransferError) : Text {
+    switch (e) {
+      case (#BadFee({ expected_fee })) {
+        "BadFee expected_fee=" # Nat.toText(expected_fee)
+      };
+      case (#BadBurn({ min_burn_amount })) {
+        "BadBurn min=" # Nat.toText(min_burn_amount)
+      };
+      case (#InsufficientFunds({ balance })) {
+        "InsufficientFunds balance_e8s=" # Nat.toText(balance)
+      };
+      case (#TooOld) { "TooOld" };
+      case (#CreatedInFuture(_)) { "CreatedInFuture" };
+      case (#Duplicate({ duplicate_of })) {
+        "Duplicate of=" # Nat.toText(duplicate_of)
+      };
+      case (#TemporarilyUnavailable) { "TemporarilyUnavailable" };
+      case (#GenericError({ error_code; message })) {
+        "GenericError " # Nat.toText(error_code) # ": " # message
+      };
+    }
+  };
+
   // ICRC-1 ledger actor for native ICP with subaccounts
+  // Mainnet: ryjl3-tyaaa-aaaaa-aaaba-cai (Internet Computer Protocol ledger)
   func icrc1LedgerActor() : actor {
     icrc1_balance_of: query { owner: Principal; subaccount: ?Blob } -> async Nat;
     icrc1_transfer: shared {
@@ -1454,7 +1514,7 @@ persistent actor Gamerholic {
       fee: ?Nat;
       memo: ?Blob;
       created_at_time: ?Nat64;
-    } -> async { #Ok: Nat; #Err: Text };
+    } -> async Icrc1TransferResult;
   } {
     actor (Principal.toText(icpLedgerPrincipal)) : actor {
       icrc1_balance_of: query { owner: Principal; subaccount: ?Blob } -> async Nat;
@@ -1465,8 +1525,12 @@ persistent actor Gamerholic {
         fee: ?Nat;
         memo: ?Blob;
         created_at_time: ?Nat64;
-      } -> async { #Ok: Nat; #Err: Text };
+      } -> async Icrc1TransferResult;
     }
+  };
+
+  public query func getIcpLedgerPrincipal() : async Principal {
+    icpLedgerPrincipal
   };
 
   public func setIcpLedgerPrincipal(p : Principal) : async Bool {
@@ -1525,9 +1589,16 @@ persistent actor Gamerholic {
     Blob.fromArray(out)
   };
   
-  // Platform fee destination principal (external wallet)
-  private let platformFeePrincipal = Principal.fromText("73r5a-ogh4g-oidfj-v4yxg-kwjpb-jooaj-lsv3l-uv2pe-a6ffk-moasu-eae");
-  
+  /// Platform fee destination principal (admin-settable payout wallet). Persists across upgrades.
+  var platformFeePrincipal : Principal = Principal.fromText("73r5a-ogh4g-oidfj-v4yxg-kwjpb-jooaj-lsv3l-uv2pe-a6ffk-moasu-eae");
+  /// Dexsta mainnet XFT contract + bag factory (for platform fee bag split).
+  private let dexstaXftContract : Principal = Principal.fromText("nj5wo-siaaa-aaaaf-qc3mq-cai");
+  private let dexstaBagFactory : Principal = Principal.fromText("e6rzi-7yaaa-aaaab-qc6za-cai");
+
+  type DexstaBagFactory = actor {
+    getBag : shared query (Nat, Principal) -> async ?Principal;
+  };
+
   // Derive subaccount for community vault (treasury)
   private func subaccountForTreasury() : Blob {
     let arr = Blob.toArray(Text.encodeUtf8("community_vault"));
@@ -1647,7 +1718,7 @@ persistent actor Gamerholic {
         return { ok = true; err = "" };
       };
       case (#Err(e)) {
-        return { ok = false; err = "Transfer failed: " # e };
+        return { ok = false; err = "Transfer failed: " # icrc1TransferErrorText(e) };
       };
     };
   };
@@ -1814,15 +1885,22 @@ persistent actor Gamerholic {
     }
   };
 
-  private func payPlatform(fromSub : Blob, amount : Nat, memo : Text) : async Bool {
-    if (amount == 0) { return true };
+  /// Single ICP transfer of `gross` from fromSub (ledger fee deducted from gross).
+  private func transferIcpFromSub(
+    fromSub : Blob,
+    toOwner : Principal,
+    toSub : ?Blob,
+    gross : Nat,
+    memo : Text,
+  ) : async Bool {
+    if (gross == 0) { return true };
     let ledger = icrc1LedgerActor();
     let fee : Nat = 10_000;
-    if (amount <= fee) { return false };
+    if (gross <= fee) { return false };
     let result = await ledger.icrc1_transfer({
       from_subaccount = ?fromSub;
-      to = { owner = platformFeePrincipal; subaccount = null };
-      amount = amount - fee;
+      to = { owner = toOwner; subaccount = toSub };
+      amount = gross - fee;
       fee = ?fee;
       memo = ?Text.encodeUtf8(memo);
       created_at_time = null;
@@ -1830,6 +1908,43 @@ persistent actor Gamerholic {
     switch (result) {
       case (#Ok(_)) { true };
       case (#Err(_)) { false };
+    }
+  };
+
+  /// Platform fee payout. When platformXftId > 0 and bag is known: 50% → bag, 50% → platform wallet.
+  /// If bag missing or amount too small for two transfers, full amount → platform wallet.
+  private func payPlatform(fromSub : Blob, amount : Nat, memo : Text) : async Bool {
+    if (amount == 0) { return true };
+    let fee : Nat = 10_000;
+    let bagOpt = platformBagPrincipal;
+    switch (bagOpt) {
+      case (?bag) {
+        // Need room for two ledger fees when splitting
+        if (amount > fee * 2) {
+          let half = amount / 2;
+          let rest = amount - half;
+          let okBag = await transferIcpFromSub(
+            fromSub,
+            bag,
+            null,
+            half,
+            memo # " · bag 50%",
+          );
+          let okPlat = await transferIcpFromSub(
+            fromSub,
+            platformFeePrincipal,
+            null,
+            rest,
+            memo # " · platform 50%",
+          );
+          return okBag or okPlat;
+        };
+        // Too small to split — all to platform
+        await transferIcpFromSub(fromSub, platformFeePrincipal, null, amount, memo)
+      };
+      case null {
+        await transferIcpFromSub(fromSub, platformFeePrincipal, null, amount, memo)
+      };
     }
   };
 
@@ -1855,20 +1970,25 @@ persistent actor Gamerholic {
 
   /**
    * Policy split (bps of pot, sum ≤ 10000):
-   * - host present: 500 (5%)
+   * - host present: 500 (5%) default host cut when role present (tournaments/rooms)
    * - moderator present: 200 (2%)
-   * - platform: 400 (4%)
+   * - platform: admin-set (heads-up vs tournament knobs; defaults 10% / 5%)
    * - community vault: 100 (1%)
-   * - winner: remainder (~90% full, more if no host/mod)
+   * - winner: remainder
    */
-  private func splitBps(hasHost : Bool, hasMod : Bool) : {
+  private func splitBps(hasHost : Bool, hasMod : Bool, platformBps : Nat) : {
     winner : Nat; host : Nat; mod : Nat; platform : Nat; vault : Nat
   } {
     let hostB = if (hasHost) { 500 } else { 0 };
     let modB = if (hasMod) { 200 } else { 0 };
-    let platformB : Nat = 400;
     let vaultB : Nat = 100;
-    let taken = hostB + modB + platformB + vaultB;
+    let capPlatform = if (platformBps > 2000) { 2000 } else { platformBps };
+    let fixed = hostB + modB + vaultB;
+    // Keep sum ≤ 10000 so winner share is non-negative
+    let platformB = if (fixed + capPlatform > 10000) {
+      if (fixed >= 10000) { 0 } else { 10000 - fixed }
+    } else { capPlatform };
+    let taken = fixed + platformB;
     {
       winner = 10000 - taken;
       host = hostB;
@@ -1898,6 +2018,7 @@ persistent actor Gamerholic {
     winnerPrincipal : Principal,
     hostPrincipal : ?Principal,
     modPrincipal : ?Principal,
+    platformBps : Nat,
   ) : async { ok : Bool; err : Text; amounts : NativePayoutAmounts } {
     let fee : Nat = 10_000;
     let minFees = fee * 5;
@@ -1907,7 +2028,7 @@ persistent actor Gamerholic {
 
     let hasHost = switch (hostPrincipal) { case (?_) true; case null false };
     let hasMod = switch (modPrincipal) { case (?_) true; case null false };
-    let bps = splitBps(hasHost, hasMod);
+    let bps = splitBps(hasHost, hasMod, platformBps);
 
     let winnerAmt = (balance * bps.winner) / 10000;
     let hostAmt = (balance * bps.host) / 10000;
@@ -1920,6 +2041,10 @@ persistent actor Gamerholic {
 
     if (await payUserPlaySub(fromSub, winnerPrincipal, winnerAmt, "Prize winner: " # potId)) {
       amounts := { amounts with winner = if (winnerAmt > fee) { winnerAmt - fee } else { 0 } };
+      ignore recordTreasuryTransaction(
+        #PrizeDistribution, "ICP", winnerAmt, ?"escrow", ?Principal.toText(winnerPrincipal), null, null,
+        "Winner payout · " # potId,
+      );
       okCount += 1;
     };
 
@@ -1927,6 +2052,10 @@ persistent actor Gamerholic {
       case (?hp) {
         if (hostAmt > 0 and (await payUserPlaySub(fromSub, hp, hostAmt, "Host fee: " # potId))) {
           amounts := { amounts with host = if (hostAmt > fee) { hostAmt - fee } else { 0 } };
+          ignore recordTreasuryTransaction(
+            #PlatformFee, "ICP", hostAmt, ?"escrow", ?Principal.toText(hp), null, null,
+            "Host fee · " # potId,
+          );
           okCount += 1;
         };
       };
@@ -1937,6 +2066,10 @@ persistent actor Gamerholic {
       case (?mp) {
         if (modAmt > 0 and (await payUserPlaySub(fromSub, mp, modAmt, "Moderator fee: " # potId))) {
           amounts := { amounts with mod = if (modAmt > fee) { modAmt - fee } else { 0 } };
+          ignore recordTreasuryTransaction(
+            #PlatformFee, "ICP", modAmt, ?"escrow", ?Principal.toText(mp), null, null,
+            "Moderator fee · " # potId,
+          );
           okCount += 1;
         };
       };
@@ -1945,11 +2078,19 @@ persistent actor Gamerholic {
 
     if (await payPlatform(fromSub, platformAmt, "Platform fee: " # potId)) {
       amounts := { amounts with platform = if (platformAmt > fee) { platformAmt - fee } else { 0 } };
+      ignore recordTreasuryTransaction(
+        #PlatformFee, "ICP", platformAmt, ?"escrow", ?"platform", null, null,
+        "Platform fee · " # potId,
+      );
       okCount += 1;
     };
 
     if (await payCommunityVault(fromSub, vaultAmt, "Community vault: " # potId)) {
       amounts := { amounts with vault = if (vaultAmt > fee) { vaultAmt - fee } else { 0 } };
+      ignore recordTreasuryTransaction(
+        #TreasuryAllocation, "ICP", vaultAmt, ?"escrow", ?"community_vault", null, null,
+        "Community vault · " # potId,
+      );
       okCount += 1;
     };
 
@@ -1966,9 +2107,7 @@ persistent actor Gamerholic {
     winnerPrincipal : Principal,
     moderatorPrincipal : ?Principal,
   ) : async { ok : Bool; err : Text; amount : Nat; amounts : NativePayoutAmounts } {
-    switch (admins.get(Principal.toText(caller))) {
-      case (?true) {};
-      case _ {
+    if (not hasAdminFlag(Principal.toText(caller))) {
         // Winner, moderator, or any authenticated user may trigger once score is final
         if (caller != winnerPrincipal) {
           switch (moderatorPrincipal) {
@@ -2001,7 +2140,6 @@ persistent actor Gamerholic {
             };
           };
         };
-      };
     };
 
     let key = "chal:" # challengeId;
@@ -2026,6 +2164,7 @@ persistent actor Gamerholic {
       winnerPrincipal,
       null, // no host on pure 1v1
       moderatorPrincipal,
+      headsUpPlatformFeeBps,
     );
     if (r.ok) { nativePayoutDone.put(key, true) };
     { ok = r.ok; err = r.err; amount = r.amounts.winner; amounts = r.amounts }
@@ -2038,9 +2177,7 @@ persistent actor Gamerholic {
     hostPrincipal : Principal,
     moderatorPrincipal : ?Principal,
   ) : async { ok : Bool; err : Text; transfers : Nat; amounts : NativePayoutAmounts } {
-    switch (admins.get(Principal.toText(caller))) {
-      case (?true) {};
-      case _ {
+    if (not hasAdminFlag(Principal.toText(caller))) {
         if (caller != hostPrincipal) {
           switch (tournaments.get(tournamentId)) {
             case (?t) {
@@ -2053,7 +2190,6 @@ persistent actor Gamerholic {
             };
           };
         };
-      };
     };
 
     let key = "tourney:" # tournamentId;
@@ -2076,7 +2212,7 @@ persistent actor Gamerholic {
     };
 
     let hasMod = switch (moderatorPrincipal) { case (?_) true; case null false };
-    let bps = splitBps(true, hasMod);
+    let bps = splitBps(true, hasMod, tournamentPlatformFeeBps);
     let winnersPool = (balance * bps.winner) / 10000;
     let hostAmt = (balance * bps.host) / 10000;
     let modAmt = (balance * bps.mod) / 10000;
@@ -2133,9 +2269,7 @@ persistent actor Gamerholic {
     hostPrincipal : Principal,
     moderatorPrincipal : ?Principal,
   ) : async { ok : Bool; err : Text; amounts : NativePayoutAmounts } {
-    switch (admins.get(Principal.toText(caller))) {
-      case (?true) {};
-      case _ {
+    if (not hasAdminFlag(Principal.toText(caller))) {
         if (caller != hostPrincipal and caller != winnerPrincipal) {
           // allow game host (challenge creator) by address match is handled on FE;
           // on-chain allow when challenge is settled (status 3)
@@ -2150,7 +2284,6 @@ persistent actor Gamerholic {
             };
           };
         };
-      };
     };
 
     let key = "room:" # challengeId;
@@ -2175,6 +2308,7 @@ persistent actor Gamerholic {
       winnerPrincipal,
       ?hostPrincipal,
       moderatorPrincipal,
+      tournamentPlatformFeeBps,
     );
     if (r.ok) { nativePayoutDone.put(key, true) };
     r
@@ -2205,31 +2339,215 @@ persistent actor Gamerholic {
     }
   };
 
-  public shared({ caller }) func debitArcadePlayFeeNativeICP(
-    gameId : Text,
+  /// Shop merch: debit buyer play subaccount → platform wallet (full amount).
+  /// `amount` is e8s for the order total (ICP). Caller pays ledger fee on top.
+  /// Memo includes orderId for reconciliation.
+  public shared({ caller }) func debitShopMerchNativeICP(
+    orderId : Text,
     amount : Nat,
-  ) : async Bool {
-    if (amount == 0) { return true };
+  ) : async { ok : Bool; err : Text } {
+    if (amount == 0) {
+      return { ok = true; err = "" };
+    };
+    if (Text.size(orderId) == 0) {
+      return { ok = false; err = "Missing order id" };
+    };
     let ledger = icrc1LedgerActor();
     let userSub = subaccountForPrincipal(caller);
-    let arcadeSub = subaccountForChallenge("arcade:" # gameId);
-    let fee : Nat = 10_000;
+    let xferFee : Nat = 10_000;
     let balance = await ledger.icrc1_balance_of({
       owner = Principal.fromActor(Gamerholic);
       subaccount = ?userSub;
     });
-    if (balance < amount + fee) { return false };
+    if (balance < amount + xferFee) {
+      return {
+        ok = false;
+        err = "Insufficient play-subaccount ICP (need order total + 0.0001 fee)";
+      };
+    };
+    // Credit platform the full merch amount; fee is taken separately from play sub.
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?userSub;
+      to = { owner = platformFeePrincipal; subaccount = null };
+      amount = amount;
+      fee = ?xferFee;
+      memo = ?Text.encodeUtf8("Shop merch: " # orderId);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) {
+        ignore recordTreasuryTransaction(
+          #PlatformFee,
+          "ICP",
+          amount,
+          ?Principal.toText(caller),
+          ?"platform",
+          null,
+          null,
+          "Shop merch order " # orderId,
+        );
+        { ok = true; err = "" }
+      };
+      case (#Err(e)) {
+        { ok = false; err = "Ledger transfer failed: " # icrc1TransferErrorText(e) }
+      };
+    };
+  };
+
+  /// Debit admin-set arcade **submit** fee: user play sub → platform wallet.
+  /// Charged once per gameId when a creator ships a cabinet for community testing.
+  /// Idempotent: second debit for same gameId + same caller returns ok (save retry).
+  /// Amount is always `arcadeSubmitFeeE8s` (not client-supplied).
+  public shared({ caller }) func debitArcadeSubmitFeeNativeICP(
+    gameId : Text,
+  ) : async { ok : Bool; err : Text } {
+    if (Text.size(gameId) == 0) {
+      return { ok = false; err = "Missing game id" };
+    };
+    switch (arcadeSubmitPaid.get(gameId)) {
+      case (?p) {
+        if (Principal.equal(p, caller)) {
+          return { ok = true; err = "" };
+        };
+        return { ok = false; err = "Submit fee already paid by another principal" };
+      };
+      case null {};
+    };
+    let amount = arcadeSubmitFeeE8s;
+    if (amount == 0) {
+      arcadeSubmitPaid.put(gameId, caller);
+      return { ok = true; err = "" };
+    };
+    let ledger = icrc1LedgerActor();
+    let userSub = subaccountForPrincipal(caller);
+    let xferFee : Nat = 10_000;
+    let balance = await ledger.icrc1_balance_of({
+      owner = Principal.fromActor(Gamerholic);
+      subaccount = ?userSub;
+    });
+    if (balance < amount + xferFee) {
+      return {
+        ok = false;
+        err = "Insufficient play-subaccount ICP for arcade submit fee (need fee + 0.0001 ledger). balance_e8s="
+          # Nat.toText(balance)
+          # " need_e8s="
+          # Nat.toText(amount + xferFee);
+      };
+    };
+    let result = await ledger.icrc1_transfer({
+      from_subaccount = ?userSub;
+      to = { owner = platformFeePrincipal; subaccount = null };
+      amount = amount;
+      fee = ?xferFee;
+      memo = ?Text.encodeUtf8("Arcade submit fee: " # gameId);
+      created_at_time = null;
+    });
+    switch (result) {
+      case (#Ok(_)) {
+        arcadeSubmitPaid.put(gameId, caller);
+        ignore recordTreasuryTransaction(
+          #PlatformFee,
+          "ICP",
+          amount,
+          ?Principal.toText(caller),
+          ?"platform",
+          null,
+          null,
+          "Arcade submit-for-testing fee · " # gameId,
+        );
+        { ok = true; err = "" }
+      };
+      case (#Err(e)) {
+        { ok = false; err = "Ledger transfer failed: " # icrc1TransferErrorText(e) }
+      };
+    };
+  };
+
+  /// Debit play fee: user play sub → arcade escrow; platform cut (admin bps) → platform wallet.
+  /// Native ICP ledger: ryjl3-tyaaa-aaaaa-aaaba-cai (mainnet).
+  /// Returns structured err so FE can show ledger failures (not silent false / candid traps).
+  public shared({ caller }) func debitArcadePlayFeeNativeICP(
+    gameId : Text,
+    amount : Nat,
+  ) : async { ok : Bool; err : Text } {
+    if (amount == 0) { return { ok = true; err = "" } };
+    if (Text.size(gameId) == 0) {
+      return { ok = false; err = "Missing game id" };
+    };
+    let ledger = icrc1LedgerActor();
+    let userSub = subaccountForPrincipal(caller);
+    let arcadeSub = subaccountForChallenge("arcade:" # gameId);
+    let xferFee : Nat = 10_000;
+    let balance = await ledger.icrc1_balance_of({
+      owner = Principal.fromActor(Gamerholic);
+      subaccount = ?userSub;
+    });
+    // Platform may split bag+wallet (2) + escrow (1) → reserve up to 3× ledger fee
+    let feeLegs : Nat = if (platformXftId > 0) { 3 } else { 2 };
+    if (balance < amount + xferFee * feeLegs) {
+      return {
+        ok = false;
+        err = "Insufficient play-subaccount ICP (need fee + ledger fees). balance_e8s="
+          # Nat.toText(balance)
+          # " need_e8s="
+          # Nat.toText(amount + xferFee * feeLegs);
+      };
+    };
+
+    let platformCut = (amount * arcadePlatformFeeBps) / 10000;
+    let toEscrow = if (amount > platformCut) { amount - platformCut } else { 0 };
+
+    // May need 2 platform legs (bag + wallet) when platformXftId > 0 → reserve extra fee in balance check above
+    if (platformCut > xferFee) {
+      let paid = await payPlatform(userSub, platformCut, "Arcade platform fee: " # gameId);
+      if (not paid) {
+        return {
+          ok = false;
+          err = "Platform fee transfer failed";
+        };
+      };
+      ignore recordTreasuryTransaction(
+        #PlatformFee,
+        "ICP",
+        platformCut,
+        ?Principal.toText(caller),
+        ?"platform",
+        null,
+        null,
+        "Arcade platform fee " # Nat.toText(arcadePlatformFeeBps) # " bps · " # gameId
+          # (if (platformXftId > 0) { " · bag split 50%" } else { "" }),
+      );
+    };
+
+    if (toEscrow == 0) { return { ok = true; err = "" } };
     let result = await ledger.icrc1_transfer({
       from_subaccount = ?userSub;
       to = { owner = Principal.fromActor(Gamerholic); subaccount = ?arcadeSub };
-      amount = amount;
-      fee = ?fee;
+      amount = toEscrow;
+      fee = ?xferFee;
       memo = ?Text.encodeUtf8("Arcade fee: " # gameId);
       created_at_time = null;
     });
     switch (result) {
-      case (#Ok(_)) { true };
-      case (#Err(_)) { false };
+      case (#Ok(_)) {
+        ignore recordTreasuryTransaction(
+          #Deposit,
+          "ICP",
+          toEscrow,
+          ?Principal.toText(caller),
+          ?"arcade_escrow",
+          null,
+          null,
+          "Arcade play fee escrow · " # gameId,
+        );
+        { ok = true; err = "" }
+      };
+      case (#Err(e)) {
+        {
+          ok = false;
+          err = "Arcade escrow transfer: " # icrc1TransferErrorText(e);
+        }
+      };
     }
   };
 
@@ -2267,7 +2585,59 @@ persistent actor Gamerholic {
     power
   };
 
-  public func setAdmin(a : Address, flag : Bool) : async () { admins.put(a, flag) };
+  private func countAdmins() : Nat { adminPrincipals.size() };
+
+  private func hasAdminFlag(a : Address) : Bool {
+    for (x in adminPrincipals.vals()) {
+      if (Text.equal(x, a)) { return true };
+    };
+    false
+  };
+
+  private func grantAdminFlag(a : Address) {
+    if (hasAdminFlag(a)) { return };
+    adminPrincipals := Array.append(adminPrincipals, [a]);
+  };
+
+  private func revokeAdminFlag(a : Address) {
+    adminPrincipals := Array.filter<Address>(adminPrincipals, func(x) {
+      not Text.equal(x, a)
+    });
+  };
+
+  /**
+   * Grant or revoke the on-chain admin flag for `target`.
+   * Only an existing admin (msg.caller) may change flags.
+   * Bootstrap: if no admins exist yet, any caller may grant the first admin.
+   * Recovery controller (deploy identity) may always grant/revoke.
+   * Cannot revoke the last remaining admin (unless recovery).
+   */
+  public shared({ caller }) func setAdmin(target : Address, flag : Bool) : async Bool {
+    if (Text.size(target) == 0) { return false };
+    let me = Principal.toText(caller);
+    let iAmAdmin = hasAdminFlag(me);
+    let iAmRecovery = Principal.equal(caller, adminRecoveryPrincipal);
+    let nAdmins = countAdmins();
+    if (not iAmAdmin and not iAmRecovery) {
+      if (nAdmins > 0) { return false };
+      if (not flag) { return false };
+    };
+    if (not flag) {
+      let targetIsAdmin = hasAdminFlag(target);
+      if (targetIsAdmin and nAdmins <= 1 and not iAmRecovery) {
+        return false;
+      };
+      revokeAdminFlag(target);
+      return true;
+    };
+    grantAdminFlag(target);
+    true
+  };
+
+  /// All addresses currently holding the on-chain admin flag.
+  public query func listAdmins() : async [Address] {
+    adminPrincipals
+  };
   
   // Token management functions
   public func addSupportedToken(
@@ -2280,25 +2650,19 @@ persistent actor Gamerholic {
     fee : Nat
   ) : async Bool {
     // Only admin can add new tokens
-    switch (admins.get(caller)) {
-      case (?true) {
-        let ledgerPrincipal = Principal.fromText(ledgerCanister);
-        supportedTokens.put(tokenId, { name = name; symbol = symbol; decimals = decimals; ledger = ledgerPrincipal; fee = fee });
-        true
-      };
-      case _ false;
-    }
+    if (hasAdminFlag(caller)) {
+      let ledgerPrincipal = Principal.fromText(ledgerCanister);
+      supportedTokens.put(tokenId, { name = name; symbol = symbol; decimals = decimals; ledger = ledgerPrincipal; fee = fee });
+      true
+    } else { false }
   };
   
   public func removeSupportedToken(caller : Address, tokenId : Text) : async Bool {
     // Only admin can remove tokens
-    switch (admins.get(caller)) {
-      case (?true) {
+    if (hasAdminFlag(caller)) {
         supportedTokens.delete(tokenId);
         true
-      };
-      case _ false;
-    }
+      } else { false }
   };
   
   public query func getSupportedTokens() : async [(Text, TokenInfo)] {
@@ -2604,7 +2968,7 @@ persistent actor Gamerholic {
   };
   public query func isAdmin(a : Address) : async Bool {
     let byRole = switch (moderators.get(a)) { case (?m) { m.role == #AdminMod }; case null false };
-    let byFlag = switch (admins.get(a)) { case (?flag) flag; case null false };
+    let byFlag = hasAdminFlag(a);
     byRole or byFlag
   };
   
@@ -2636,23 +3000,146 @@ persistent actor Gamerholic {
   public query func platformFeeRate_() : async Nat { platformFeeRate };
   public query func minimumEntryFee_() : async Nat { minimumEntryFee };
   public query func feeRecipient_() : async Address { feeRecipient };
-  
-  public func setPlatformFeeRate(caller : Address, r : Nat) : async Bool {
-    switch (admins.get(caller)) {
-      case (?true) { platformFeeRate := r; true };
-      case _ false;
+  public query func getArcadePlatformFeeBps() : async Nat { arcadePlatformFeeBps };
+  public query func getArcadeSubmitFeeE8s() : async Nat { arcadeSubmitFeeE8s };
+  public query func getHeadsUpPlatformFeeBps() : async Nat { headsUpPlatformFeeBps };
+  public query func getTournamentPlatformFeeBps() : async Nat { tournamentPlatformFeeBps };
+  public query func getPlatformXftId() : async Nat { platformXftId };
+  public query func getPlatformBagPrincipal() : async Text {
+    switch (platformBagPrincipal) {
+      case (?p) { Principal.toText(p) };
+      case null { "" };
     }
   };
-  public func setMinimumEntryFee(caller : Address, f : Nat) : async Bool {
-    switch (admins.get(caller)) {
-      case (?true) { minimumEntryFee := f; true };
-      case _ false;
+  /// Live platform payout principal (ICP destination for the non-bag share of platform fees).
+  public query func getPlatformFeePrincipal() : async Text {
+    Principal.toText(platformFeePrincipal)
+  };
+
+  /// Legacy: sets tournament platform rate as whole %. Also updates tournamentPlatformFeeBps.
+  public func setPlatformFeeRate(caller : Address, r : Nat) : async Bool {
+    if (hasAdminFlag(caller)) {
+        if (r > 20) { return false };
+        platformFeeRate := r;
+        tournamentPlatformFeeBps := r * 100;
+        true
+    } else { false }
+  };
+
+  /// Admin: heads-up (1v1) platform fee in bps of pot. Cap 2000 (20%). Default 1000 = 10%.
+  public func setHeadsUpPlatformFeeBps(caller : Address, bps : Nat) : async Bool {
+    if (hasAdminFlag(caller)) {
+        if (bps > 2000) { return false };
+        headsUpPlatformFeeBps := bps;
+        true
+    } else { false }
+  };
+
+  /// Admin: tournament/room platform fee in bps of pot. Cap 2000 (20%). Default 500 = 5%.
+  /// Keeps legacy platformFeeRate in sync (bps / 100, truncated).
+  public func setTournamentPlatformFeeBps(caller : Address, bps : Nat) : async Bool {
+    if (hasAdminFlag(caller)) {
+        if (bps > 2000) { return false };
+        tournamentPlatformFeeBps := bps;
+        platformFeeRate := bps / 100;
+        true
+    } else { false }
+  };
+
+  /// Admin sets arcade platform cut (basis points of play fee). Cap 2000 (20%).
+  public func setArcadePlatformFeeBps(caller : Address, bps : Nat) : async Bool {
+    if (hasAdminFlag(caller)) {
+        if (bps > 2000) { return false };
+        arcadePlatformFeeBps := bps;
+        true
+    } else { false }
+  };
+
+  /// Admin sets flat ICP fee (e8s) charged when a creator submits a cabinet for testing.
+  /// Cap 10 ICP (1_000_000_000 e8s). Set 0 to allow free submissions.
+  public func setArcadeSubmitFeeE8s(caller : Address, e8s : Nat) : async Bool {
+    if (hasAdminFlag(caller)) {
+        if (e8s > 1_000_000_000) { return false };
+        arcadeSubmitFeeE8s := e8s;
+        true
+    } else { false }
+  };
+
+  /// Admin-only: Dexsta XFT id for platform fee bag split. 0 clears bag (100% platform wallet).
+  /// When > 0, resolves bag via bag_factory.getBag and caches principal; 50% of platform fees go to bag.
+  public func setPlatformXftId(caller : Address, xftId : Nat) : async {
+    ok : Bool;
+    err : Text;
+    bag : Text;
+  } {
+    if (not hasAdminFlag(caller)) {
+      return { ok = false; err = "Admin only"; bag = "" };
+    };
+    if (xftId == 0) {
+      platformXftId := 0;
+      platformBagPrincipal := null;
+      return { ok = true; err = ""; bag = "" };
+    };
+    try {
+      let factory : DexstaBagFactory = actor (Principal.toText(dexstaBagFactory));
+      let bagOpt = await factory.getBag(xftId, dexstaXftContract);
+      switch (bagOpt) {
+        case (?bag) {
+          platformXftId := xftId;
+          platformBagPrincipal := ?bag;
+          { ok = true; err = ""; bag = Principal.toText(bag) }
+        };
+        case null {
+          { ok = false; err = "No bag for that XFT id (mint/create bag on Dexsta first)"; bag = "" }
+        };
+      };
+    } catch (_) {
+      { ok = false; err = "bag_factory lookup failed"; bag = "" }
     }
+  };
+
+  public func setMinimumEntryFee(caller : Address, f : Nat) : async Bool {
+    if (hasAdminFlag(caller)) { minimumEntryFee := f; true } else { false }
   };
   public func setFeeRecipient(caller : Address, a : Address) : async Bool {
-    switch (admins.get(caller)) {
-      case (?true) { feeRecipient := a; true };
-      case _ false;
+    if (not hasAdminFlag(caller)) { return false };
+    let t = Text.trim(a, #text " ");
+    if (Text.size(t) == 0) { return false };
+    try {
+      let p = Principal.fromText(t);
+      if (Principal.isAnonymous(p)) { return false };
+      platformFeePrincipal := p;
+      feeRecipient := t;
+      true
+    } catch (_) {
+      // Keep legacy text even if not a principal (display only)
+      feeRecipient := t;
+      true
+    }
+  };
+
+  /// Admin: set platform ICP payout principal (must be valid principal text).
+  public func setPlatformFeePrincipal(caller : Address, principalText : Text) : async {
+    ok : Bool;
+    err : Text;
+  } {
+    if (not hasAdminFlag(caller)) {
+      return { ok = false; err = "Admin only" };
+    };
+    let t = Text.trim(principalText, #text " ");
+    if (Text.size(t) == 0) {
+      return { ok = false; err = "Empty principal" };
+    };
+    try {
+      let p = Principal.fromText(t);
+      if (Principal.isAnonymous(p)) {
+        return { ok = false; err = "Anonymous principal not allowed" };
+      };
+      platformFeePrincipal := p;
+      feeRecipient := t;
+      { ok = true; err = "" }
+    } catch (_) {
+      { ok = false; err = "Invalid principal text" }
     }
   };
 
@@ -3297,6 +3784,236 @@ persistent actor Gamerholic {
 
   public query func getBackendPrincipal() : async Text {
     Principal.toText(Principal.fromActor(Gamerholic))
+  };
+
+  // ── Betable Esports factory (partner create; this canister is esports operator) ──
+  type BetableSignalSource = {
+    url : Text;
+    title : Text;
+    source_type : Text;
+  };
+  /// Live market_factory interface (create_esports_market may be added later).
+  type BetableMarketType = { #multi_outcome };
+  type BetableFeeSplitRecipient = {
+    recipient : Principal;
+    percentage : Nat;
+    recipient_label : Text;
+    username : ?Text;
+  };
+  type BetableMarketFactory = actor {
+    create_market : shared (
+      Text, // title
+      Text, // description
+      Text, // country
+      Text, // category
+      Int, // close_date
+      Text, // yes_criteria / resolution
+      Text, // no_criteria
+      Float, // creator_fee
+      [BetableSignalSource],
+      ?Nat, // license_xft_id
+      BetableMarketType,
+      [Text], // outcomes
+      Bool, // split_with_winner
+      ?Nat, // split_percentage
+      Text, // live_stream
+      [BetableFeeSplitRecipient],
+      Bool, // external_outcomes
+      ?Principal, // fixed_split_recipient
+      ?Blob // fixed_split_subaccount
+    ) -> async Text;
+  };
+
+  /// Mainnet market_factory; override via setBetableMarketFactory (admin).
+  private transient var betableMarketFactoryId : Text = "n5nod-dqaaa-aaaau-ag5ba-cai";
+
+  public shared({ caller }) func setBetableMarketFactory(factoryId : Text) : async Bool {
+    if (not (await isAdmin(Principal.toText(caller)))) { return false };
+    if (Text.size(factoryId) < 10) { return false };
+    betableMarketFactoryId := factoryId;
+    true
+  };
+
+  public query func getBetableMarketFactory() : async Text {
+    betableMarketFactoryId
+  };
+
+  /// Host opens Esports market: GH canister creates on Betable as operator; host Betable principal is market.creator.
+  public shared({ caller = _ }) func createTournamentBetableMarket(
+    tournamentId : TournamentId,
+    who : Address,
+    betableHostPrincipal : Text,
+    title : Text,
+    description : Text,
+    closeDateNs : Int,
+    resolutionCriteria : Text,
+    outcomes : [Text],
+    splitWithWinner : Bool,
+    splitPercentage : Nat,
+    liveStreamUrl : Text,
+    creatorFee : Float,
+    game : Text,
+    consoleName : Text
+  ) : async Text {
+    switch (tournaments.get(tournamentId)) {
+      case null { return "" };
+      case (?t) {
+        if (t.creator != who) { return "" };
+        if (outcomes.size() < 2) { return "" };
+        if (Text.size(betableHostPrincipal) < 10) { return "" };
+        let hostP = Principal.fromText(betableHostPrincipal);
+        if (Principal.isAnonymous(hostP)) { return "" };
+        let subBlob = await getTournamentSubaccount(tournamentId);
+        if (subBlob.size() != 32) { return "" };
+        let selfP = Principal.fromActor(Gamerholic);
+        let fullTitle =
+          if (Text.size(game) > 0) { title # " · " # game # " · " # consoleName } else { title };
+        let fullDesc =
+          description # "\n\nGame: " # game # "\nConsole: " # consoleName
+          # "\nTournament ID: " # tournamentId # "\nSource: Gamerholic";
+        let signals : [BetableSignalSource] = [{
+          url = "gamerholic://tournament/" # tournamentId;
+          title = game # " · " # consoleName;
+          source_type = "data";
+        }];
+        let doSplit = splitWithWinner and splitPercentage >= 1 and splitPercentage <= 100;
+        let splitOpt : ?Nat = if (doSplit) { ?splitPercentage } else { null };
+        let fee = if (creatorFee <= 0.0 or creatorFee > 0.1) { 0.01 } else { creatorFee };
+        try {
+          // msg.caller = this canister (esports operator). Host fee via split_others when possible.
+          let Factory = actor (betableMarketFactoryId) : BetableMarketFactory;
+          let hostSplits : [BetableFeeSplitRecipient] =
+            if (doSplit) { [] } else {
+              [{
+                recipient = hostP;
+                percentage = 100;
+                recipient_label = "host";
+                username = null;
+              }]
+            };
+          let marketId = await Factory.create_market(
+            fullTitle,
+            fullDesc,
+            "Global",
+            "Esports",
+            closeDateNs,
+            resolutionCriteria,
+            "",
+            fee,
+            signals,
+            null,
+            #multi_outcome,
+            outcomes,
+            doSplit,
+            splitOpt,
+            liveStreamUrl,
+            hostSplits,
+            true,
+            ?selfP,
+            ?subBlob,
+          );
+          if (Text.size(marketId) == 0) { return "" };
+          let linked = await setTournamentBetable(tournamentId, who, true, marketId);
+          if (not linked) { return "" };
+          marketId
+        } catch (_) {
+          ""
+        }
+      };
+    }
+  };
+
+  /// Host/player opens Esports market for heads-up challenge (not tourney-linked).
+  public shared({ caller = _ }) func createChallengeBetableMarket(
+    challengeId : ChallengeId,
+    who : Address,
+    betableHostPrincipal : Text,
+    title : Text,
+    description : Text,
+    closeDateNs : Int,
+    resolutionCriteria : Text,
+    outcomes : [Text],
+    splitWithWinner : Bool,
+    splitPercentage : Nat,
+    liveStreamUrl : Text,
+    creatorFee : Float,
+    game : Text,
+    consoleName : Text,
+    scheduledAt : Nat64,
+    monitor : Address
+  ) : async Text {
+    switch (challenges.get(challengeId)) {
+      case null { return "" };
+      case (?c) {
+        if (c.tournament != "") { return "" };
+        if (who != c.creator and who != c.opponent) { return "" };
+        if (outcomes.size() < 2) { return "" };
+        if (Text.size(betableHostPrincipal) < 10) { return "" };
+        let hostP = Principal.fromText(betableHostPrincipal);
+        if (Principal.isAnonymous(hostP)) { return "" };
+        let subBlob = await getChallengeSubaccount(challengeId);
+        if (subBlob.size() != 32) { return "" };
+        let selfP = Principal.fromActor(Gamerholic);
+        let fullTitle =
+          if (Text.size(game) > 0) { title # " · " # game # " · " # consoleName } else { title };
+        let fullDesc =
+          description # "\n\nGame: " # game # "\nConsole: " # consoleName
+          # "\nMatch ID: " # challengeId # "\nSource: Gamerholic";
+        let signals : [BetableSignalSource] = [{
+          url = "gamerholic://match/" # challengeId;
+          title = game # " · " # consoleName;
+          source_type = "data";
+        }];
+        let doSplit = splitWithWinner and splitPercentage >= 1 and splitPercentage <= 100;
+        let splitOpt : ?Nat = if (doSplit) { ?splitPercentage } else { null };
+        let fee = if (creatorFee <= 0.0 or creatorFee > 0.1) { 0.01 } else { creatorFee };
+        try {
+          let Factory = actor (betableMarketFactoryId) : BetableMarketFactory;
+          let hostSplits : [BetableFeeSplitRecipient] =
+            if (doSplit) { [] } else {
+              [{
+                recipient = hostP;
+                percentage = 100;
+                recipient_label = "host";
+                username = null;
+              }]
+            };
+          let marketId = await Factory.create_market(
+            fullTitle,
+            fullDesc,
+            "Global",
+            "Esports",
+            closeDateNs,
+            resolutionCriteria,
+            "",
+            fee,
+            signals,
+            null,
+            #multi_outcome,
+            outcomes,
+            doSplit,
+            splitOpt,
+            liveStreamUrl,
+            hostSplits,
+            true,
+            ?selfP,
+            ?subBlob,
+          );
+          if (Text.size(marketId) == 0) { return "" };
+          let linked = await openChallengeBetable(
+            challengeId,
+            who,
+            marketId,
+            scheduledAt,
+            monitor,
+          );
+          if (not linked) { return "" };
+          marketId
+        } catch (_) {
+          ""
+        }
+      };
+    }
   };
 
   public func setTournamentSchedule(id : TournamentId, who : Address, scheduledAt : Nat64) : async Bool {
@@ -4863,6 +5580,7 @@ persistent actor Gamerholic {
         // Host fee from tournament hostFeeBps applied on pot before platform rake path
         let hostCut = (pot * t.hostFeeBps) / 10000;
         let afterHost = if (pot > hostCut) { pot - hostCut } else { 0 };
+        // platformFeeRate is kept in sync with tournamentPlatformFeeBps (whole %)
         let settlement2 = computeSettlement(afterHost, platformFeeRate);
         
         // Record treasury transactions for immutable audit trail
@@ -4949,8 +5667,8 @@ persistent actor Gamerholic {
         if (not t.teamEntry) { return null };
         let hostCut = (pot * t.hostFeeBps) / 10000;
         let afterHost = if (pot > hostCut) { pot - hostCut } else { 0 };
-        // Platform rake on remainder (legacy platformFeeRate as %)
-        let rake = (afterHost * platformFeeRate) / 100;
+        // Platform rake on remainder (admin tournamentPlatformFeeBps)
+        let rake = (afterHost * tournamentPlatformFeeBps) / 10000;
         let teamPrize = if (afterHost > rake) { afterHost - rake } else { 0 };
         let splits = getTeamSplits(winningTeamId);
         let totalBps = teamSplitsTotal(splits);
@@ -5007,7 +5725,7 @@ persistent actor Gamerholic {
 
         let hostCut = (pot * t.hostFeeBps) / 10000;
         let afterHost = if (pot > hostCut) { pot - hostCut } else { 0 };
-        let rake = (afterHost * platformFeeRate) / 100;
+        let rake = (afterHost * tournamentPlatformFeeBps) / 10000;
         let teamPrize = if (afterHost > rake) { afterHost - rake } else { 0 };
 
         ignore recordTreasuryTransaction(
@@ -5880,8 +6598,8 @@ persistent actor Gamerholic {
         };
         if (not isParticipant) { return false };
         
-        // Calculate fee distribution
-        let platformFeeBps = 400;
+        // Calculate fee distribution (platform rate = admin tournament knob)
+        let platformFeeBps = tournamentPlatformFeeBps;
         let roomHostFeeBps = 200;
         let treasuryFeeBps = 100;
         
@@ -8494,6 +9212,262 @@ persistent actor Gamerholic {
       };
     };
     needsPromotion
+  };
+
+  // ── Device sync (multi-II: primary + aliases) ─────────────────────
+  // alias → primary
+  private transient var devicePrimary = HashMap.HashMap<Principal, Principal>(0, Principal.equal, Principal.hash);
+  // primary → aliases
+  private transient var deviceAliases = HashMap.HashMap<Principal, [Principal]>(0, Principal.equal, Principal.hash);
+  private transient var syncCodes = HashMap.HashMap<Text, (Principal, Int)>(0, Text.equal, Text.hash);
+  private transient var syncCodeCounter : Nat = 0;
+  // primary → linked Betable principal text
+  private transient var linkedBetableByPrimary = HashMap.HashMap<Principal, Text>(0, Principal.equal, Principal.hash);
+  // primary → linked Afta principal text
+  private transient var linkedAftaByPrimary = HashMap.HashMap<Principal, Text>(0, Principal.equal, Principal.hash);
+
+  private let SYNC_CODE_TTL_NS : Int = 10 * 60 * 1_000_000_000;
+
+  private func resolvePrimary(p : Principal) : Principal {
+    switch (devicePrimary.get(p)) {
+      case (?primary) { primary };
+      case null { p };
+    }
+  };
+
+  private func genSyncCode(_caller : Principal) : Text {
+    syncCodeCounter += 1;
+    let now = Time.now();
+    var x : Nat = Int.abs(now) + syncCodeCounter * 9973;
+    let alphabet = ["A","B","C","D","E","F","G","H","J","K","L","M","N","P","Q","R","S","T","U","V","W","X","Y","Z","2","3","4","5","6","7","8","9"];
+    var s = "";
+    var i = 0;
+    while (i < 6) {
+      let idx = x % 32;
+      s #= alphabet[idx];
+      x := x / 32 + 17;
+      i += 1;
+    };
+    s
+  };
+
+  public shared({ caller }) func create_device_sync_code() : async {
+    success : Bool;
+    code : Text;
+    expires_at : Int;
+    message : Text;
+  } {
+    if (Principal.isAnonymous(caller)) {
+      return { success = false; code = ""; expires_at = 0; message = "Connect Internet Identity first" };
+    };
+    let primary = resolvePrimary(caller);
+    let code = genSyncCode(primary);
+    let exp = Time.now() + SYNC_CODE_TTL_NS;
+    syncCodes.put(code, (primary, exp));
+    {
+      success = true;
+      code = code;
+      expires_at = exp;
+      message = "Enter this code on your other device within 10 minutes";
+    }
+  };
+
+  public shared({ caller }) func claim_device_sync_code(code : Text) : async {
+    success : Bool;
+    primary : Text;
+    message : Text;
+  } {
+    if (Principal.isAnonymous(caller)) {
+      return { success = false; primary = ""; message = "Connect Internet Identity first" };
+    };
+    let normalized = Text.toUppercase(code);
+    switch (syncCodes.get(normalized)) {
+      case null {
+        return { success = false; primary = ""; message = "Invalid or expired code" };
+      };
+      case (?(primary, exp)) {
+        if (Time.now() > exp) {
+          syncCodes.delete(normalized);
+          return { success = false; primary = ""; message = "Code expired — generate a new one" };
+        };
+        if (caller == primary) {
+          return {
+            success = false;
+            primary = Principal.toText(primary);
+            message = "Already on this account";
+          };
+        };
+        switch (deviceAliases.get(caller)) {
+          case (?list) {
+            if (list.size() > 0) {
+              return {
+                success = false;
+                primary = "";
+                message = "This device already has linked accounts — unlink them first";
+              };
+            };
+          };
+          case null {};
+        };
+        devicePrimary.put(caller, primary);
+        let existing = switch (deviceAliases.get(primary)) {
+          case (?list) { list };
+          case null { [] };
+        };
+        var found = false;
+        for (a in existing.vals()) {
+          if (a == caller) { found := true };
+        };
+        if (not found) {
+          deviceAliases.put(primary, Array.append(existing, [caller]));
+        };
+        syncCodes.delete(normalized);
+        {
+          success = true;
+          primary = Principal.toText(primary);
+          message = "Devices linked — same Gamerholic account";
+        }
+      };
+    }
+  };
+
+  public query func get_canonical_principal(p : Principal) : async Principal {
+    resolvePrimary(p)
+  };
+
+  public shared query({ caller }) func list_linked_devices() : async {
+    primary : Text;
+    devices : [Text];
+    is_primary : Bool;
+  } {
+    let primary = resolvePrimary(caller);
+    let aliases = switch (deviceAliases.get(primary)) {
+      case (?list) { list };
+      case null { [] };
+    };
+    var devices : [Text] = [Principal.toText(primary)];
+    for (a in aliases.vals()) {
+      devices := Array.append(devices, [Principal.toText(a)]);
+    };
+    {
+      primary = Principal.toText(primary);
+      devices = devices;
+      is_primary = caller == primary;
+    }
+  };
+
+  public shared({ caller }) func unlink_device(other : Principal) : async {
+    success : Bool;
+    message : Text;
+  } {
+    let primary = resolvePrimary(caller);
+    if (other == caller and caller != primary) {
+      devicePrimary.delete(caller);
+      switch (deviceAliases.get(primary)) {
+        case (?list) {
+          deviceAliases.put(primary, Array.filter<Principal>(list, func (a) { a != caller }));
+        };
+        case null {};
+      };
+      return { success = true; message = "This device unlinked" };
+    };
+    if (caller != primary and other != caller) {
+      return { success = false; message = "Only the primary device can unlink other devices" };
+    };
+    if (other == primary) {
+      return { success = false; message = "Cannot unlink the primary account" };
+    };
+    switch (devicePrimary.get(other)) {
+      case (?p) {
+        if (p != primary) {
+          return { success = false; message = "Device is not linked to your account" };
+        };
+      };
+      case null {
+        return { success = false; message = "Device is not linked" };
+      };
+    };
+    devicePrimary.delete(other);
+    switch (deviceAliases.get(primary)) {
+      case (?list) {
+        deviceAliases.put(primary, Array.filter<Principal>(list, func (a) { a != other }));
+      };
+      case null {};
+    };
+    { success = true; message = "Device unlinked" }
+  };
+
+  public shared({ caller }) func set_linked_betable_principal(betable : Text) : async {
+    success : Bool;
+    message : Text;
+  } {
+    if (Principal.isAnonymous(caller)) {
+      return { success = false; message = "Not authenticated" };
+    };
+    if (Text.size(betable) < 10) {
+      return { success = false; message = "Invalid Betable principal" };
+    };
+    let primary = resolvePrimary(caller);
+    linkedBetableByPrimary.put(primary, betable);
+    { success = true; message = "Betable linked to your Gamerholic account" }
+  };
+
+  public shared query({ caller }) func get_linked_betable_principal() : async ?Text {
+    linkedBetableByPrimary.get(resolvePrimary(caller))
+  };
+
+  public shared({ caller }) func clear_linked_betable_principal() : async {
+    success : Bool;
+    message : Text;
+  } {
+    if (Principal.isAnonymous(caller)) {
+      return { success = false; message = "Not authenticated" };
+    };
+    linkedBetableByPrimary.delete(resolvePrimary(caller));
+    { success = true; message = "Betable unlinked" }
+  };
+
+  public shared({ caller }) func set_linked_afta_principal(afta : Text) : async {
+    success : Bool;
+    message : Text;
+  } {
+    if (Principal.isAnonymous(caller)) {
+      return { success = false; message = "Not authenticated" };
+    };
+    if (Text.size(afta) < 10) {
+      return { success = false; message = "Invalid Afta principal" };
+    };
+    linkedAftaByPrimary.put(resolvePrimary(caller), afta);
+    { success = true; message = "Afta Cash linked" }
+  };
+
+  public shared query({ caller }) func get_linked_afta_principal() : async ?Text {
+    linkedAftaByPrimary.get(resolvePrimary(caller))
+  };
+
+  public shared query({ caller }) func get_ownership_principals() : async [Text] {
+    let primary = resolvePrimary(caller);
+    var out : [Text] = [Principal.toText(primary)];
+    if (caller != primary) {
+      out := Array.append(out, [Principal.toText(caller)]);
+    };
+    switch (deviceAliases.get(primary)) {
+      case (?list) {
+        for (a in list.vals()) {
+          out := Array.append(out, [Principal.toText(a)]);
+        };
+      };
+      case null {};
+    };
+    switch (linkedAftaByPrimary.get(primary)) {
+      case (?afta) { out := Array.append(out, [afta]) };
+      case null {};
+    };
+    switch (linkedBetableByPrimary.get(primary)) {
+      case (?b) { out := Array.append(out, [b]) };
+      case null {};
+    };
+    out
   };
 
 }

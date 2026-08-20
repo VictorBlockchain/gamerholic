@@ -1,9 +1,10 @@
 # High Score Arcade — design notes
 
-**Status:** active (product scaffold + hybrid timer/settle + community approval)  
-**Updated:** 2026-08-02  
+**Status:** active (product scaffold + hybrid timer/settle + community approval + mainnet ICP insert)  
+**Updated:** 2026-08-04  
 **Routes:** `/arcade`, `/arcade/play/[id]`, `/arcade/play/?id=` (static-export fallback)  
-**Code:** `src/lib/arcade/*`, `src/components/arcade/*`, `supabase/schema.sql` (arcade section)
+**Code:** `src/lib/arcade/*`, `src/components/arcade/*`, `supabase/schema.sql` (arcade section)  
+**ICP money path:** [icrc1-transfers-and-errors.md](./icrc1-transfers-and-errors.md)
 
 ---
 
@@ -24,11 +25,21 @@ New cabinets do **not** go live immediately. They enter a **testing** phase so t
 
 | Step | What happens |
 |------|----------------|
-| **1. Submit** | Creator ships CSS + gameCode via Add Game → `status: "testing"`, catalog-visible |
+| **1. Submit** | Creator ships CSS + gameCode via Add Game → **admin-set submit fee** debited from play sub → platform (`debitArcadeSubmitFeeNativeICP`) → Supabase `status: "testing"`, catalog-visible |
 | **2. Playtest** | Anyone can **insert real coins**; paid runs hit the **same leaderboard** as live will use |
-| **3. Creator fix** | While `testing`, creator may edit **CSS + gameCode** (and other fields) |
+| **3. Creator fix** | While `testing`, creator may edit **CSS + gameCode** (and other fields) — **no re-charge** |
 | **4. Upvote** | Logged-in testers cast **one upvote each** (principal unique) |
 | **5. Go live** | **10 upvotes** → `status: "live"`. **Leaderboard is not reset** — tester scores stay |
+
+**Submit fee (platform):**
+
+| Item | Detail |
+|------|--------|
+| Policy | `arcadeSubmitFeeE8s` on `gh_backend` (default **0.01 ICP**). Admin: `setArcadeSubmitFeeE8s` / Moderator console → Fees |
+| Query | `getArcadeSubmitFeeE8s` · FE: `getArcadeSubmitFeeIcp` |
+| Debit | Play sub → `platformFeePrincipal` · amount fixed on-chain (not client-supplied) · + 10_000 e8s ledger fee |
+| Idempotency | Same `gameId` + same principal: second debit returns ok (retry after fee if Supabase save failed) |
+| Free | Admin sets fee to **0** |
 
 Constants: `ARCADE_LIVE_UPVOTE_THRESHOLD = 10` in `src/lib/arcade/types.ts`.  
 Store helpers: `upvoteArcadeGame` / `updateArcadeGameWhileTesting` in `store.ts`.
@@ -41,7 +52,7 @@ Store helpers: `upvoteArcadeGame` / `updateArcadeGameWhileTesting` in `store.ts`
 |-------|----------------|
 | **Phaser host (iframe)** | Load engine once; run creator **CSS + gameCode** only — **no full HTML** |
 | **Supabase** | Catalog (`gh_arcade_games`: title, cover, CSS, gameCode), session clock (`t_start`/`t_end`), score events, chain-job status |
-| **ICP / canisters** | Play fee, per-game escrow, prize settle, claim (demo adapter today; Motoko later) |
+| **ICP / canisters** | **Submit fee** (`debitArcadeSubmitFeeNativeICP` → platform) when shipping for testing; play fee (`debitArcadePlayFeeNativeICP` → `{ ok, err }`), per-game escrow, prize settle, claim via `gh_backend` + native ICP ledger `ryjl3-…`. FE pre-checks play-sub balance before submit (fee + 1× ledger) and insert (fee + 2× ledger). |
 | **Dexsta XFT** | Label-linked **game assets** (type-8 `game_asset`); owner/operator gate on publish |
 
 **Never on-chain:** full game CSS / JS (too large). Storage is off-chain (Supabase when configured, else localStorage).
@@ -260,7 +271,11 @@ Build helper: `src/lib/static-params.ts`.
 - [ ] Internet Identity identity pass-through for Dexsta actor calls  
 - [ ] Bag power enrichment on equip (full Dexsta bag read)  
 - [x] Apply Supabase arcade SQL + session RPC (no `gen_random_bytes`)  
-- [ ] Platform claim path for 1.5% rake  
+- [x] Arcade platform rake in bps (admin-set; default 150 = 1.5%) — see [`platform-fees-and-dexsta-bag.md`](./platform-fees-and-dexsta-bag.md)  
+- [x] Admin platform XFT id · 50% platform fees → Dexsta bag when set  
+- [x] Play page: Live/Testing comments (bug|feedback), creator resolve bugs, 5★ testing ratings, overview testers/dates  
+- [ ] Apply Supabase `migrations/arcade_comments_ratings.sql` (ops)  
+- [ ] Deploy gh_backend + set live platform XFT id  
 - [ ] Optional: SPA fallback HTML for unknown play ids (serve play shell, not home)
 - [ ] Optional: server-side upvote RPC (principal auth) instead of client upsert  
 
@@ -269,6 +284,8 @@ Build helper: `src/lib/static-params.ts`.
 ## 11. Related docs
 
 - Concept money loop: [`concept.md`](./concept.md)  
+- Fee model + Dexsta bag: [`platform-fees-and-dexsta-bag.md`](./platform-fees-and-dexsta-bag.md)  
 - Supabase hybrid: [`canister-supabase-realtime.md`](./canister-supabase-realtime.md), [`../../supabase/README.md`](../../supabase/README.md)  
 - UI tokens: [`design-system.md`](./design-system.md), [`ui-theme.md`](./ui-theme.md)  
 - Dexsta partners (avatars / labels): Dexsta `notes/design/cross-app-xft-partners.md`  
+

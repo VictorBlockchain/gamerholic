@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type CSSProperties } from "react";
+import { useEffect, useState, type CSSProperties } from "react";
 import {
   Box,
   Grid,
@@ -8,7 +8,7 @@ import {
   Text,
   VStack,
 } from "@chakra-ui/react";
-import { Check, Eye, Upload, X } from "lucide-react";
+import { Check, Coins, Eye, Upload, X } from "lucide-react";
 import {
   GhButton,
   GhField,
@@ -21,7 +21,11 @@ import {
 } from "@/components/ui";
 import { useProcessModal } from "@/hooks/use-process-modal";
 import { useSession } from "@/components/providers/session-context";
-import { saveArcadeGameAsync, type ArcadeGame } from "@/lib/arcade/store";
+import {
+  newArcadeGameId,
+  saveArcadeGameAsync,
+  type ArcadeGame,
+} from "@/lib/arcade/store";
 import type { PlayFeeToken } from "@/lib/arcade/types";
 import { neonTapCss, neonTapGameCode } from "@/lib/arcade/demo-phaser";
 import { normalizeArcadePaste, PHASER_ENGINE } from "@/lib/arcade/engine";
@@ -49,6 +53,15 @@ import {
   GamePreview,
   type PreviewIntegrationStatus,
 } from "@/components/arcade/game-preview";
+import { getArcadeSubmitFeeIcp } from "@/lib/ic/fees-service";
+import { debitArcadeSubmitFee } from "@/lib/ic/settlement-service";
+import {
+  checkPlayIcpAfford,
+  formatIcpShort,
+  lowBalanceMessage,
+  requiredIcpForArcadeSubmit,
+} from "@/lib/ic/gamer-service";
+import { isCanisterConfigured } from "@/lib/ic/canisters";
 
 type Props = {
   open: boolean;
@@ -74,7 +87,7 @@ const DEFAULT_RULES =
  * (not immediately live — 10 upvotes after real-coin playtests).
  */
 export function AddGamePanel({ open, onClose, onSaved }: Props) {
-  const { profile, principal } = useSession();
+  const { profile, principal, identity, isLoggedIn, login } = useSession();
   const { processState, closeProcess, runProcess } = useProcessModal();
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -93,8 +106,28 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
     useState<PreviewIntegrationStatus | null>(null);
   /** Second click confirms publish without verified mock play */
   const [forcePublish, setForcePublish] = useState(false);
+  /** Admin-set flat fee to submit for testing (ICP). null = loading */
+  const [submitFeeIcp, setSubmitFeeIcp] = useState<number | null>(null);
+
+  useEffect(() => {
+    if (!open) return;
+    let cancelled = false;
+    void getArcadeSubmitFeeIcp(identity)
+      .then((f) => {
+        if (!cancelled) setSubmitFeeIcp(Number.isFinite(f) ? f : 0);
+      })
+      .catch(() => {
+        if (!cancelled) setSubmitFeeIcp(0.01);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [open, identity]);
 
   if (!open) return null;
+
+  const feeIcp = submitFeeIcp ?? 0;
+  const needIcp = requiredIcpForArcadeSubmit(feeIcp);
 
   const onImage = async (file?: File | null) => {
     if (!file) return;
@@ -186,6 +219,24 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
       });
       return;
     }
+    if (!isLoggedIn || !principal) {
+      ghToast({
+        title: "Connect to submit",
+        description: "Sign in so we can debit the submit fee from your play subaccount.",
+        type: "error",
+      });
+      void login?.();
+      return;
+    }
+    if (!isCanisterConfigured() && feeIcp > 0) {
+      ghToast({
+        title: "Canister required",
+        description:
+          "Submit fee is on-chain — gh_backend must be configured to debit your play subaccount.",
+        type: "error",
+      });
+      return;
+    }
     const cover = resolveArcadeCoverUrl(imageUrl);
     try {
       assertCoverPersistable(cover);
@@ -199,10 +250,32 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
       return;
     }
 
+    // Pre-check play-sub before process modal (skip chain if free)
+    if (needIcp > 0) {
+      const afford = await checkPlayIcpAfford(principal, needIcp, identity);
+      if (afford.insufficient && afford.balance != null) {
+        ghToast({
+          title: "Insufficient play-sub ICP",
+          description: lowBalanceMessage({
+            action: "submit this arcade game for testing",
+            need: needIcp,
+            balance: afford.balance,
+          }),
+          type: "error",
+        });
+        return;
+      }
+    }
+
+    const gameId = newArcadeGameId();
+
     setBusy(true);
     await runProcess({
       title: "Publishing arcade cabinet",
-      description: "Saving title, cover, CSS, and game code to Supabase.",
+      description:
+        feeIcp > 0
+          ? `Debit ${formatIcpShort(feeIcp)} ICP submit fee from play sub, then save to Supabase.`
+          : "Saving title, cover, CSS, and game code to Supabase.",
       contextLine: t,
       tone: "attr",
       steps: [
@@ -210,6 +283,17 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
           key: "validate",
           label: "Validating game code",
           detail: "Phaser boot · cover ready",
+        },
+        {
+          key: "fee",
+          label:
+            feeIcp > 0
+              ? `Debit submit fee (${formatIcpShort(feeIcp)} ICP)`
+              : "Submit fee waived",
+          detail:
+            feeIcp > 0
+              ? "play sub → platform · admin-set"
+              : "arcadeSubmitFeeE8s = 0",
         },
         {
           key: "save",
@@ -223,12 +307,23 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
         },
       ],
       successTitle: "Saved to Supabase",
-      successDetail: "Title, cover, CSS, and gameCode stored.",
+      successDetail:
+        feeIcp > 0
+          ? `Submit fee ${formatIcpShort(feeIcp)} ICP collected · cabinet in testing.`
+          : "Title, cover, CSS, and gameCode stored.",
       action: async (setStep) => {
         setStep(0);
         await processBeat();
         setStep(1);
+        if (feeIcp > 0 || isCanisterConfigured()) {
+          const debit = await debitArcadeSubmitFee(gameId, identity);
+          if (!debit.ok) {
+            throw new Error(debit.err || "Submit fee debit failed");
+          }
+        }
+        setStep(2);
         const result = await saveArcadeGameAsync({
+          id: gameId,
           title: t,
           description: description.trim() || "Phaser 3 arcade game",
           rules: rules.trim(),
@@ -247,10 +342,10 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
         if (!result.game || result.storedOn !== "supabase") {
           throw new Error(
             ("error" in result && result.error) ||
-              "Could not write cabinet to Supabase.",
+              "Could not write cabinet to Supabase. Submit fee may already be paid — retry save with support if needed.",
           );
         }
-        setStep(2);
+        setStep(3);
         onSaved(result.game, "supabase");
         setTitle("");
         setDescription("");
@@ -261,7 +356,9 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
         ghToast({
           title: "Saved to Supabase",
           description:
-            "Title, cover, CSS, and gameCode stored in gh_arcade_games.",
+            feeIcp > 0
+              ? `Cabinet stored · ${formatIcpShort(feeIcp)} ICP submit fee debited from play sub.`
+              : "Title, cover, CSS, and gameCode stored in gh_arcade_games.",
           type: "success",
         });
         if (!previewStatus?.ok) {
@@ -380,6 +477,18 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
               ? "on Supabase (off-chain)"
               : "in this browser until Supabase is configured"}{" "}
             — not on the ICP canister.
+            {submitFeeIcp != null && submitFeeIcp > 0 ? (
+              <>
+                {" "}
+                Submit fee:{" "}
+                <strong style={{ color: "#a3ff3d" }}>
+                  {formatIcpShort(submitFeeIcp)} ICP
+                </strong>{" "}
+                (debited from your play subaccount when you ship for testing).
+              </>
+            ) : submitFeeIcp === 0 ? (
+              <> Submit fee is currently <strong>free</strong> (admin).</>
+            ) : null}
           </Text>
         </Box>
         <GhButton
@@ -414,6 +523,40 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
             window.GamerholicArcadeGame.boot(Phaser, bridge, parentEl)
           </code>
           . Full HTML pages are blocked (they break the app shell).
+        </Box>
+
+        <Box
+          p="phi3"
+          borderRadius="xl"
+          borderWidth="1px"
+          borderColor="rgba(163,255,61,0.35)"
+          bg="rgba(163,255,61,0.08)"
+          fontSize="sm"
+          color="#ffffff"
+          lineHeight="1.55"
+        >
+          <HStack gap="2" align="flex-start" mb="1">
+            <Coins size={16} color="#a3ff3d" style={{ flexShrink: 0, marginTop: 2 }} />
+            <Text fontWeight="extrabold" fontFamily="heading" color="#a3ff3d">
+              Submit-for-testing fee
+            </Text>
+          </HStack>
+          {submitFeeIcp == null ? (
+            <Text fontSize="sm" opacity={0.85}>
+              Loading fee from canister…
+            </Text>
+          ) : feeIcp <= 0 ? (
+            <Text fontSize="sm" opacity={0.9}>
+              Free right now (admin set fee to 0). No play-sub debit on submit.
+            </Text>
+          ) : (
+            <Text fontSize="sm" opacity={0.95}>
+              <strong>{formatIcpShort(feeIcp)} ICP</strong> is debited from your
+              Gamerholic play subaccount when you submit (plus 0.0001 ICP ledger
+              fee · need ~{formatIcpShort(needIcp)} ICP total). Set by admin.
+              One charge per cabinet id; edits while testing are free.
+            </Text>
+          )}
         </Box>
 
         <GhField label="Title" required tone="onDark">
@@ -885,15 +1028,19 @@ export function AddGamePanel({ open, onClose, onSaved }: Props) {
             variant="primary"
             leftIcon={<Check size={16} />}
             onClick={() => void submit()}
-            disabled={busy}
+            disabled={busy || submitFeeIcp == null}
           >
             {busy
               ? "Submitting…"
-              : previewStatus?.ok
-                ? "Submit for testing"
-                : forcePublish
-                  ? "Submit without preview"
-                  : "Submit for testing"}
+              : submitFeeIcp == null
+                ? "Loading fee…"
+                : feeIcp > 0
+                  ? forcePublish && !previewStatus?.ok
+                    ? `Submit · ${formatIcpShort(feeIcp)} ICP`
+                    : `Submit for testing · ${formatIcpShort(feeIcp)} ICP`
+                  : forcePublish && !previewStatus?.ok
+                    ? "Submit without preview"
+                    : "Submit for testing"}
           </GhButton>
         </HStack>
       </VStack>

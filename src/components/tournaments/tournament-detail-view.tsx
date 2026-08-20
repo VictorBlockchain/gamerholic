@@ -36,6 +36,7 @@ import {
   Unlock,
 } from "lucide-react";
 import {
+  EntryFeeNotice,
   GhAlert,
   GhAvatar,
   GhBadge,
@@ -49,6 +50,7 @@ import {
   GhSpinner,
   GhTextarea,
   ghToast,
+  toastLowBalance,
 } from "@/components/ui";
 import { useChat } from "@/components/chat/chat-context";
 import {
@@ -74,14 +76,33 @@ import {
   type TournamentStatus,
 } from "@/lib/tournaments";
 import {
+  joinTournament,
   loadTournament,
   setTournamentBetable,
 } from "@/lib/ic/tournament-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
+import {
+  checkPlayIcpAfford,
+  requiredIcpForTournamentEntry,
+} from "@/lib/ic/gamer-service";
 import { challengeHref } from "@/lib/challenges";
 import { useSession } from "@/components/providers/session-context";
 import { ClaimPayoutPanel } from "@/components/tournaments/claim-payout-panel";
 import { marketHref, tournamentShareUrl } from "@/lib/deep-links";
+import { BetableMemberGate } from "@/components/betable/connect-betable-button";
+import {
+  addEsportsOutcome,
+  isBetableConfigured,
+} from "@/lib/ic/betable-service";
+import {
+  getCanonicalGhPrincipal,
+} from "@/lib/device-sync";
+import {
+  gamerholicProfileUrl,
+  loadStoredBetableLink,
+  toEsportsAvatarUrl,
+  toEsportsOutcomeLabel,
+} from "@/lib/connect-betable";
 
 /**
  * Tournament detail — overview, entrants, bracket, host controls (incl. open betable).
@@ -91,8 +112,9 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
   const [t, setT] = useState<TournamentDetail | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
-  const { principal, profile } = useSession();
+  const { principal, profile, identity, isLoggedIn, login } = useSession();
   const who = profile?.username || principal;
+  const [joining, setJoining] = useState(false);
 
   const reload = useCallback(async () => {
     setLoading(true);
@@ -118,6 +140,15 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  // Mobile pull-to-refresh
+  useEffect(() => {
+    const onPull = () => {
+      void reload();
+    };
+    window.addEventListener("gh:pull-refresh", onPull);
+    return () => window.removeEventListener("gh:pull-refresh", onPull);
   }, [reload]);
 
   if (loading) {
@@ -184,6 +215,15 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
           (t.scheduledAt
             ? new Date(t.scheduledAt)
             : new Date(Date.now() + 2 * 3600_000));
+        const ghPrimary = principal
+          ? await getCanonicalGhPrincipal(principal, identity)
+          : "";
+        const bLink = ghPrimary ? loadStoredBetableLink(ghPrimary) : null;
+        if (!bLink?.principal) {
+          throw new Error(
+            "Connect Betable first — required to open an Esports market as host",
+          );
+        }
         const { marketId } = await openTournamentBetableMarket({
           tournamentId: t.id,
           hostWho: who,
@@ -194,6 +234,15 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
           outcomes: opts.outcomes,
           closeDate: close,
           liveStreamUrl: t.streamUrl,
+          betableHostPrincipal: bLink.principal,
+          esportsOutcomes: opts.outcomes.map((label, i) => ({
+            label,
+            avatar_url: i === 0 ? toEsportsAvatarUrl(bLink) : "",
+            source_id:
+              i === 0 ? bLink.principal : `seed-${i}-${label.slice(0, 20)}`,
+            source_kind: "player" as const,
+            gamerholic_principal: i === 0 ? ghPrimary : "",
+          })),
         });
         ghToast({
           title: "Betable market created",
@@ -297,36 +346,179 @@ export function TournamentDetailView({ tournamentId }: { tournamentId: string })
                 </Link>
               ) : null}
               {t.registrationOpen && t.status === "open" ? (
-                <GhButton
-                  size="sm"
-                  variant="primary"
-                  leftIcon={<Trophy size={14} />}
-                  onClick={() => {
-                    if (t.entrants.some((e) => e.username === "you")) {
-                      ghToast({ title: "Already registered", type: "info" });
-                      return;
-                    }
-                    const entrant: TournamentEntrant = {
-                      id: `e-${Date.now()}`,
-                      username: "you",
-                      seed: t.entrants.length + 1,
-                      checkedIn: false,
-                      paid: true,
-                      record: "0–0",
-                    };
-                    patch({
-                      entrants: [...t.entrants, entrant],
-                      prizePotIcp: pot + t.entryFeeIcp,
-                    });
-                    ghToast({
-                      title: "Registered",
-                      description: `${formatIcp(t.entryFeeIcp)} escrowed`,
-                      type: "success",
-                    });
-                  }}
-                >
-                  {isGroupPotTournament(t) ? "Take a seat" : "Join bracket"}
-                </GhButton>
+                <VStack align="stretch" gap="2" maxW="16rem">
+                  {t.entryFeeIcp > 0 ? (
+                    <EntryFeeNotice
+                      amountIcp={t.entryFeeIcp}
+                      kind="tournament"
+                      compact
+                    />
+                  ) : null}
+                  <BetableMemberGate
+                    sessionPrincipal={principal}
+                    identity={identity}
+                    required={Boolean(t.betable || t.marketId)}
+                  >
+                  <GhButton
+                    size="sm"
+                    variant="primary"
+                    leftIcon={<Trophy size={14} />}
+                    disabled={joining}
+                    onClick={() => {
+                      void (async () => {
+                        if (!isLoggedIn) {
+                          void login();
+                          ghToast({ title: "Sign in required", type: "error" });
+                          return;
+                        }
+                        const me =
+                          profile?.username || principal || "you";
+                        if (
+                          t.entrants.some(
+                            (e) =>
+                              e.username === me ||
+                              e.username === "you" ||
+                              e.username === principal,
+                          )
+                        ) {
+                          ghToast({
+                            title: "Already registered",
+                            type: "info",
+                          });
+                          return;
+                        }
+
+                        // Pre-check play balance before on-chain debit
+                        if (t.entryFeeIcp > 0 && principal) {
+                          const need = requiredIcpForTournamentEntry(
+                            t.entryFeeIcp,
+                          );
+                          const afford = await checkPlayIcpAfford(
+                            principal,
+                            need,
+                            identity,
+                          );
+                          if (
+                            afford.insufficient &&
+                            afford.balance != null
+                          ) {
+                            toastLowBalance({
+                              action: "join this tournament",
+                              needIcp: afford.need,
+                              balanceIcp: afford.balance,
+                            });
+                            return;
+                          }
+                        }
+
+                        setJoining(true);
+                        try {
+                          if (isCanisterConfigured() && identity) {
+                            await joinTournament(t.id, me, identity, {
+                              label: me,
+                            });
+                            // Esports roster: Betable display + GH primary link-back
+                            if (
+                              t.marketId &&
+                              isBetableConfigured() &&
+                              principal
+                            ) {
+                              try {
+                                const ghPrimary =
+                                  await getCanonicalGhPrincipal(
+                                    principal,
+                                    identity,
+                                  );
+                                const bLink =
+                                  loadStoredBetableLink(ghPrimary);
+                                if (bLink?.principal) {
+                                  await addEsportsOutcome({
+                                    marketId: t.marketId,
+                                    entityId: t.id,
+                                    entityKind: "tournament",
+                                    label: toEsportsOutcomeLabel(bLink),
+                                    avatarUrl: toEsportsAvatarUrl(bLink),
+                                    sourceId: bLink.principal,
+                                    sourceKind: "player",
+                                    gamerholicPrincipal: ghPrimary,
+                                    gamerholicProfileUrl:
+                                      gamerholicProfileUrl(ghPrimary),
+                                  });
+                                }
+                              } catch (eo) {
+                                console.warn(
+                                  "[join] esports outcome add failed",
+                                  eo,
+                                );
+                              }
+                            }
+                            await reload();
+                            ghToast({
+                              title: "Registered on-chain",
+                              description:
+                                t.entryFeeIcp > 0
+                                  ? `${formatIcp(t.entryFeeIcp)} + ledger fee → tournament escrow`
+                                  : "Free entry",
+                              type: "success",
+                            });
+                          } else {
+                            // Local mirror when canister unavailable
+                            const entrant: TournamentEntrant = {
+                              id: `e-${Date.now()}`,
+                              username: me,
+                              seed: t.entrants.length + 1,
+                              checkedIn: false,
+                              paid: true,
+                              record: "0–0",
+                            };
+                            patch({
+                              entrants: [...t.entrants, entrant],
+                              prizePotIcp: pot + t.entryFeeIcp,
+                            });
+                            ghToast({
+                              title: "Registered",
+                              description:
+                                t.entryFeeIcp > 0
+                                  ? `${formatIcp(t.entryFeeIcp)} (local mirror)`
+                                  : "Free entry",
+                              type: "success",
+                            });
+                          }
+                        } catch (e) {
+                          const msg =
+                            e instanceof Error ? e.message : String(e);
+                          if (/Need .* ICP|Low balance|insufficient/i.test(msg)) {
+                            toastLowBalance({
+                              action: "join this tournament",
+                              needIcp: requiredIcpForTournamentEntry(
+                                t.entryFeeIcp,
+                              ),
+                              balanceIcp: 0,
+                              description: msg,
+                            });
+                          } else {
+                            ghToast({
+                              title: "Join failed",
+                              description: msg,
+                              type: "error",
+                            });
+                          }
+                        } finally {
+                          setJoining(false);
+                        }
+                      })();
+                    }}
+                  >
+                    {joining
+                      ? "Joining…"
+                      : isGroupPotTournament(t)
+                        ? "Take a seat"
+                        : t.entryFeeIcp > 0
+                          ? `Join · ${formatIcp(t.entryFeeIcp)}`
+                          : "Join bracket"}
+                  </GhButton>
+                  </BetableMemberGate>
+                </VStack>
               ) : null}
             </HStack>
           </HStack>

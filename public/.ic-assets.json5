@@ -1,10 +1,13 @@
 [
   {
     "match": "**/*",
+    "security_policy": "disabled",
+    "disable_security_policy_warning": true,
     "headers": {
       "Cache-Control": "public, max-age=0, must-revalidate",
       "X-Frame-Options": "DENY",
       "X-Content-Type-Options": "nosniff",
+      "Referrer-Policy": "strict-origin-when-cross-origin",
     },
     "allow_raw_access": true,
   },
@@ -19,6 +22,22 @@
     "match": "_next/static/**/*",
     "headers": {
       "Cache-Control": "public, max-age=31536000, immutable",
+    },
+  },
+  // Required for Internet Identity derivationOrigin across domain + canister URLs
+  {
+    "match": ".well-known/ii-alternative-origins",
+    "headers": {
+      "Content-Type": "application/json",
+      "Access-Control-Allow-Origin": "*",
+      "Cache-Control": "public, max-age=3600",
+    },
+  },
+  {
+    "match": ".well-known/ic-domains",
+    "headers": {
+      "Content-Type": "text/plain",
+      "Cache-Control": "public, max-age=3600",
     },
   },
 ]

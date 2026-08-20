@@ -1,7 +1,7 @@
 # Gamerholic — Canisters + Supabase Realtime
 
 **Updated:** 2026-07-30  
-**Pattern source:** `../dexsta` (`notes/design/supabase-canister-sync.md`, `use-event-stream.ts`)
+**Pattern source:** `../afta.cash` (`notes/design/supabase-canister-sync.md`, `use-event-stream.ts`)
 
 ## Architecture
 

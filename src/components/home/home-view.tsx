@@ -32,9 +32,12 @@ import { FeaturePanel } from "@/components/home/feature-panel";
 import { FreeTournamentVault } from "@/components/home/free-tournament-vault";
 import { BetableMarketsSection } from "@/components/home/betable-markets-section";
 import { AttributesCurrencyRow } from "@/components/home/attributes-currency-row";
+import { useRouter } from "next/navigation";
 import { GhBadge, GhButton, GhSurface, SectionDivider } from "@/components/ui";
 import { MatchCard } from "@/components/cards/match-card";
 import { CountUp } from "@/components/spectacle/count-up";
+import { useSession } from "@/components/providers/session-context";
+import { homeHref } from "@/lib/nav";
 import { ART } from "@/lib/art";
 
 /** Dexsta-style value strip — get the product in 5 seconds */
@@ -264,6 +267,9 @@ const FEED_OTHER = FEED.filter(
  * hero slider → value strip → why pillars → deep dives → how it works → live → CTA
  */
 export function HomeView() {
+  const { login } = useSession();
+  const router = useRouter();
+
   return (
     <VStack align="stretch" gap="0" className="gh-stack-phi-lg">
       {/* ── Hero product slider ── */}
@@ -1123,11 +1129,16 @@ export function HomeView() {
                 Take your cut
               </GhButton>
             </Link>
-            <Link href="/wallet">
-              <GhButton variant="outline" size="lg" leftIcon={<Wallet size={18} />}>
-                Connect wallet
-              </GhButton>
-            </Link>
+            <GhButton
+              variant="outline"
+              size="lg"
+              leftIcon={<Wallet size={18} />}
+              onClick={() => {
+                void login().then(() => router.push(homeHref(true)));
+              }}
+            >
+              Connect wallet
+            </GhButton>
           </HStack>
         </Flex>
       </Box>

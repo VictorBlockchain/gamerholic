@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 400 400" width="400" height="400">
+  <title>Power-G mark — print pack</title>
+  <rect width="400" height="400" fill="none"/>
+  <!-- Stylized G / power mark for left-chest print -->
+  <circle cx="200" cy="200" r="150" fill="none" stroke="#a3ff3d" stroke-width="22"/>
+  <path
+    d="M280 140 A95 95 0 1 0 280 260 L220 260 L220 210 L280 210"
+    fill="none"
+    stroke="#a3ff3d"
+    stroke-width="28"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  />
+  <circle cx="255" cy="200" r="16" fill="#a3ff3d"/>
+</svg>

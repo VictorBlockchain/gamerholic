@@ -162,6 +162,118 @@ export function requiredIcpForChallengeEntry(entryFeeIcp: number): number {
   return entryFeeIcp + ICP_TRANSFER_FEE;
 }
 
+/** Tournament entry: stake + one ICRC-1 fee (play sub → tournament escrow). */
+export function requiredIcpForTournamentEntry(entryFeeIcp: number): number {
+  return requiredIcpForChallengeEntry(entryFeeIcp);
+}
+
+/**
+ * Arcade insert: play fee + 2× ledger fee (platform cut transfer + escrow transfer).
+ * Matches debitArcadePlayFeeNativeICP reserve on gh_backend.
+ */
+export function requiredIcpForArcadeInsert(playFeeIcp: number): number {
+  if (!Number.isFinite(playFeeIcp) || playFeeIcp <= 0) return 0;
+  return playFeeIcp + ICP_TRANSFER_FEE * 2;
+}
+
+/**
+ * Arcade submit-for-testing: flat admin fee + 1× ledger fee.
+ * Matches debitArcadeSubmitFeeNativeICP reserve on gh_backend.
+ */
+export function requiredIcpForArcadeSubmit(submitFeeIcp: number): number {
+  if (!Number.isFinite(submitFeeIcp) || submitFeeIcp <= 0) return 0;
+  return submitFeeIcp + ICP_TRANSFER_FEE;
+}
+
+export type PlayIcpAffordCheck = {
+  /** True when known balance is enough, or when balance could not be read (allow canister path). */
+  ok: boolean;
+  /** Known shortfall — only false when balance was read and is too low. */
+  insufficient: boolean;
+  balance: number | null;
+  need: number;
+  shortfall: number;
+  /** Balance query failed / canister not configured */
+  unknown: boolean;
+};
+
+export function formatIcpShort(n: number, digits = 4): string {
+  if (!Number.isFinite(n)) return "0";
+  const s = n.toFixed(digits);
+  return s.replace(/\.?0+$/, "") || "0";
+}
+
+/**
+ * User-facing low-balance copy (toasts / banners). Prefer showing this before
+ * calling the canister so we never wait on InsufficientFunds traps.
+ */
+export function lowBalanceMessage(opts: {
+  action: string;
+  need: number;
+  balance: number;
+}): string {
+  const shortfall = Math.max(0, opts.need - opts.balance);
+  return (
+    `Need ${formatIcpShort(opts.need)} ICP to ${opts.action} ` +
+    `(have ${formatIcpShort(opts.balance)} ICP · short ${formatIcpShort(shortfall)} ICP). ` +
+    `Deposit to your Gamerholic play subaccount first.`
+  );
+}
+
+/**
+ * Pre-check play-subaccount ICP vs required amount.
+ * When balance is unknown, `ok` is true and `unknown` is true — caller may still call canister.
+ */
+export async function checkPlayIcpAfford(
+  principalText: string,
+  needIcp: number,
+  identity?: Identity | null,
+): Promise<PlayIcpAffordCheck> {
+  const need =
+    Number.isFinite(needIcp) && needIcp > 0 ? needIcp : 0;
+  if (need <= 0) {
+    return {
+      ok: true,
+      insufficient: false,
+      balance: null,
+      need: 0,
+      shortfall: 0,
+      unknown: false,
+    };
+  }
+  if (!principalText) {
+    return {
+      ok: false,
+      insufficient: true,
+      balance: 0,
+      need,
+      shortfall: need,
+      unknown: false,
+    };
+  }
+  const balance = await getUserPlayIcpBalance(principalText, identity);
+  if (balance == null) {
+    return {
+      ok: true,
+      insufficient: false,
+      balance: null,
+      need,
+      shortfall: 0,
+      unknown: true,
+    };
+  }
+  const shortfall = Math.max(0, need - balance);
+  const insufficient = balance < need;
+  return {
+    ok: !insufficient,
+    insufficient,
+    balance,
+    need,
+    shortfall,
+    unknown: false,
+  };
+}
+
 /** ICP play-subaccount balance in whole ICP (not e8s). */
 export async function getUserPlayIcpBalance(
   principalText: string,

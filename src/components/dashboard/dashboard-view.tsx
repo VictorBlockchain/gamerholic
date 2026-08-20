@@ -44,7 +44,6 @@ import { MatchCard } from "@/components/cards/match-card";
 import { useSession } from "@/components/providers/session-context";
 import { useChat } from "@/components/chat/chat-context";
 import { excludeSelfChatUsers, type ChatUser } from "@/lib/chat/types";
-import { chatBackendLabel } from "@/lib/chat/chat-service";
 import { ChallengeQuickForm } from "./challenge-quick-form";
 import { MyArenaPanel } from "./my-arena-panel";
 import { MyMarketsSection } from "./my-markets-section";
@@ -375,35 +374,52 @@ export function DashboardView() {
           position="relative"
           direction={{ base: "column", md: "row" }}
           justify="space-between"
-          align={{ md: "center" }}
-          gap="phi4"
+          align={{ base: "center", md: "center" }}
+          gap={{ base: "phi3", md: "phi4" }}
           p={{ base: "phi4", md: "phi5" }}
+          textAlign={{ base: "center", md: "start" }}
         >
-          <Box minW="0">
-            <HStack gap="2" mb="phi2" flexWrap="wrap">
-              <GhBadge tone="brand">Dashboard</GhBadge>
-              <GhBadge tone="muted">{chatBackendLabel()}</GhBadge>
-              <GhBadge tone={isCanisterConfigured() ? "live" : "muted"}>
-                {isCanisterConfigured() ? "Canister live" : "Canister offline"}
-              </GhBadge>
-            </HStack>
-            <Heading
-              as="h1"
-              fontFamily="heading"
-              fontSize={{ base: "xl", md: "2xl" }}
-              fontWeight="extrabold"
-              letterSpacing="0.02em"
-              lineHeight="1.15"
-            >
-              Welcome back,{" "}
-              <Text as="span" className="gh-text-brand">
-                @{displayName}
+          <VStack
+            align={{ base: "center", md: "stretch" }}
+            gap={{ base: "phi2", md: "0" }}
+            minW="0"
+            flex="1"
+            w={{ base: "100%", md: "auto" }}
+          >
+            <Box>
+              <GhBadge tone="live">I Win For A Living</GhBadge>
+            </Box>
+            <Box w="100%">
+              <Text
+                fontSize={{ base: "2xs", md: "xs" }}
+                fontWeight="semibold"
+                letterSpacing="0.06em"
+                textTransform="uppercase"
+                color="fg.muted"
+                mb="0.5"
+                lineHeight="1.2"
+              >
+                Welcome back
               </Text>
-            </Heading>
-            <Text fontSize="sm" color="fg.muted" mt="phi2" maxW="32rem" lineHeight="1.55">
-              Win For A Living
-            </Text>
-            <HStack gap="2" mt="phi3" flexWrap="wrap">
+              <Heading
+                as="h1"
+                fontFamily="heading"
+                fontSize={{ base: "xl", md: "2xl" }}
+                fontWeight="extrabold"
+                letterSpacing="0.02em"
+                lineHeight="1.15"
+                className="gh-text-brand"
+              >
+                @{displayName}
+              </Heading>
+            </Box>
+
+            <HStack
+              gap="2"
+              mt={{ base: "0", md: "phi3" }}
+              flexWrap="wrap"
+              justify={{ base: "center", md: "flex-start" }}
+            >
               <GhBadge tone="prize">
                 <Trophy size={11} /> {filteredTournaments.length} brackets
               </GhBadge>
@@ -414,37 +430,67 @@ export function DashboardView() {
                 <GhBadge tone="muted">{openTourneys} open reg</GhBadge>
               ) : null}
             </HStack>
-          </Box>
-          <HStack gap="2" flexShrink={0} flexWrap="wrap">
-            <Link href="/community">
+          </VStack>
+
+          {/* Mobile: Challenge full-width, Community | Host pair; desktop: inline row */}
+          <Grid
+            w={{ base: "100%", md: "auto" }}
+            maxW={{ base: "22rem", md: "none" }}
+            mx={{ base: "auto", md: "0" }}
+            flexShrink={0}
+            templateColumns={{ base: "1fr 1fr", md: "repeat(3, auto)" }}
+            templateAreas={{
+              base: `"challenge challenge" "community host"`,
+              md: `"community challenge host"`,
+            }}
+            gap="2"
+            alignItems="stretch"
+          >
+            <Box gridArea="community" minW="0">
+              <Link href="/community" style={{ display: "block", height: "100%" }}>
+                <GhButton
+                  size="sm"
+                  variant="outline"
+                  leftIcon={<MessageCircle size={14} />}
+                  w="100%"
+                >
+                  Community
+                </GhButton>
+              </Link>
+            </Box>
+            <Box gridArea="challenge" minW="0">
               <GhButton
                 size="sm"
-                variant="outline"
-                leftIcon={<MessageCircle size={14} />}
+                variant="primary"
+                leftIcon={<Plus size={14} />}
+                w="100%"
+                onClick={() => {
+                  setChallengeTarget(null);
+                  setChallengeOpen(true);
+                  document
+                    .getElementById("gh-challenge-create-panel")
+                    ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                }}
               >
-                Community
+                Challenge
               </GhButton>
-            </Link>
-            <GhButton
-              size="sm"
-              variant="primary"
-              leftIcon={<Plus size={14} />}
-              onClick={() => {
-                setChallengeTarget(null);
-                setChallengeOpen(true);
-                document
-                  .getElementById("gh-challenge-create-panel")
-                  ?.scrollIntoView({ behavior: "smooth", block: "start" });
-              }}
-            >
-              Challenge
-            </GhButton>
-            <Link href="/create?type=tournament">
-              <GhButton size="sm" variant="prize" leftIcon={<Trophy size={14} />}>
-                Host
-              </GhButton>
-            </Link>
-          </HStack>
+            </Box>
+            <Box gridArea="host" minW="0">
+              <Link
+                href="/create?type=tournament"
+                style={{ display: "block", height: "100%" }}
+              >
+                <GhButton
+                  size="sm"
+                  variant="prize"
+                  leftIcon={<Trophy size={14} />}
+                  w="100%"
+                >
+                  Host
+                </GhButton>
+              </Link>
+            </Box>
+          </Grid>
         </Flex>
       </Box>
 

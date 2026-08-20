@@ -63,6 +63,7 @@ function mapType(type?: string): GhToastTone {
   if (type === "error") return "error";
   if (type === "warning") return "warning";
   if (type === "loading") return "info";
+  if (type === "info") return "info";
   return "brand";
 }
 

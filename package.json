@@ -6,7 +6,7 @@
     "dev": "next dev --port 3020",
     "dev:turbo": "next dev --turbopack --port 3020",
     "build": "next build",
-    "build:ic": "NEXT_EXPORT=1 next build",
+    "build:ic": "bash scripts/build-ic-static.sh",
     "start": "next start --port 3020",
     "lint": "next lint",
     "deploy:ic:assets": "npm run build:ic && dfx deploy gh_assets --network ic",

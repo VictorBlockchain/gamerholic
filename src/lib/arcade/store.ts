@@ -63,6 +63,11 @@ function uid(prefix: string) {
   return `${prefix}_${Math.random().toString(36).slice(2, 10)}`;
 }
 
+/** Pre-allocate id so submit-fee debit can bind memo + idempotency before Supabase write. */
+export function newArcadeGameId(): string {
+  return uid("game");
+}
+
 /** Deterministic escrow label per game (mirrors ICP subaccount derivation later). */
 export function makeEscrowId(gameId: string): string {
   return `gh-arcade-escrow-${gameId}`;
@@ -144,6 +149,11 @@ function normalizeGame(g: Partial<ArcadeGame> & { id: string }): ArcadeGame {
     status,
     upvotes,
     upvotedBy,
+    approvedAt: g.approvedAt
+      ? String(g.approvedAt)
+      : status === "live"
+        ? g.createdAt || null
+        : null,
   };
 }
 
@@ -371,17 +381,21 @@ export async function claimGameEarningsIcpOnChain(
     const { claimArcadeWinningsOnChain } = await import(
       "@/lib/ic/settlement-service"
     );
+    const { formatCanisterError } = await import("@/lib/ic/canister-errors");
     const r = await claimArcadeWinningsOnChain(gameId, amountIcp, identity);
     return {
       ok: r.ok,
       amountIcp: r.amountIcp,
-      error: r.ok ? undefined : r.err,
+      error: r.ok
+        ? undefined
+        : formatCanisterError(r.err || "Claim failed", "Arcade claim failed"),
     };
   } catch (e) {
+    const { formatCanisterError } = await import("@/lib/ic/canister-errors");
     return {
       ok: false,
       amountIcp: 0,
-      error: e instanceof Error ? e.message : String(e),
+      error: formatCanisterError(e, "Arcade claim failed"),
     };
   }
 }
@@ -443,6 +457,11 @@ function rowToGame(row: Record<string, unknown>): ArcadeGame {
       : Array.isArray(row.upvotedBy)
         ? (row.upvotedBy as string[])
         : [],
+    approvedAt: row.approved_at
+      ? String(row.approved_at)
+      : row.approvedAt
+        ? String(row.approvedAt)
+        : null,
   });
 }
 
@@ -547,6 +566,7 @@ function gameToRow(g: ArcadeGame) {
     status: g.status,
     upvotes: g.upvotes,
     upvoted_by: g.upvotedBy,
+    approved_at: g.approvedAt ?? null,
     created_at: g.createdAt,
     updated_at: new Date().toISOString(),
   };
@@ -746,6 +766,9 @@ export function upvoteArcadeGame(
     upvotedBy,
     upvotes,
     status: wentLive ? "live" : "testing",
+    approvedAt: wentLive
+      ? prev.approvedAt || new Date().toISOString()
+      : prev.approvedAt ?? null,
   });
   upsertGamesCache(next);
   return { ok: true, game: next, wentLive };
@@ -978,6 +1001,12 @@ export async function listPlayerArcadeLeaderboardGames(opts: {
         q = q.eq("username", username);
       }
       const { data, error } = await q;
+      // 404 / PGRST205 = table not migrated yet — fall through silently
+      const missingTable =
+        !!error &&
+        (error.code === "PGRST205" ||
+          error.code === "42P01" ||
+          /could not find|does not exist|404/i.test(error.message || ""));
       if (!error && data?.length) {
         for (const row of data as Record<string, unknown>[]) {
           hits.push({
@@ -986,7 +1015,10 @@ export async function listPlayerArcadeLeaderboardGames(opts: {
           });
         }
       } else {
-        // Sessions fallback
+        if (error && !missingTable) {
+          console.warn("[arcade] gh_arcade_scores", error.message);
+        }
+        // Sessions fallback (also works if scores table was never applied)
         let sq = sb
           .from("gh_arcade_sessions")
           .select("game_id,final_score,player_principal,username,paid,status")

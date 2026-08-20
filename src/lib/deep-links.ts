@@ -100,3 +100,9 @@ export function resolveDeepId(opts: {
   }
   return "";
 }
+
+export function shopProductHref(id: string): string {
+  const clean = String(id || "").trim();
+  if (!clean) return "/shop/";
+  return `/shop/product/?id=${encodeURIComponent(clean)}`;
+}

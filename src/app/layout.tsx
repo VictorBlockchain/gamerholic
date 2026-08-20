@@ -80,7 +80,7 @@ export default function RootLayout({
         */}
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var p=location.pathname||"";var rules=[[/^\\/challenges\\/([^/]+)\\/?$/i,"/challenges/view/"],[/^\\/tournaments\\/([^/]+)\\/?$/i,"/tournaments/view/"],[/^\\/teams\\/([^/]+)\\/?$/i,"/teams/view/"],[/^\\/chat\\/([^/]+)\\/?$/i,"/chat/view/"],[/^\\/markets\\/([^/]+)\\/?$/i,"/markets/view/"],[/^\\/arcade\\/play\\/([^/]+)\\/?$/i,"/arcade/play/"]];for(var i=0;i<rules.length;i++){var m=p.match(rules[i][0]);if(!m)continue;var id=decodeURIComponent(m[1]||"");if(!id||id==="_"||id==="view")return;location.replace(rules[i][1]+"?id="+encodeURIComponent(id));return;}}catch(e){}})();`,
+            __html: `(function(){try{var p=location.pathname||"";var rules=[[/^\\/challenges\\/([^/]+)\\/?$/i,"/challenges/view/","id"],[/^\\/tournaments\\/([^/]+)\\/?$/i,"/tournaments/view/","id"],[/^\\/teams\\/([^/]+)\\/?$/i,"/teams/view/","id"],[/^\\/chat\\/([^/]+)\\/?$/i,"/chat/view/","id"],[/^\\/markets\\/([^/]+)\\/?$/i,"/markets/view/","id"],[/^\\/arcade\\/play\\/([^/]+)\\/?$/i,"/arcade/play/","id"],[/^\\/profile\\/([^/]+)\\/?$/i,"/profile/view/","u"]];for(var i=0;i<rules.length;i++){var m=p.match(rules[i][0]);if(!m)continue;var id=decodeURIComponent(m[1]||"");if(!id||id==="_"||id==="view")return;var q=rules[i][2]||"id";location.replace(rules[i][1]+"?"+q+"="+encodeURIComponent(id));return;}}catch(e){}})();`,
           }}
         />
         <GamerholicProvider>

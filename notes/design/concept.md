@@ -1,6 +1,7 @@
 # Gamerholic concept — UI-first
 
-**Updated:** 2026-07-30
+**Updated:** 2026-08-04  
+**ICP transfers / arcade insert / low-balance:** [icrc1-transfers-and-errors.md](./icrc1-transfers-and-errors.md)
 
 ## Positioning
 
@@ -26,6 +27,8 @@ Not “another stake site.” The platform rewards **community operators** and *
 
 Platform rake still funds cycles / free pools — orthogonal to host cut.  
 **Claim model:** arcade winnings accrue in **per-game escrow** until the user claims to their play subaccount.
+
+**Mainnet (2026-08-04):** `gh_backend` debits use native ICP ledger with official ICRC-1 `TransferError`. FE pre-checks play-sub balance and shows **Low balance** (not candid traps) for arcade insert, challenge entry, and tournament join.
 
 ## High Score Arcade (summary)
 

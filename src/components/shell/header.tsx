@@ -10,38 +10,57 @@ import {
   LifeBuoy,
   LogOut,
   Menu,
+  Shield,
   User,
   Wallet,
   X,
 } from "lucide-react";
 import {
-  ACCOUNT_MENU,
+  accountMenuForSession,
+  homeHref,
   primaryNavForSession,
+  profileHref,
   tabFromPath,
 } from "@/lib/nav";
 import { GhButton, GhAvatar } from "@/components/ui";
 import { useSession } from "@/components/providers/session-context";
 import { BRAND } from "@/lib/art";
 import { loadArenaStats } from "@/lib/ic/gamer-service";
-import { USERNAME_MAX_LENGTH } from "@/lib/profile";
+import {
+  checkIsAdmin,
+  listChainAdmins,
+} from "@/lib/ic/moderator-service";
+import {
+  isPlatformAdmin,
+  USERNAME_MAX_LENGTH,
+} from "@/lib/profile";
+import { isCanisterConfigured } from "@/lib/ic/canisters";
 
 /**
  * App header — brand · primary nav · Connect / account menu.
- * Nav: Dashboard · Challenge (connected) · Arcade · Rooms
+ * Nav: Dashboard · Challenge (connected) · Arcade · Rooms · Admin (admins)
  */
 export function Header() {
   const pathname = usePathname();
   const router = useRouter();
   const active = tabFromPath(pathname);
-  const { isLoggedIn, login, logout, user, principal, identity } =
+  const { isLoggedIn, login, logout, user, principal, identity, profile } =
     useSession();
   const [scrolled, setScrolled] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [accountOpen, setAccountOpen] = useState(false);
   const [icpBalance, setIcpBalance] = useState<number | null>(null);
+  const [chainAdmin, setChainAdmin] = useState(false);
   const accountRef = useRef<HTMLDivElement>(null);
 
-  const nav = primaryNavForSession(isLoggedIn);
+  const sbAdmin = isPlatformAdmin(profile?.role);
+  const isAdmin = sbAdmin || chainAdmin;
+  const nav = primaryNavForSession(isLoggedIn, { isAdmin });
+  const accountMenu = accountMenuForSession({
+    isAdmin,
+    // chainAdmin alone is enough; sbAdmin already covered by isAdmin
+    isModerator: isAdmin || isPlatformAdmin(profile?.role),
+  });
 
   useEffect(() => {
     const onScroll = () => setScrolled(window.scrollY > 12);
@@ -90,8 +109,38 @@ export function Header() {
     };
   }, [isLoggedIn, principal, identity]);
 
+  // On-chain setAdmin flag (OR with Supabase platform admin for nav)
+  useEffect(() => {
+    if (!isLoggedIn || !principal) {
+      setChainAdmin(false);
+      return;
+    }
+    if (!isCanisterConfigured()) {
+      setChainAdmin(false);
+      return;
+    }
+    let cancelled = false;
+    void (async () => {
+      try {
+        // Prefer principal (flag is stored by principal text, not username)
+        const [flag, admins] = await Promise.all([
+          checkIsAdmin(principal, identity),
+          listChainAdmins(identity),
+        ]);
+        const inList = admins.some((a) => a === principal);
+        if (!cancelled) setChainAdmin(Boolean(flag || inList));
+      } catch {
+        if (!cancelled) setChainAdmin(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [isLoggedIn, principal, identity]);
+
   const connect = () => {
-    void login().then(() => router.push("/dashboard"));
+    // Logged-in home = dashboard
+    void login().then(() => router.push(homeHref(true)));
   };
 
   const balanceLabel =
@@ -130,7 +179,11 @@ export function Header() {
           w="100%"
         >
           <HStack gap="phi2" minW="0">
-            <Link href="/" style={{ textDecoration: "none" }}>
+            <Link
+              href={homeHref(isLoggedIn)}
+              style={{ textDecoration: "none" }}
+              title={isLoggedIn ? "Dashboard" : "Home"}
+            >
               <HStack gap="phi2">
                 <Box
                   w="9"
@@ -306,9 +359,15 @@ export function Header() {
                       </HStack>
                     </Box>
                     <VStack align="stretch" gap="0" py="1">
-                      {ACCOUNT_MENU.map((item) => {
+                      {accountMenu.map((item) => {
                         const Icon = item.icon;
                         const external = "external" in item && item.external;
+                        const href =
+                          item.href === "/profile"
+                            ? profileHref(user?.username, principal, {
+                                self: true,
+                              })
+                            : item.href;
                         return (
                           <Box
                             key={item.label}
@@ -322,15 +381,32 @@ export function Header() {
                             onClick={() => {
                               setAccountOpen(false);
                               if (external) {
-                                window.location.href = item.href;
+                                window.location.href = href;
                               } else {
-                                router.push(item.href);
+                                router.push(href);
                               }
                             }}
                           >
                             <HStack gap="2.5">
-                              <Icon size={16} />
-                              <Text fontSize="sm" fontWeight="semibold">
+                              <Icon
+                                size={16}
+                                color={
+                                  item.href.includes("moderator") ||
+                                  item.href.includes("admin")
+                                    ? "var(--gh-colors-live-fg)"
+                                    : undefined
+                                }
+                              />
+                              <Text
+                                fontSize="sm"
+                                fontWeight="semibold"
+                                color={
+                                  item.href.includes("moderator") ||
+                                  item.href.includes("admin")
+                                    ? "live.fg"
+                                    : undefined
+                                }
+                              >
                                 {item.label}
                               </Text>
                             </HStack>
@@ -490,6 +566,32 @@ export function Header() {
                     </Text>
                   </HStack>
                 </Box>
+                {isAdmin ? (
+                  <Box
+                    as="button"
+                    textAlign="left"
+                    px="3"
+                    py="3"
+                    borderRadius="xl"
+                    cursor="pointer"
+                    borderWidth="1px"
+                    borderColor="live.solid"
+                    bg="live.muted"
+                    onClick={() => router.push("/admin")}
+                  >
+                    <HStack gap="3">
+                      <Shield size={18} color="var(--gh-colors-live-fg)" />
+                      <Box>
+                        <Text fontWeight="bold" fontSize="sm" color="live.fg">
+                          Admin
+                        </Text>
+                        <Text fontSize="xs" color="fg.subtle">
+                          Console · fees · roles
+                        </Text>
+                      </Box>
+                    </HStack>
+                  </Box>
+                ) : null}
                 <Box
                   as="button"
                   textAlign="left"

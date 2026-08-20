@@ -16,6 +16,18 @@ Design: [`../notes/design/canister-supabase-realtime.md`](../notes/design/canist
    `gh_arcade_sessions`, `gh_arcade_games`, `gh_arcade_score_events`, `gh_arcade_scores`  
    (the script also tries to add them)
 
+### Hotfix: `gh_arcade_scores` 404 on dashboard
+
+Console:
+
+`GET .../rest/v1/gh_arcade_scores ... 404`
+
+Table never applied on this Supabase project. Run:
+
+**[`migrations/20260804_gh_arcade_scores.sql`](./migrations/20260804_gh_arcade_scores.sql)**
+
+(Or re-run full [`schema.sql`](./schema.sql) — section “Paid leaderboard rows”.)
+
 ### Hotfix: Free play “Could not start session” / `gen_random_bytes`
 
 If free play fails with `function gen_random_bytes(integer) does not exist`, run:
@@ -86,3 +98,51 @@ No profile localStorage in production — session identity is AuthClient only.
 
 Client: `src/lib/supabase/client.ts`  
 Mirror RPCs: `upsert_gh_challenge_mirror`, `upsert_gh_tournament_mirror`, `insert_gh_challenge_event`
+
+### Shop products (`gh_shop_products`)
+
+Storefront and admin **load products from the database only** (no localStorage mock seed).
+
+| Migration | Purpose |
+|-----------|---------|
+| `20260802_gh_shop.sql` | Tables + seed insert + public SELECT RLS |
+| `20260802_gh_shop_storage.sql` | Storage bucket `gh-shop` |
+| `20260802_gh_shop_product_rpcs.sql` | Admin list / upsert / delete (requires `gh_profiles.role = admin`) |
+
+Client: `src/lib/shop/db.ts` · cache: `src/lib/shop/store.ts`
+
+### Platform roles (`gh_profiles.role`)
+
+Column: `user` | `moderator` | `admin` (default `user`).
+
+| Role | Console access |
+|------|----------------|
+| **admin** | Shop, fees, role assignment, dispute tools |
+| **moderator** | Dispute vote / finalize UI |
+| **user** | None (default) |
+
+Access is **OR** with on-chain flags (`setAdmin` / `AdminMod`). Profile upsert **never** changes `role` (no self-elevate).
+
+**Migration (existing DBs):** apply  
+`supabase/migrations/20260802_gh_profile_roles.sql`
+
+**Bootstrap first admin (pick one):**
+
+```sql
+-- After you have logged in once (row exists):
+update public.gh_profiles
+set role = 'admin'
+where principal = '<your-ii-principal>';
+```
+
+Or open **Admin console → Roles** and click **Claim bootstrap admin** when zero admins exist (self-assign only).
+
+**Assign later:** console Roles tab, or:
+
+```sql
+select public.admin_set_gh_profile_role(
+  '<admin-principal>',
+  '<target-principal>',
+  'moderator'  -- or admin | user
+);
+```

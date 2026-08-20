@@ -45,6 +45,10 @@ export const GH_TABLES = {
   arcadeChainJobs: "gh_arcade_chain_jobs",
   /** Arcade game catalog (CSS + gameCode off-chain) */
   arcadeGames: "gh_arcade_games",
+  /** Gamerholic merch catalog (optional mirror) */
+  shopProducts: "gh_shop_products",
+  shopOrders: "gh_shop_orders",
+  shopSettings: "gh_shop_settings",
 } as const;
 
 export type GhTableName = (typeof GH_TABLES)[keyof typeof GH_TABLES];

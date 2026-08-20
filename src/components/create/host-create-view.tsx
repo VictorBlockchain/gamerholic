@@ -28,6 +28,7 @@ import {
   Users,
 } from "lucide-react";
 import {
+  EntryFeeNotice,
   GameChipPicker,
   GhAlert,
   GhBadge,
@@ -60,6 +61,11 @@ import {
   GROUP_AVATAR_DEFAULT,
   GROUP_COVER_DEFAULT,
 } from "@/lib/rooms";
+import { ConnectBetableButton } from "@/components/betable/connect-betable-button";
+import {
+  loadStoredBetableLink,
+} from "@/lib/connect-betable";
+import { getCanonicalGhPrincipal } from "@/lib/device-sync";
 
 export type HostCreateMode = "tournament" | "room";
 
@@ -368,20 +374,35 @@ export function HostCreateView() {
       action: async (setStep) => {
         setStep(0);
         await processBeat();
+        if (tBetable && principal) {
+          const primary = await getCanonicalGhPrincipal(
+            principal,
+            identity,
+          );
+          const link = loadStoredBetableLink(primary);
+          if (!link?.principal) {
+            throw new Error(
+              "Connect Betable before creating a betable tournament",
+            );
+          }
+        }
         setStep(1);
-        const id = await createTournament({
-          creator,
-          title: tTitle.trim(),
-          game: tGame,
-          console: tConsole,
-          entryFeeIcp: parseFloat(tEntry) || 0,
-          maxPlayers: parseInt(tMax, 10) || 16,
-          hostFeePct: parseFloat(tHostPct) || 2.5,
-          description: tDesc,
-          scheduledAt: scheduled,
-          betable: tBetable,
-          teamEntry: tTeamMode,
-        });
+        const id = await createTournament(
+          {
+            creator,
+            title: tTitle.trim(),
+            game: tGame,
+            console: tConsole,
+            entryFeeIcp: parseFloat(tEntry) || 0,
+            maxPlayers: parseInt(tMax, 10) || 16,
+            hostFeePct: parseFloat(tHostPct) || 2.5,
+            description: tDesc,
+            scheduledAt: scheduled,
+            betable: tBetable,
+            teamEntry: tTeamMode,
+          },
+          identity,
+        );
         setStep(2);
         ghToast({
           title: "Tournament created on-chain",
@@ -1119,6 +1140,13 @@ export function HostCreateView() {
                     </Box>
                   </HStack>
 
+                  {(parseFloat(tEntry) || 0) > 0 ? (
+                    <EntryFeeNotice
+                      amountIcp={parseFloat(tEntry) || 0}
+                      kind="tournament"
+                    />
+                  ) : null}
+
                   <BetableBlock
                     betable={tBetable}
                     onBetable={(on) => setTBetable(on)}
@@ -1127,6 +1155,8 @@ export function HostCreateView() {
                     onDate={setTDate}
                     onTime={setTTime}
                     eventLabel="tournament"
+                    sessionPrincipal={principal}
+                    identity={identity}
                   />
 
                   <GhField label="Description">
@@ -1325,6 +1355,14 @@ export function HostCreateView() {
                             </GhField>
                           </Box>
                         </HStack>
+                        {(parseFloat(rBuyIn) || 0) > 0 ? (
+                          <Box mt="phi3">
+                            <EntryFeeNotice
+                              amountIcp={parseFloat(rBuyIn) || 0}
+                              kind="room_game"
+                            />
+                          </Box>
+                        ) : null}
                       </Box>
 
                       <BetableBlock
@@ -1335,6 +1373,8 @@ export function HostCreateView() {
                         onDate={setRDate}
                         onTime={setRTime}
                         eventLabel="group game"
+                        sessionPrincipal={principal}
+                        identity={identity}
                       />
 
                       <GhField label="Game rules (optional)">
@@ -1574,6 +1614,8 @@ function BetableBlock({
   onDate,
   onTime,
   eventLabel,
+  sessionPrincipal,
+  identity,
 }: {
   betable: boolean;
   onBetable: (on: boolean) => void;
@@ -1582,6 +1624,8 @@ function BetableBlock({
   onDate: (v: string) => void;
   onTime: (v: string) => void;
   eventLabel: string;
+  sessionPrincipal?: string | null;
+  identity?: import("@dfinity/agent").Identity | null;
 }) {
   return (
     <Box
@@ -1607,11 +1651,18 @@ function BetableBlock({
       </HStack>
       <Text fontSize="xs" color="fg.muted" lineHeight="1.5" mb={betable ? "phi3" : 0}>
         Open an esports market on this {eventLabel}. Spectators wager on the outcome.
-        A policy % of betable volume goes to the winner. Start must be scheduled
-        ≥ 1 hour out.
+        Host and joiners must Connect Betable. Esports shows Betable name/avatar;
+        Gamerholic profile is linked back on Betable. Start ≥ 1 hour out.
       </Text>
       {betable ? (
         <>
+          <Box mb="phi3">
+            <ConnectBetableButton
+              sessionPrincipal={sessionPrincipal}
+              identity={identity}
+              compact
+            />
+          </Box>
           <HStack gap="2" mb="phi2" color="prize.fg">
             <CalendarClock size={14} />
             <Text
@@ -1661,8 +1712,8 @@ function HelperNotes({ mode }: { mode: HostCreateMode }) {
           },
           {
             icon: Users,
-            title: "Host must be a betable member",
-            body: "The tournament host creates the Esports market and must hold Esports category access on betable. Teams/players are free-text outcomes — they do not need betable accounts. Winner fee share pays the tournament escrow; 1% creator fee pays the host.",
+            title: "Host and joiners must Connect Betable",
+            body: "Host and every opponent/entrant must Connect Betable. Esports outcomes use Betable username/avatar (not GH profile). Gamerholic primary principal is stored for link-back on Betable. Winner fee share pays tournament escrow; 1% creator fee pays the host.",
           },
           {
             icon: CalendarClock,

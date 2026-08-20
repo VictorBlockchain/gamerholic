@@ -36,6 +36,7 @@ import {
   XCircle,
 } from "lucide-react";
 import {
+  EntryFeeNotice,
   GhAlert,
   GhAvatar,
   GhBadge,
@@ -49,6 +50,7 @@ import {
   GhSwitch,
   GhTextarea,
   ghToast,
+  toastLowBalance,
 } from "@/components/ui";
 import {
   DEMO_VIEWER,
@@ -108,10 +110,26 @@ import {
 } from "@/lib/ic/challenge-service";
 import { loadTournament } from "@/lib/ic/tournament-service";
 import { isCanisterConfigured } from "@/lib/ic/canisters";
+import {
+  checkPlayIcpAfford,
+  requiredIcpForChallengeEntry,
+} from "@/lib/ic/gamer-service";
 import { friendlyIcError } from "@/lib/ic/local-identity";
 import { useGhEvents } from "@/context/event-context";
 import { useSession } from "@/components/providers/session-context";
 import { marketHref, tournamentHref } from "@/lib/deep-links";
+import { BetableMemberGate } from "@/components/betable/connect-betable-button";
+import {
+  addEsportsOutcome,
+  isBetableConfigured,
+} from "@/lib/ic/betable-service";
+import { getCanonicalGhPrincipal } from "@/lib/device-sync";
+import {
+  gamerholicProfileUrl,
+  loadStoredBetableLink,
+  toEsportsAvatarUrl,
+  toEsportsOutcomeLabel,
+} from "@/lib/connect-betable";
 import {
   tournamentKindLabel,
   type TournamentDetail,
@@ -215,6 +233,15 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
 
   useEffect(() => {
     void reload();
+  }, [reload]);
+
+  // Mobile pull-to-refresh (AppShell dispatches gh:pull-refresh)
+  useEffect(() => {
+    const onPull = () => {
+      void reload({ quiet: true });
+    };
+    window.addEventListener("gh:pull-refresh", onPull);
+    return () => window.removeEventListener("gh:pull-refresh", onPull);
   }, [reload]);
 
   // Live row from Supabase when mirror is configured (quiet — no full-page spinner)
@@ -471,6 +498,20 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
         return;
       }
     }
+    // Pre-check play ICP before opening process modal / canister
+    if (c.entryFeeIcp > 0 && mePrincipal) {
+      const need = requiredIcpForChallengeEntry(c.entryFeeIcp);
+      const afford = await checkPlayIcpAfford(mePrincipal, need, identity);
+      if (afford.insufficient && afford.balance != null) {
+        toastLowBalance({
+          action: "accept this challenge",
+          needIcp: afford.need,
+          balanceIcp: afford.balance,
+        });
+        return;
+      }
+    }
+
     setAccepting(true);
     await runProcess({
       title: "Accepting challenge",
@@ -479,8 +520,8 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
       steps: [
         {
           key: "validate",
-          label: "Checking profile",
-          detail: "Profile complete · stream optional",
+          label: "Checking profile & balance",
+          detail: "Play subaccount stake + ledger fee",
         },
         {
           key: "join",
@@ -498,9 +539,47 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
       action: async (setStep) => {
         setStep(0);
         await processBeat();
+        if (c.entryFeeIcp > 0 && mePrincipal) {
+          const need = requiredIcpForChallengeEntry(c.entryFeeIcp);
+          const afford = await checkPlayIcpAfford(
+            mePrincipal,
+            need,
+            identity,
+          );
+          if (afford.insufficient && afford.balance != null) {
+            throw new Error(
+              `Low balance — need ${afford.need.toFixed(4)} ICP, have ${afford.balance.toFixed(4)} ICP`,
+            );
+          }
+        }
         setStep(1);
         const ok = await joinChallenge(c.id, viewer, stream, identity);
         if (!ok) throw new Error("joinChallenge returned false");
+        // Esports: Betable display + GH primary for profile link-back
+        if (c.marketId && isBetableConfigured() && mePrincipal) {
+          try {
+            const ghPrimary = await getCanonicalGhPrincipal(
+              mePrincipal,
+              identity,
+            );
+            const bLink = loadStoredBetableLink(ghPrimary);
+            if (bLink?.principal) {
+              await addEsportsOutcome({
+                marketId: c.marketId,
+                entityId: c.id,
+                entityKind: "match",
+                label: toEsportsOutcomeLabel(bLink),
+                avatarUrl: toEsportsAvatarUrl(bLink),
+                sourceId: bLink.principal,
+                sourceKind: "player",
+                gamerholicPrincipal: ghPrimary,
+                gamerholicProfileUrl: gamerholicProfileUrl(ghPrimary),
+              });
+            }
+          } catch (eo) {
+            console.warn("[accept] esports outcome add failed", eo);
+          }
+        }
         emit({
           type: "challenge.joined",
           origin: "canister",
@@ -921,7 +1000,23 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
         setStep(0);
         await processBeat();
         setStep(1);
-        const ok = await openChallengeBetable(c.id, viewer, scheduled, mon);
+        const ghPrimary = mePrincipal
+          ? await getCanonicalGhPrincipal(mePrincipal, identity)
+          : "";
+        const bLink = ghPrimary ? loadStoredBetableLink(ghPrimary) : null;
+        if (!bLink?.principal) {
+          throw new Error(
+            "Connect Betable first — required to open an Esports market",
+          );
+        }
+        const ok = await openChallengeBetable(
+          c.id,
+          viewer,
+          scheduled,
+          mon,
+          identity,
+          { betableHostPrincipal: bLink.principal },
+        );
         if (!ok) throw new Error("openChallengeBetable returned false");
         setStep(2);
         await reload({ quiet: true });
@@ -1254,17 +1349,23 @@ export function ChallengeDetailView({ challengeId }: { challengeId: string }) {
                 </Link>
               </GhAlert>
             ) : null}
-            <AcceptPanel
-              c={c}
-              open={acceptOpen}
-              onOpenChange={setAcceptOpen}
-              streamUrl={streamUrl}
-              setStreamUrl={setStreamUrl}
-              notes={notes}
-              setNotes={setNotes}
-              accepting={accepting}
-              onAccept={() => void accept()}
-            />
+            <BetableMemberGate
+              sessionPrincipal={mePrincipal}
+              identity={identity}
+              required={Boolean(c.betable || c.marketId)}
+            >
+              <AcceptPanel
+                c={c}
+                open={acceptOpen}
+                onOpenChange={setAcceptOpen}
+                streamUrl={streamUrl}
+                setStreamUrl={setStreamUrl}
+                notes={notes}
+                setNotes={setNotes}
+                accepting={accepting}
+                onAccept={() => void accept()}
+              />
+            </BetableMemberGate>
           </Box>
         ) : null}
 
@@ -3450,7 +3551,9 @@ function AcceptPanel({
               {open ? "Accepting challenge" : "Accept challenge"}
             </Text>
             <Text fontSize="xs" color="fg.muted">
-              Deposit {formatIcp(c.entryFeeIcp)} to escrow · stream optional
+              {c.entryFeeIcp > 0
+                ? `Stake ${formatIcp(c.entryFeeIcp)} + ledger fee · stream optional`
+                : "Free accept · stream optional"}
             </Text>
           </Box>
         </HStack>
@@ -3468,6 +3571,9 @@ function AcceptPanel({
           bg="bg.elevated"
         >
           <VStack align="stretch" gap="phi3" pt="phi3">
+            {c.entryFeeIcp > 0 ? (
+              <EntryFeeNotice amountIcp={c.entryFeeIcp} kind="challenge" />
+            ) : null}
             <GhField
               label="Stream URL"
               helperText="Optional — add later for spectators / monitor"
@@ -3485,10 +3591,17 @@ function AcceptPanel({
                 placeholder="Ready now · Discord…"
               />
             </GhField>
-            <GhCheckbox
-              label={`I deposit ${formatIcp(c.entryFeeIcp)} to the challenge escrow subaccount`}
-              defaultChecked
-            />
+            {c.entryFeeIcp > 0 ? (
+              <GhCheckbox
+                label={`I deposit ${formatIcp(c.entryFeeIcp)} + ledger fee from my play subaccount to escrow`}
+                defaultChecked
+              />
+            ) : (
+              <GhCheckbox
+                label="I accept this free challenge (no escrow debit)"
+                defaultChecked
+              />
+            )}
             <HStack gap="phi2" flexWrap="wrap">
               <GhButton
                 variant="primary"
@@ -3496,7 +3609,11 @@ function AcceptPanel({
                 onClick={onAccept}
                 disabled={accepting}
               >
-                {accepting ? "Accepting…" : `Accept · ${formatIcp(c.entryFeeIcp)}`}
+                {accepting
+                  ? "Accepting…"
+                  : c.entryFeeIcp > 0
+                    ? `Accept · ${formatIcp(c.entryFeeIcp)}`
+                    : "Accept challenge"}
               </GhButton>
               <GhButton
                 variant="ghost"
